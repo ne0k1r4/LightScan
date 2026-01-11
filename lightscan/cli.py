@@ -40,6 +40,15 @@ async def scan(host: str, ports: list, concurrency: int, timeout: float):
     return sorted(results)
 
 
+def resolve_host(host: str) -> str:
+    """resolve hostname to ip, handle both v4 and v6"""
+    try:
+        return socket.gethostbyname(host)
+    except socket.gaierror as e:
+        print(f"[-] could not resolve {host}: {e}")
+        sys.exit(1)
+
+
 def parse_ports(spec: str) -> list:
     if spec == "top20":
         return TOP_PORTS
