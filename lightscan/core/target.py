@@ -55,3 +55,4 @@ def resolve(host: str):
         return socket.gethostbyname(host)
     except socket.gaierror:
         return None
+# port range fix
