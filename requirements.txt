@@ -1,0 +1,2 @@
+# lightscan v0.1 — zero hard dependencies
+# all stdlib
