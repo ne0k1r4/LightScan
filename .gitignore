@@ -31,3 +31,4 @@ lightscan_report.*
 # Dev scripts
 apply_*.py
 
+*.scan.json
