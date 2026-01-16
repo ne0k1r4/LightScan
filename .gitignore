@@ -32,3 +32,4 @@ lightscan_report.*
 apply_*.py
 
 *.scan.json
+*.scan.json
