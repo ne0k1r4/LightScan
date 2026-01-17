@@ -68,3 +68,4 @@ def resolve(host: str):
 # constants
 # ipv6 mapped fix
 # port range fix
+# dns cache
