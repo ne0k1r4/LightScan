@@ -56,3 +56,4 @@ def resolve(host: str):
     except socket.gaierror:
         return None
 # port range fix
+# dns cache
