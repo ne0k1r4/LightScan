@@ -162,3 +162,4 @@ class PhantomEngine:
 # cancelled error
 # concurrency fix
 # retry logic
+# terminal width fix
