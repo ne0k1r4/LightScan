@@ -152,3 +152,4 @@ class PhantomEngine:
 # elapsed time
 # concurrency fix
 # retry logic
+# terminal width fix
