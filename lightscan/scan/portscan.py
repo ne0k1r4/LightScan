@@ -19,7 +19,9 @@ async def _grab_banner(host, port, timeout=2.0) -> str:
         try:
             banner = await asyncio.wait_for(r.read(256), timeout=timeout)
             w.close()
-            return banner.decode("utf-8", "replace").strip()
+            # strip non-printable chars — some services send binary garbage
+            clean = "".join(c for c in banner.decode("utf-8", "replace") if c.isprintable() or c == " ")
+            return clean.strip()
         except Exception:
             w.close()
             return ""
