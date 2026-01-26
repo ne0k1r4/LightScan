@@ -57,3 +57,4 @@ def resolve(host: str):
         return None
 # port range fix
 # dns cache
+# type hints
