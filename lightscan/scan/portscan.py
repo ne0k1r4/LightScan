@@ -132,3 +132,4 @@ def build_scan_tasks(hosts, ports, timeout=2.0, udp=False, banners=True):
                     tasks.append((udp_scan(h, p, timeout), f"udp:{h}:{p}"))
     return tasks
 # timeout guard on banner read
+# latin-1 decode
