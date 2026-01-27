@@ -135,3 +135,4 @@ def build_scan_tasks(hosts, ports, timeout=2.0, udp=False, banners=True):
 # latin-1 decode
 # ftp timeout
 # timeout guard on banner read
+# latin-1 decode
