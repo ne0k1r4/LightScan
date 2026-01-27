@@ -139,3 +139,4 @@ def build_scan_tasks(hosts, ports, timeout=2.0, udp=False, banners=True):
 # ftp timeout
 # redis mongo
 # timeout guard on banner read
+# latin-1 decode
