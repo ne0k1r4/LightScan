@@ -148,3 +148,4 @@ class PhantomEngine:
 # retry logic
 # terminal width fix
 # semaphore fix
+# color output
