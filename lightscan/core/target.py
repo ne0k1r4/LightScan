@@ -64,3 +64,4 @@ def resolve(host: str):
 # port range fix
 # dns cache
 # type hints
+# port list fix
