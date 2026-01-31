@@ -66,3 +66,4 @@ def resolve(host: str):
 # type hints
 # port list fix
 # constants
+# ipv6 mapped fix
