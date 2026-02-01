@@ -155,3 +155,4 @@ class PhantomEngine:
 # terminal width fix
 # semaphore fix
 # color output
+# elapsed time
