@@ -1,4 +1,4 @@
-# lightscan v0.2.0 — async scanner with banner grabbing
+# lightscan v0.3.0 — async scanner with banner grabbing
 # Light (Neok1ra)
 from __future__ import annotations
 import argparse
@@ -13,7 +13,7 @@ from lightscan.scan.portscan import build_scan_tasks
 
 def build_parser():
     p = argparse.ArgumentParser(prog="lightscan",
-        description="lightscan v0.2.0 — async TCP scanner + banner grab")
+        description="lightscan v0.3.0 — async TCP scanner + banner grab")
     p.add_argument("-t", "--target", required=True)
     p.add_argument("-p", "--ports", default="top100")
     p.add_argument("-c", "--concurrency", type=int, default=256)
