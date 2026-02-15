@@ -157,3 +157,4 @@ class PhantomEngine:
 # color output
 # elapsed time
 # exception surfacing
+# ulimit check
