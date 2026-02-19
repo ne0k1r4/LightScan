@@ -39,3 +39,4 @@ setup(
         "Environment :: Console",
     ],
 )
+# python pin
