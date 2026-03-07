@@ -615,3 +615,4 @@ async def async_raw_scan(
         target, ports, timing, ttl, decoys, fragment,
         randomize, grab_banner, verbose, ipv6)
     return await loop.run_in_executor(None, scanner.scan)
+# scapy optional
