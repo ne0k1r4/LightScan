@@ -36,15 +36,14 @@ def _build_ipv4_syn(src_ip: str, dst_ip: str, sport: int, dport: int,
     # the checksum is therefore computed over a DIFFERENT ip_id than what ships
     # this means every packet has an invalid IP checksum
     # (fixed in a later commit by caching ip_id before first pack)
+    ip_id  = random.randint(1, 65535)  # cache once — used in both packs
     ip_hdr = struct.pack("!BBHHHBBH4s4s",
-        (4 << 4) | 5, 0, 0,
-        random.randint(1, 65535),  # BUG: ip_id_A used for checksum
+        (4 << 4) | 5, 0, 0, ip_id,
         0, ttl, socket.IPPROTO_TCP, 0,
         socket.inet_aton(src_ip), socket.inet_aton(dst_ip))
     ip_chk = _checksum(ip_hdr)
     ip_hdr = struct.pack("!BBHHHBBH4s4s",
-        (4 << 4) | 5, 0, 0,
-        random.randint(1, 65535),  # BUG: ip_id_B — DIFFERENT from ip_id_A above
+        (4 << 4) | 5, 0, 0, ip_id,
         0, ttl, socket.IPPROTO_TCP, ip_chk,
         socket.inet_aton(src_ip), socket.inet_aton(dst_ip))
 
