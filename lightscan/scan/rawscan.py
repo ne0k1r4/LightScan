@@ -60,6 +60,32 @@ def _build_ipv4_syn(src_ip: str, dst_ip: str, sport: int, dport: int,
     return ip_hdr + tcp_hdr
 
 
+
+
+def _build_ipv4_rst(src_ip: str, dst_ip: str, sport: int, dport: int,
+                    seq: int = 0, ttl: int = 64) -> bytes:
+    """build a proper RST packet — tcp_flags=0x04"""
+    ip_id  = random.randint(1, 65535)
+    ip_hdr = struct.pack("!BBHHHBBH4s4s",
+        (4 << 4) | 5, 0, 0, ip_id,
+        0, ttl, socket.IPPROTO_TCP, 0,
+        socket.inet_aton(src_ip), socket.inet_aton(dst_ip))
+    ip_chk = _checksum(ip_hdr)
+    ip_hdr = struct.pack("!BBHHHBBH4s4s",
+        (4 << 4) | 5, 0, 0, ip_id,
+        0, ttl, socket.IPPROTO_TCP, ip_chk,
+        socket.inet_aton(src_ip), socket.inet_aton(dst_ip))
+    tcp_flags = 0x04  # RST
+    tcp_hdr = struct.pack("!HHLLBBHHH", sport, dport, seq, 0,
+        (5 << 4), tcp_flags, 65535, 0, 0)
+    pseudo  = struct.pack("!4s4sBBH",
+        socket.inet_aton(src_ip), socket.inet_aton(dst_ip),
+        0, socket.IPPROTO_TCP, len(tcp_hdr))
+    tcp_chk = _checksum(pseudo + tcp_hdr)
+    tcp_hdr = struct.pack("!HHLLBBHHH", sport, dport, seq, 0,
+        (5 << 4), tcp_flags, 65535, tcp_chk, 0)
+    return ip_hdr + tcp_hdr
+
 class RawSynScanner:
     def __init__(self, target: str, ttl: int = 64, timeout: float = 2.0):
         self.target  = target
@@ -116,10 +142,7 @@ class RawSynScanner:
                     continue
                 if flags & 0x12 == 0x12:  # SYN-ACK
                     open_ports.append(src_port)
-                    # BUG: this should send RST but calls _build_ipv4_syn
-                    # which sets tcp_flags=0x02 (SYN) not 0x04 (RST)
-                    # effect: completes 3WHS instead of tearing down
-                    rst = _build_ipv4_syn(self._src_ip, self._dst_ip,
+                    rst = _build_ipv4_rst(self._src_ip, self._dst_ip,
                                           dst_port, src_port, ttl=self.ttl)
                     send_sock.sendto(rst, (self._dst_ip, 0))
 
