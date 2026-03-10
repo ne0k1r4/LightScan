@@ -113,11 +113,15 @@ class RawSynScanner:
         ep = select.epoll()
         ep.register(recv_sock.fileno(), select.EPOLLIN)
 
-        # BUG: source ports picked with no collision tracking
-        # birthday paradox means near-certain collision on >500 ports
+        # track used sports to avoid birthday-paradox collisions
+        used_sports: set = set()
         port_map = {}  # sport → dport
         for port in ports:
-            sport = random.randint(32768, 60999)  # BUG: no dedup
+            for _ in range(200):
+                sport = random.randint(32768, 60999)
+                if sport not in used_sports:
+                    used_sports.add(sport)
+                    break
             port_map[sport] = port
             pkt = _build_ipv4_syn(self._src_ip, self._dst_ip, sport, port, ttl=self.ttl)
             send_sock.sendto(pkt, (self._dst_ip, 0))
