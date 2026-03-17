@@ -168,3 +168,4 @@ class PhantomEngine:
 # elapsed time
 # exception surfacing
 # ulimit check
+# speed display
