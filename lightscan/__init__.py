@@ -1,3 +1,1 @@
-# lightscan — async port scanner
-# Light (Neok1ra)
-__version__ = "0.1.0"
+"""LightScan v2.0 PHANTOM — Developer: Light (Neok1ra)"""
