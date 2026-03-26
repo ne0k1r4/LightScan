@@ -159,3 +159,4 @@ class PhantomEngine:
 # exception surfacing
 # ulimit check
 # speed display
+# cancelled error
