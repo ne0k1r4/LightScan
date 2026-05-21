@@ -127,10 +127,14 @@ def make_http_handler(host, port=80, url="", user_field="username",
             if session_cookie:
                 hdrs["Cookie"] = session_cookie
             req = urllib.request.Request(_url, headers=hdrs)
-            ctx = __import__("ssl").create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = 0
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            _kw = {}
+            if _url.startswith("https"):
+                import ssl as _ssl
+                ctx = _ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = 0
+                _kw["context"] = ctx
+            with urllib.request.urlopen(req, timeout=timeout, **_kw) as r:
                 body     = r.read(65536).decode("utf-8", "replace")
                 cookie   = r.headers.get("Set-Cookie", "")
             # Parse hidden inputs
@@ -172,31 +176,40 @@ def make_http_handler(host, port=80, url="", user_field="username",
                 csrf_fields, set_cookie = _fetch_csrf()
 
                 # Step 2: build POST data with CSRF fields included
-                post_data = {user_field: user, pass_field: passwd}
+                post_data = {user_field: user, pass_field: passwd, "Login": "Login"}
                 post_data.update(csrf_fields)  # merge in user_token etc.
 
                 data = urllib.parse.urlencode(post_data).encode()
                 hdrs = dict(_hdrs)
                 if set_cookie:
                     # Forward the session cookie so CSRF validation passes
-                    hdrs["Cookie"] = "; ".join(
-                        p.split(";")[0].strip()
-                        for p in set_cookie.split(",")
-                        if "=" in p.split(";")[0]
-                    )
+                    cookie_parts = []
+                    for part in set_cookie.split(";"):
+                        part = part.strip()
+                        if "=" in part and not any(
+                            part.lower().startswith(d)
+                            for d in ("path=","domain=","expires=","max-age=","samesite=")
+                        ):
+                            cookie_parts.append(part)
+                    if cookie_parts:
+                        hdrs["Cookie"] = "; ".join(cookie_parts)
                 req = urllib.request.Request(_url, data=data, headers=hdrs, method="POST")
                 try:
-                    ctx = __import__("ssl").create_default_context()
-                    ctx.check_hostname = False
-                    ctx.verify_mode = 0
-                    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                    _kw2 = {}
+                    if _url.startswith("https"):
+                        import ssl as _ssl
+                        ctx = _ssl.create_default_context()
+                        ctx.check_hostname = False
+                        ctx.verify_mode = 0
+                        _kw2["context"] = ctx
+                    with urllib.request.urlopen(req, timeout=timeout, **_kw2) as r:
                         body  = r.read(4096).decode("utf-8","replace")
                         final = r.url
                     if success_text and success_text.lower() in body.lower():
                         return True, f"SUCCESS: {success_text}"
                     if failure_text and failure_text.lower() in body.lower():
                         return False, f"fail: {failure_text}"
-                    if any(k in final.lower() for k in ("dashboard","home","welcome","panel","account")):
+                    if any(k in final.lower() for k in ("dashboard","home","welcome","panel","account","index","setup","main","portal","profile")):
                         return True, f"Redirect: {final}"
                     return False, "200 no indicator"
                 except urllib.error.HTTPError as e:
@@ -206,8 +219,7 @@ def make_http_handler(host, port=80, url="", user_field="username",
                     return False, f"HTTP {e.code}"
                 except Exception as e:
                     return False, str(e)
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _try)
+        return await asyncio.get_running_loop().run_in_executor(None, _try)
     return handler
 
 
