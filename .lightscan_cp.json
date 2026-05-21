@@ -5,6 +5,6 @@
   "scanned": [],
   "meta": {
     "started": 1775968441.0692046,
-    "target": "scanme.nmap.org"
+    "target": "localhost:8080"
   }
 }
