@@ -15,3 +15,15 @@ venv/
 .lightscan_cp.json
 *.log
 
+
+# Generated reports
+lightscan_report.*
+*_report.html
+*_report.json
+*_report.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
