@@ -1,0 +1,18 @@
+id: docker-api-exposed
+name: Docker API Exposed
+severity: critical
+tags: [docker, api, container, rce]
+port: 2375
+protocol: http
+description: Docker daemon API exposed without TLS — full container/host compromise
+remediation: Bind Docker socket to 127.0.0.1 only; enable TLS
+steps:
+  - type: send
+    data: /version
+  - type: match
+    contains: "ApiVersion"
+    part: body
+  - type: extract
+    regex: "\"Version\":\"([^\"]+)\""
+    group: 1
+    name: docker_version

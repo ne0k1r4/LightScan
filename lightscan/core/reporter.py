@@ -118,83 +118,325 @@ def to_html(results, meta):
     dur     = meta.get("duration", 0)
     grouped = _group_results(results)
 
-    rows = ""
-    for r in grouped:
-        sev = r.get("severity","INFO")
-        col = SEV_COLORS.get(sev,"#636366")
-        mod = r.get("module","")
-        tgt = r.get("target","")
-        prt = r.get("port","")
-        det = str(r.get("detail","")).replace("<","&lt;").replace(">","&gt;")
-        cnt = r.get("count","")
-        cnt_badge = (f'<span style="background:#333;color:#ff9f0a;'
-                     f'padding:.1rem .4rem;border-radius:3px;font-size:.65rem">'
-                     f'×{cnt}</span> ') if cnt else ""
-        url_rows = ""
-        for url in r.get("urls",[]):
-            url_esc = url.replace("<","&lt;").replace(">","&gt;")
-            url_rows += (f'<tr><td colspan="2"></td><td colspan="4" class="d" '
-                         f'style="color:#555;padding:.2rem .8rem">'
-                         f'↳ <a href="{url_esc}" style="color:#636366">{url_esc}</a></td></tr>')
-        rows += (f'<tr>'
-                 f'<td><span class="b" style="background:{col}">{sev}</span></td>'
-                 f'<td><code>{mod}</code></td>'
-                 f'<td>{tgt}</td>'
-                 f'<td>{prt}</td>'
-                 f'<td class="d">{cnt_badge}{det}</td>'
-                 f'</tr>{url_rows}')
+    crit = sum(1 for r in results if r.get("severity") == "CRITICAL")
+    high = sum(1 for r in results if r.get("severity") == "HIGH")
+    med  = sum(1 for r in results if r.get("severity") == "MEDIUM")
+    low  = sum(1 for r in results if r.get("severity") == "LOW")
+    info = sum(1 for r in results if r.get("severity") == "INFO")
+    total = len(results)
 
-    crit = sum(1 for r in results if r.get("severity")=="CRITICAL")
-    high = sum(1 for r in results if r.get("severity")=="HIGH")
-    med  = sum(1 for r in results if r.get("severity")=="MEDIUM")
-    low  = sum(1 for r in results if r.get("severity") in ("LOW","INFO"))
+    # Build rows grouped by severity
+    rows = ""
+    for sev_order in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]:
+        for r in grouped:
+            if r.get("severity") != sev_order:
+                continue
+            sev = r.get("severity", "INFO")
+            col = SEV_COLORS.get(sev, "#636366")
+            mod = r.get("module", "")
+            tgt = r.get("target", "")
+            prt = str(r.get("port", ""))
+            det = str(r.get("detail", "")).replace("<", "&lt;").replace(">", "&gt;")
+            cnt = r.get("count", "")
+            cnt_badge = (f'<span class="badge">×{cnt}</span> ') if cnt else ""
+            url_rows = ""
+            for url in r.get("urls", []):
+                url_esc = url.replace("<", "&lt;").replace(">", "&gt;")
+                url_rows += (f'<tr class="url-row"><td colspan="2"></td>'
+                             f'<td colspan="4">↳ <a href="{url_esc}">{url_esc}</a></td></tr>')
+            rows += (f'<tr>'
+                     f'<td><span class="sev-badge" style="background:{col}">{sev}</span></td>'
+                     f'<td><code>{mod}</code></td>'
+                     f'<td class="mono">{tgt}</td>'
+                     f'<td class="mono">{prt}</td>'
+                     f'<td class="detail">{cnt_badge}{det}</td>'
+                     f'</tr>{url_rows}')
+
+    # Donut chart data
+    chart_data = f"[{crit},{high},{med},{low+info}]"
+    chart_colors = '["#ff2d55","#ff6b35","#ffd60a","#636366"]'
+    chart_labels = '["CRITICAL","HIGH","MEDIUM","LOW/INFO"]'
+
+    # Module breakdown
+    module_counts = {}
+    for r in results:
+        m = r.get("module", "unknown")
+        module_counts[m] = module_counts.get(m, 0) + 1
+    module_rows = ""
+    for mod, count in sorted(module_counts.items(), key=lambda x: -x[1]):
+        pct = int((count / total * 100)) if total else 0
+        module_rows += (f'<div class="mod-row">'
+                        f'<span class="mod-name"><code>{mod}</code></span>'
+                        f'<span class="mod-bar-wrap">'
+                        f'<span class="mod-bar" style="width:{pct}%"></span>'
+                        f'</span>'
+                        f'<span class="mod-count">{count}</span>'
+                        f'</div>')
 
     return f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8">
+<html lang="en">
+<head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LightScan — {target}</title>
 <style>
-:root{{--bg:#0d0d0d;--s:#1a1a1a;--b:#2a2a2a;--r:#ff2d55;--t:#e0e0e0;--m:#636366}}
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:var(--bg);color:var(--t);font-family:'Courier New',monospace;padding:2rem}}
-h1{{color:var(--r);font-size:1.6rem;letter-spacing:.1em;margin-bottom:.3rem}}
-.sub{{color:var(--m);font-size:.8rem;margin-bottom:1.5rem;letter-spacing:.05em}}
-.meta{{color:var(--m);font-size:.8rem;margin-bottom:1.5rem}}
-.meta span{{margin-right:2rem}}
-.stats{{display:flex;gap:1.5rem;margin-bottom:2rem;flex-wrap:wrap}}
-.stat{{background:var(--s);border:1px solid var(--b);padding:.8rem 1.2rem;border-radius:6px;min-width:100px;text-align:center}}
-.sn{{font-size:1.8rem;font-weight:bold}}
-.sl{{color:var(--m);font-size:.65rem;letter-spacing:.1em;margin-top:.2rem}}
-table{{width:100%;border-collapse:collapse;background:var(--s)}}
-th{{background:#111;color:var(--r);text-align:left;padding:.6rem .8rem;font-size:.72rem;letter-spacing:.08em;border-bottom:1px solid var(--b)}}
-td{{padding:.5rem .8rem;font-size:.78rem;border-bottom:1px solid var(--b);vertical-align:top}}
-tr:hover td{{background:#1f1f1f}}
-code{{color:#ff9f0a;background:#111;padding:.15rem .4rem;border-radius:3px;font-size:.75rem}}
-.b{{padding:.2rem .5rem;border-radius:3px;font-size:.65rem;font-weight:bold;color:#000;white-space:nowrap}}
-.d{{color:#aaa;font-size:.75rem;word-break:break-all}}
-footer{{margin-top:2rem;text-align:center;color:var(--m);font-size:.7rem;padding-top:1rem;border-top:1px solid var(--b)}}
+  :root {{
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1e1e1e;
+    --border: #2a2a2a;
+    --red: #ff2d55;
+    --orange: #ff6b35;
+    --yellow: #ffd60a;
+    --text: #e0e0e0;
+    --muted: #666;
+    --font: 'Courier New', Consolas, monospace;
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: var(--bg); color: var(--text); font-family: var(--font);
+          padding: 2rem; max-width: 1400px; margin: 0 auto; }}
+
+  /* Header */
+  .header {{ margin-bottom: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; }}
+  .logo {{ color: var(--red); font-size: 1.4rem; font-weight: bold;
+           letter-spacing: .15em; margin-bottom: .3rem; }}
+  .tagline {{ color: var(--muted); font-size: .72rem; letter-spacing: .08em; }}
+  .meta {{ display: flex; gap: 2rem; margin-top: 1rem; flex-wrap: wrap; }}
+  .meta-item {{ font-size: .78rem; }}
+  .meta-item span {{ color: var(--muted); }}
+  .meta-item strong {{ color: var(--red); }}
+
+  /* Dashboard grid */
+  .dashboard {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem;
+                margin-bottom: 2rem; }}
+  @media (max-width: 900px) {{ .dashboard {{ grid-template-columns: 1fr; }} }}
+
+  /* Stat cards */
+  .stats {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: .8rem;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1.2rem; }}
+  .stat {{ text-align: center; }}
+  .stat-num {{ font-size: 2rem; font-weight: bold; line-height: 1; }}
+  .stat-label {{ color: var(--muted); font-size: .62rem; letter-spacing: .1em;
+                 margin-top: .3rem; }}
+
+  /* Chart card */
+  .chart-card {{ background: var(--surface); border: 1px solid var(--border);
+                 border-radius: 8px; padding: 1.2rem; }}
+  .card-title {{ color: var(--muted); font-size: .68rem; letter-spacing: .1em;
+                 margin-bottom: 1rem; }}
+  .chart-wrap {{ display: flex; align-items: center; gap: 1.5rem; }}
+  canvas {{ max-width: 120px; max-height: 120px; }}
+  .legend {{ flex: 1; }}
+  .legend-item {{ display: flex; align-items: center; gap: .5rem;
+                  font-size: .72rem; margin-bottom: .4rem; }}
+  .legend-dot {{ width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }}
+  .legend-count {{ margin-left: auto; color: var(--muted); }}
+
+  /* Module breakdown */
+  .modules-card {{ background: var(--surface); border: 1px solid var(--border);
+                   border-radius: 8px; padding: 1.2rem; }}
+  .mod-row {{ display: flex; align-items: center; gap: .8rem;
+              font-size: .72rem; margin-bottom: .5rem; }}
+  .mod-name {{ width: 160px; flex-shrink: 0; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }}
+  .mod-bar-wrap {{ flex: 1; background: var(--surface2); border-radius: 3px;
+                   height: 6px; overflow: hidden; }}
+  .mod-bar {{ height: 100%; background: var(--red); border-radius: 3px;
+              transition: width .3s; }}
+  .mod-count {{ width: 30px; text-align: right; color: var(--muted); }}
+
+  /* Table */
+  .table-wrap {{ background: var(--surface); border: 1px solid var(--border);
+                 border-radius: 8px; overflow: hidden; }}
+  .table-header {{ display: flex; justify-content: space-between; align-items: center;
+                   padding: .8rem 1rem; border-bottom: 1px solid var(--border); }}
+  .table-title {{ color: var(--muted); font-size: .68rem; letter-spacing: .1em; }}
+  .filter-wrap {{ display: flex; gap: .5rem; }}
+  .filter-btn {{ background: var(--surface2); border: 1px solid var(--border);
+                 color: var(--muted); font-family: var(--font); font-size: .65rem;
+                 padding: .25rem .6rem; border-radius: 3px; cursor: pointer;
+                 letter-spacing: .05em; transition: all .15s; }}
+  .filter-btn:hover, .filter-btn.active {{ border-color: var(--red);
+                                            color: var(--text); }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  th {{ background: #111; color: var(--red); text-align: left;
+        padding: .6rem 1rem; font-size: .68rem; letter-spacing: .1em;
+        border-bottom: 1px solid var(--border); white-space: nowrap; }}
+  td {{ padding: .5rem 1rem; font-size: .75rem; border-bottom: 1px solid var(--border);
+        vertical-align: top; }}
+  tr:hover td {{ background: #1a1a1a; }}
+  tr.url-row td {{ padding: .2rem 1rem; border: none; }}
+  tr.url-row a {{ color: var(--muted); font-size: .7rem; text-decoration: none; }}
+  tr.url-row a:hover {{ color: var(--text); }}
+  .mono {{ font-family: var(--font); color: #aaa; }}
+  .detail {{ color: #bbb; word-break: break-all; }}
+  code {{ color: #ff9f0a; background: #111; padding: .1rem .35rem;
+          border-radius: 3px; font-size: .72rem; }}
+  .sev-badge {{ padding: .18rem .5rem; border-radius: 3px; font-size: .62rem;
+                font-weight: bold; color: #000; white-space: nowrap; }}
+  .badge {{ background: #333; color: #ff9f0a; padding: .1rem .35rem;
+            border-radius: 3px; font-size: .65rem; }}
+
+  /* Footer */
+  footer {{ margin-top: 2rem; text-align: center; color: var(--muted);
+            font-size: .68rem; padding-top: 1rem;
+            border-top: 1px solid var(--border); }}
 </style>
-</head><body>
-<h1>⚡ LightScan v2.0 PHANTOM</h1>
-<div class="sub">Async Network Recon &amp; Attack Framework · Developer: Light (Neok1ra)</div>
-<div class="meta">
-  <span>🎯 <strong style="color:#e0e0e0">{target}</strong></span>
-  <span>📅 {now.strftime('%Y-%m-%d %H:%M:%S')}</span>
-  <span>⏱ {dur:.1f}s</span>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">⚡ LIGHTSCAN v2.0-PHANTOM</div>
+  <div class="tagline">ASYNC NETWORK RECON &amp; ATTACK FRAMEWORK · DEVELOPER: LIGHT (NEOK1RA)</div>
+  <div class="meta">
+    <div class="meta-item"><span>TARGET </span><strong>{target}</strong></div>
+    <div class="meta-item"><span>DATE </span>{now.strftime('%Y-%m-%d %H:%M:%S')}</div>
+    <div class="meta-item"><span>DURATION </span>{dur:.1f}s</div>
+    <div class="meta-item"><span>FINDINGS </span>{total}</div>
+  </div>
 </div>
-<div class="stats">
-  <div class="stat"><div class="sn">{len(results)}</div><div class="sl">TOTAL</div></div>
-  <div class="stat"><div class="sn" style="color:#ff2d55">{crit}</div><div class="sl">CRITICAL</div></div>
-  <div class="stat"><div class="sn" style="color:#ff6b35">{high}</div><div class="sl">HIGH</div></div>
-  <div class="stat"><div class="sn" style="color:#ffd60a">{med}</div><div class="sl">MEDIUM</div></div>
-  <div class="stat"><div class="sn" style="color:#636366">{low}</div><div class="sl">LOW/INFO</div></div>
+
+<!-- Stat cards -->
+<div class="stats" style="margin-bottom:1.5rem">
+  <div class="stat">
+    <div class="stat-num">{total}</div>
+    <div class="stat-label">TOTAL</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num" style="color:#ff2d55">{crit}</div>
+    <div class="stat-label">CRITICAL</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num" style="color:#ff6b35">{high}</div>
+    <div class="stat-label">HIGH</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num" style="color:#ffd60a">{med}</div>
+    <div class="stat-label">MEDIUM</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num" style="color:#636366">{low+info}</div>
+    <div class="stat-label">LOW/INFO</div>
+  </div>
 </div>
-<table>
-  <thead><tr><th>SEV</th><th>MODULE</th><th>TARGET</th><th>PORT</th><th>DETAIL</th></tr></thead>
-  <tbody>{rows}</tbody>
-</table>
-<footer>LightScan v2.0 PHANTOM · Developer: Light (Neok1ra)</footer>
-</body></html>"""
+
+<!-- Dashboard -->
+<div class="dashboard">
+  <div class="chart-card" style="grid-column: span 1">
+    <div class="card-title">SEVERITY BREAKDOWN</div>
+    <div class="chart-wrap">
+      <canvas id="donut" width="120" height="120"></canvas>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#ff2d55"></div>
+          CRITICAL <span class="legend-count">{crit}</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#ff6b35"></div>
+          HIGH <span class="legend-count">{high}</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#ffd60a"></div>
+          MEDIUM <span class="legend-count">{med}</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#636366"></div>
+          LOW/INFO <span class="legend-count">{low+info}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modules-card" style="grid-column: span 2">
+    <div class="card-title">FINDINGS BY MODULE</div>
+    {module_rows}
+  </div>
+</div>
+
+<!-- Findings table -->
+<div class="table-wrap">
+  <div class="table-header">
+    <div class="table-title">FINDINGS</div>
+    <div class="filter-wrap">
+      <button class="filter-btn active" onclick="filterTable('ALL')">ALL</button>
+      <button class="filter-btn" onclick="filterTable('CRITICAL')" style="color:#ff2d55">CRIT</button>
+      <button class="filter-btn" onclick="filterTable('HIGH')" style="color:#ff6b35">HIGH</button>
+      <button class="filter-btn" onclick="filterTable('MEDIUM')" style="color:#ffd60a">MED</button>
+      <button class="filter-btn" onclick="filterTable('LOW')">LOW</button>
+    </div>
+  </div>
+  <table id="findings-table">
+    <thead>
+      <tr>
+        <th>SEV</th>
+        <th>MODULE</th>
+        <th>TARGET</th>
+        <th>PORT</th>
+        <th>DETAIL</th>
+      </tr>
+    </thead>
+    <tbody id="findings-body">{rows}</tbody>
+  </table>
+</div>
+
+<footer>
+  LightScan v2.0-PHANTOM · Developer: Light (Neok1ra) · github.com/ne0k1r4
+</footer>
+
+<script>
+// Donut chart
+(function() {{
+  const data   = {chart_data};
+  const colors = {chart_colors};
+  const labels = {chart_labels};
+  const canvas = document.getElementById('donut');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const total = data.reduce((a, b) => a + b, 0);
+  if (total === 0) return;
+  let start = -Math.PI / 2;
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const r = 48, inner = 30;
+  data.forEach((val, i) => {{
+    if (val === 0) return;
+    const angle = (val / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, start, start + angle);
+    ctx.closePath();
+    ctx.fillStyle = colors[i];
+    ctx.fill();
+    start += angle;
+  }});
+  // Inner circle (donut hole)
+  ctx.beginPath();
+  ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+  ctx.fillStyle = '#141414';
+  ctx.fill();
+  // Center text
+  ctx.fillStyle = '#e0e0e0';
+  ctx.font = 'bold 18px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(total, cx, cy);
+}})();
+
+// Table filter
+function filterTable(sev) {{
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  const rows = document.querySelectorAll('#findings-body tr:not(.url-row)');
+  rows.forEach(row => {{
+    const badge = row.querySelector('.sev-badge');
+    if (!badge) return;
+    const rowSev = badge.textContent.trim();
+    row.style.display = (sev === 'ALL' || rowSev === sev) ? '' : 'none';
+  }});
+}}
+</script>
+</body>
+</html>"""
 
 
 class Reporter:

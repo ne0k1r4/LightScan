@@ -1,0 +1,19 @@
+id: spring-actuator-exposed
+name: Spring Boot Actuator Exposed
+severity: high
+tags: [spring, java, actuator, exposure]
+port: 8080
+protocol: http
+description: Spring Boot Actuator endpoints exposed — env, heapdump, beans accessible
+remediation: Restrict /actuator endpoints; require authentication
+steps:
+  - type: send
+    data: /actuator
+  - type: match
+    regex: "(actuator|health|env|beans|mappings)"
+    part: body
+  - type: send
+    data: /actuator/env
+  - type: match
+    regex: "(applicationConfig|systemProperties|PATH)"
+    part: body

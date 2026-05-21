@@ -1,0 +1,13 @@
+id: rdp-exposed
+name: RDP Exposed to Internet
+severity: high
+tags: [rdp, windows, exposure, remote]
+port: 3389
+protocol: tcp
+description: RDP exposed — brute force and exploitation target
+remediation: Restrict RDP to VPN only; enable NLA; change port
+steps:
+  - type: send
+    data: ""
+  - type: match
+    regex: "\\x03\\x00|RDP|Remote Desktop"

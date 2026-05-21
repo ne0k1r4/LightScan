@@ -1,0 +1,14 @@
+id: aws-metadata-ssrf
+name: AWS Metadata SSRF
+severity: high
+tags: [aws, ssrf, cloud, metadata]
+port: 80
+protocol: http
+description: AWS EC2 metadata endpoint accessible — possible SSRF/credential leak
+remediation: Enforce IMDSv2; block metadata access from application
+steps:
+  - type: send
+    data: /latest/meta-data/
+  - type: match
+    regex: "(ami-id|hostname|instance-id|local-ipv4)"
+    part: body
