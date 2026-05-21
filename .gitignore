@@ -27,3 +27,9 @@ lightscan_report.*
 .idea/
 *.swp
 *.swo
+
+# Dev scripts
+apply_*.py
+
+# Checkpoint
+.lightscan_cp.json
