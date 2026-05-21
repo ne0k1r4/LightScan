@@ -10,7 +10,7 @@ Optional libs for full functionality:
   pip install paramiko pymysql psycopg2-binary ldap3 impacket
 """
 from __future__ import annotations
-import asyncio, ftplib, smtplib, socket, struct, time, base64, hashlib
+import asyncio, ftplib, smtplib, socket, struct, time, base64, hashlib, re
 import urllib.request, urllib.parse, urllib.error
 from typing import Callable
 
@@ -108,6 +108,52 @@ def make_http_handler(host, port=80, url="", user_field="username",
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "text/html,application/xhtml+xml,*/*",
     }
+
+    # ── CSRF token fetcher ────────────────────────────────────────────────────
+    def _fetch_csrf(session_cookie: str = "") -> tuple[dict, str]:
+        """
+        GET the login page, extract any hidden form fields (CSRF tokens),
+        and return (extra_fields_dict, set_cookie_header).
+        Looks for common token field names: user_token, csrf_token,
+        _token, authenticity_token, __RequestVerificationToken, etc.
+        """
+        CSRF_NAMES = {
+            "user_token", "csrf_token", "_token", "authenticity_token",
+            "__RequestVerificationToken", "csrfmiddlewaretoken",
+            "_csrf", "csrf", "token", "_csrf_token", "nonce",
+        }
+        try:
+            hdrs = dict(_hdrs)
+            if session_cookie:
+                hdrs["Cookie"] = session_cookie
+            req = urllib.request.Request(_url, headers=hdrs)
+            ctx = __import__("ssl").create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = 0
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                body     = r.read(65536).decode("utf-8", "replace")
+                cookie   = r.headers.get("Set-Cookie", "")
+            # Parse hidden inputs
+            extra = {}
+            for m in re.finditer(
+                r'<input[^>]+type=["\']hidden["\'][^>]*name=["\']([^"\']+)["\'][^>]*value=["\']([^"\']*)["\']',
+                body, re.I
+            ):
+                name, val = m.group(1), m.group(2)
+                if name.lower() in {n.lower() for n in CSRF_NAMES}:
+                    extra[name] = val
+            # Also catch value-before-name ordering
+            for m in re.finditer(
+                r'<input[^>]+type=["\']hidden["\'][^>]*value=["\']([^"\']*)["\'][^>]*name=["\']([^"\']+)["\']',
+                body, re.I
+            ):
+                val, name = m.group(1), m.group(2)
+                if name.lower() in {n.lower() for n in CSRF_NAMES}:
+                    extra[name] = val
+            return extra, cookie
+        except Exception:
+            return {}, ""
+
     async def handler(user, passwd):
         def _try():
             if basic_auth:
@@ -122,11 +168,29 @@ def make_http_handler(host, port=80, url="", user_field="username",
                 except Exception as e:
                     return False, str(e)
             else:
-                data = urllib.parse.urlencode({user_field:user, pass_field:passwd}).encode()
-                req  = urllib.request.Request(_url, data=data, headers=_hdrs, method="POST")
+                # Step 1: fetch login page to get CSRF token + session cookie
+                csrf_fields, set_cookie = _fetch_csrf()
+
+                # Step 2: build POST data with CSRF fields included
+                post_data = {user_field: user, pass_field: passwd}
+                post_data.update(csrf_fields)  # merge in user_token etc.
+
+                data = urllib.parse.urlencode(post_data).encode()
+                hdrs = dict(_hdrs)
+                if set_cookie:
+                    # Forward the session cookie so CSRF validation passes
+                    hdrs["Cookie"] = "; ".join(
+                        p.split(";")[0].strip()
+                        for p in set_cookie.split(",")
+                        if "=" in p.split(";")[0]
+                    )
+                req = urllib.request.Request(_url, data=data, headers=hdrs, method="POST")
                 try:
-                    with urllib.request.urlopen(req, timeout=timeout) as r:
-                        body = r.read(4096).decode("utf-8","replace")
+                    ctx = __import__("ssl").create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = 0
+                    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+                        body  = r.read(4096).decode("utf-8","replace")
                         final = r.url
                     if success_text and success_text.lower() in body.lower():
                         return True, f"SUCCESS: {success_text}"
