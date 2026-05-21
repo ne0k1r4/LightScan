@@ -1,0 +1,14 @@
+id: consul-unauth
+name: HashiCorp Consul Unauthenticated Access
+severity: critical
+tags: [consul, hashicorp, unauth, rce]
+port: 8500
+protocol: http
+description: Consul HTTP API accessible without ACL token — service registration/RCE possible
+remediation: Enable ACL system; restrict API access
+steps:
+  - type: send
+    data: /v1/agent/self
+  - type: match
+    regex: "(Config|Member|Datacenter)"
+    part: body

@@ -1,0 +1,17 @@
+id: grafana-anon-access
+name: Grafana Anonymous Access Enabled
+severity: high
+tags: [grafana, monitoring, unauth, exposure]
+port: 3000
+protocol: http
+description: Grafana accessible without authentication — dashboard data exposed
+remediation: Disable anonymous access in grafana.ini
+steps:
+  - type: send
+    data: /api/org
+  - type: match
+    contains: "name"
+    part: body
+  - type: match
+    not_contains: "Unauthorized"
+    part: body

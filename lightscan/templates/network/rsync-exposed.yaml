@@ -1,0 +1,19 @@
+id: rsync-exposed
+name: Rsync Exposed Without Auth
+severity: high
+tags: [rsync, file, exposure, unauth]
+port: 873
+protocol: tcp
+description: Rsync daemon accessible without authentication — file read/write possible
+remediation: Add secrets file to rsync; restrict hosts allowed
+steps:
+  - type: send
+    data: ""
+  - type: match
+    regex: "@RSYNCD"
+  - type: send
+    data: "#list\n"
+  - type: extract
+    regex: "([a-zA-Z0-9_-]+)\\s"
+    group: 1
+    name: module

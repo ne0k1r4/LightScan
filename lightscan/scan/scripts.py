@@ -460,6 +460,346 @@ async def run(host, port, timeout=8.0):
 '''
 
 
+# ── ssl_weak_ciphers ──────────────────────────────────────────────────────────
+BUILTIN_SCRIPTS["ssl_weak_ciphers"] = '''"""Detect weak SSL/TLS ciphers and protocols."""
+import asyncio, ssl, socket
+SCRIPT_NAME  = "ssl_weak_ciphers"
+SCRIPT_PORTS = [443, 8443, 993, 995, 465, 587, 636, 3389]
+SCRIPT_TAGS  = ["tls", "ssl", "safe", "crypto"]
+from lightscan.core.engine import ScanResult, Severity
+
+WEAK_CIPHERS = [
+    "RC4", "DES", "3DES", "MD5", "NULL", "EXPORT", "anon",
+    "ADH", "AECDH", "RC2", "IDEA",
+]
+WEAK_PROTOCOLS = ["SSLv2", "SSLv3", "TLSv1", "TLSv1.1"]
+
+async def run(host, port, timeout=8.0):
+    loop = asyncio.get_event_loop()
+    results = []
+
+    def _check():
+        findings = []
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with socket.create_connection((host, port), timeout=timeout) as sock:
+                with ctx.wrap_socket(sock, server_hostname=host) as s:
+                    cipher = s.cipher()
+                    proto  = s.version()
+                    if cipher:
+                        name = cipher[0]
+                        for weak in WEAK_CIPHERS:
+                            if weak.upper() in name.upper():
+                                findings.append(("CRITICAL", f"Weak cipher in use: {name}"))
+                                break
+                        else:
+                            findings.append(("INFO", f"Cipher: {name}"))
+                    if proto in WEAK_PROTOCOLS:
+                        findings.append(("HIGH", f"Weak protocol: {proto}"))
+                    elif proto:
+                        findings.append(("INFO", f"Protocol: {proto}"))
+        except Exception:
+            pass
+        return findings
+
+    raw = await loop.run_in_executor(None, _check)
+    for sev_str, msg in raw:
+        sev = {"CRITICAL": Severity.CRITICAL, "HIGH": Severity.HIGH,
+               "MEDIUM": Severity.MEDIUM, "INFO": Severity.INFO}.get(sev_str, Severity.INFO)
+        results.append(ScanResult("script:ssl_weak_ciphers", host, port,
+            "weak_cipher" if sev_str != "INFO" else "cipher_info",
+            sev, msg, {"detail": msg}))
+    return results
+'''
+
+# ── http_auth_detect ──────────────────────────────────────────────────────────
+BUILTIN_SCRIPTS["http_auth_detect"] = '''"""Detect HTTP authentication mechanisms."""
+import asyncio, ssl, urllib.request, urllib.error, base64
+SCRIPT_NAME  = "http_auth_detect"
+SCRIPT_PORTS = [80, 443, 8080, 8443, 8000, 8888]
+SCRIPT_TAGS  = ["http", "auth", "safe", "discovery"]
+from lightscan.core.engine import ScanResult, Severity
+
+async def run(host, port, timeout=8.0):
+    scheme = "https" if port in (443, 8443) else "http"
+    loop   = asyncio.get_event_loop()
+
+    def _probe(path="/"):
+        try:
+            ctx = None
+            if scheme == "https":
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                f"{scheme}://{host}:{port}{path}",
+                headers={"User-Agent": "LightScan/2.0"}
+            )
+            kw = {"context": ctx} if ctx else {}
+            with urllib.request.urlopen(req, timeout=timeout, **kw) as r:
+                return r.status, dict(r.headers)
+        except urllib.error.HTTPError as e:
+            return e.code, dict(e.headers)
+        except Exception:
+            return 0, {}
+
+    status, headers = await loop.run_in_executor(None, _probe)
+    results = []
+    if status == 0:
+        return results
+
+    www_auth = headers.get("Www-Authenticate", "")
+    if www_auth:
+        auth_type = www_auth.split()[0].upper() if www_auth else ""
+        sev = Severity.MEDIUM
+        detail = f"Auth required: {www_auth[:80]}"
+        if "NTLM" in auth_type or "NEGOTIATE" in auth_type:
+            sev = Severity.HIGH
+            detail = f"Windows Auth (NTLM/Kerberos): {www_auth[:80]}"
+        elif "BASIC" in auth_type:
+            sev = Severity.HIGH
+            detail = f"HTTP Basic Auth — credentials in plaintext: {www_auth[:80]}"
+        results.append(ScanResult("script:http_auth_detect", host, port,
+            "auth_required", sev, detail, {"auth": www_auth, "status": status}))
+    elif status == 200:
+        results.append(ScanResult("script:http_auth_detect", host, port,
+            "no_auth", Severity.INFO, "No authentication required (HTTP 200)",
+            {"status": 200}))
+    return results
+'''
+
+# ── ftp_anon_write ────────────────────────────────────────────────────────────
+BUILTIN_SCRIPTS["ftp_anon_write"] = '''"""Test FTP anonymous login and write access."""
+import asyncio, ftplib, io
+SCRIPT_NAME  = "ftp_anon_write"
+SCRIPT_PORTS = [21, 2121]
+SCRIPT_TAGS  = ["ftp", "safe", "auth", "discovery"]
+from lightscan.core.engine import ScanResult, Severity
+
+async def run(host, port, timeout=8.0):
+    loop = asyncio.get_event_loop()
+
+    def _test():
+        results = []
+        try:
+            ftp = ftplib.FTP()
+            ftp.connect(host, port, timeout=timeout)
+            banner = ftp.getwelcome()
+            try:
+                ftp.login("anonymous", "lightscan@test.com")
+                # Login succeeded — check write access
+                try:
+                    ftp.storbinary("STOR lightscan_test.txt", io.BytesIO(b"lightscan"))
+                    ftp.delete("lightscan_test.txt")
+                    results.append(("CRITICAL", "FTP anonymous login + WRITE access",
+                        {"write": True, "banner": banner}))
+                except ftplib.error_perm:
+                    results.append(("HIGH", "FTP anonymous login (read-only)",
+                        {"write": False, "banner": banner}))
+            except ftplib.error_perm:
+                results.append(("INFO", f"FTP banner: {banner[:80]}",
+                    {"anonymous": False, "banner": banner}))
+            ftp.quit()
+        except Exception:
+            pass
+        return results
+
+    raw = await loop.run_in_executor(None, _test)
+    out = []
+    for sev_str, msg, extra in raw:
+        sev = {"CRITICAL": Severity.CRITICAL, "HIGH": Severity.HIGH,
+               "INFO": Severity.INFO}.get(sev_str, Severity.INFO)
+        out.append(ScanResult("script:ftp_anon_write", host, port,
+            "ftp_anon", sev, msg, extra))
+    return out
+'''
+
+# ── smb_signing ───────────────────────────────────────────────────────────────
+BUILTIN_SCRIPTS["smb_signing"] = '''"""Check if SMB signing is required."""
+import asyncio, socket, struct
+SCRIPT_NAME  = "smb_signing"
+SCRIPT_PORTS = [445, 139]
+SCRIPT_TAGS  = ["smb", "windows", "safe", "discovery"]
+from lightscan.core.engine import ScanResult, Severity
+
+async def run(host, port, timeout=8.0):
+    loop = asyncio.get_event_loop()
+    def _check():
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            s.connect((host, port))
+            # SMB1 negotiate request
+            pkt = (b"\x00\x00\x00\x54" + b"\xffSMB" + b"\x72"
+                   + b"\x00" * 4 + b"\x08\x00" + b"\x00" * 6
+                   + b"\xff\xff\xff\xff" + b"\x00" * 10
+                   + b"\x00\x31" + b"\x00\x02NT LM 0.12\x00"
+                   + b"\x02SMB 2.002\x00" + b"\x02SMB 2.???\x00")
+            s.send(pkt)
+            resp = s.recv(256)
+            s.close()
+            if len(resp) < 40:
+                return None
+            sec_mode = resp[39]
+            signing_required = bool(sec_mode & 0x08)
+            signing_enabled  = bool(sec_mode & 0x04)
+            return signing_required, signing_enabled
+        except Exception:
+            return None
+    result = await loop.run_in_executor(None, _check)
+    if result is None:
+        return []
+    signing_required, signing_enabled = result
+    if not signing_enabled:
+        return [ScanResult("script:smb_signing", host, port, "smb_signing_disabled",
+            Severity.HIGH, "SMB signing disabled — relay attacks possible",
+            {"signing_required": False, "signing_enabled": False})]
+    if signing_enabled and not signing_required:
+        return [ScanResult("script:smb_signing", host, port, "smb_signing_not_required",
+            Severity.MEDIUM, "SMB signing enabled but not required",
+            {"signing_required": False, "signing_enabled": True})]
+    return [ScanResult("script:smb_signing", host, port, "smb_signing_required",
+        Severity.INFO, "SMB signing required",
+        {"signing_required": True, "signing_enabled": True})]
+'''
+
+# ── http_cors_check ───────────────────────────────────────────────────────────
+BUILTIN_SCRIPTS["http_cors_check"] = '''"""Check for CORS misconfiguration."""
+import asyncio, ssl, urllib.request, urllib.error
+SCRIPT_NAME  = "http_cors_check"
+SCRIPT_PORTS = [80, 443, 8080, 8443, 3000, 5000, 8000]
+SCRIPT_TAGS  = ["http", "cors", "safe", "misconfig"]
+from lightscan.core.engine import ScanResult, Severity
+
+async def run(host, port, timeout=8.0):
+    scheme = "https" if port in (443, 8443) else "http"
+    loop   = asyncio.get_event_loop()
+
+    def _test():
+        try:
+            ctx = None
+            if scheme == "https":
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                f"{scheme}://{host}:{port}/",
+                headers={
+                    "User-Agent": "LightScan/2.0",
+                    "Origin": "https://evil.com",
+                }
+            )
+            kw = {"context": ctx} if ctx else {}
+            with urllib.request.urlopen(req, timeout=timeout, **kw) as r:
+                headers = dict(r.headers)
+        except urllib.error.HTTPError as e:
+            headers = dict(e.headers)
+        except Exception:
+            return []
+
+        results = []
+        acao = headers.get("Access-Control-Allow-Origin", "")
+        acac = headers.get("Access-Control-Allow-Credentials", "")
+
+        if acao == "*":
+            results.append(("MEDIUM", "CORS wildcard (*) — any origin allowed",
+                {"acao": acao, "acac": acac}))
+        elif "evil.com" in acao:
+            sev = "CRITICAL" if acac.lower() == "true" else "HIGH"
+            results.append((sev,
+                f"CORS reflects arbitrary origin{' + credentials' if acac.lower()=='true' else ''}",
+                {"acao": acao, "acac": acac}))
+        return results
+
+    raw = await loop.run_in_executor(None, _test)
+    out = []
+    for sev_str, msg, extra in raw:
+        sev = {"CRITICAL": Severity.CRITICAL, "HIGH": Severity.HIGH,
+               "MEDIUM": Severity.MEDIUM}.get(sev_str, Severity.MEDIUM)
+        out.append(ScanResult("script:http_cors_check", host, port,
+            "cors_misconfig", sev, msg, extra))
+    return out
+'''
+
+# ── http_tech_detect ──────────────────────────────────────────────────────────
+BUILTIN_SCRIPTS["http_tech_detect"] = '''"""Detect web technologies from headers and body."""
+import asyncio, ssl, urllib.request, urllib.error, re
+SCRIPT_NAME  = "http_tech_detect"
+SCRIPT_PORTS = [80, 443, 8080, 8443, 3000, 5000, 8000, 8888]
+SCRIPT_TAGS  = ["http", "safe", "discovery", "fingerprint"]
+from lightscan.core.engine import ScanResult, Severity
+
+TECH_SIGS = {
+    "WordPress":    [re.compile(r"wp-content|wp-includes|WordPress", re.I)],
+    "Drupal":       [re.compile(r"Drupal|sites/default|drupal\.js", re.I)],
+    "Joomla":       [re.compile(r"Joomla|/components/com_", re.I)],
+    "Laravel":      [re.compile(r"laravel_session|Laravel", re.I)],
+    "Django":       [re.compile(r"csrfmiddlewaretoken|Django", re.I)],
+    "React":        [re.compile(r"react-root|__REACT|ReactDOM", re.I)],
+    "Angular":      [re.compile(r"ng-version|angular\.min\.js", re.I)],
+    "Vue.js":       [re.compile(r"vue\.min\.js|__vue__", re.I)],
+    "jQuery":       [re.compile(r"jquery[\-./]([0-9.]+)", re.I)],
+    "Bootstrap":    [re.compile(r"bootstrap[\-./]([0-9.]+)", re.I)],
+    "Spring Boot":  [re.compile(r"Spring Framework|Whitelabel Error|actuator", re.I)],
+    "ASP.NET":      [re.compile(r"__VIEWSTATE|ASP\.NET|X-AspNet-Version", re.I)],
+    "PHP":          [re.compile(r"X-Powered-By.*PHP|\.php", re.I)],
+    "Node.js":      [re.compile(r"X-Powered-By.*Express|node\.js", re.I)],
+    "Nginx":        [re.compile(r"nginx", re.I)],
+    "Apache":       [re.compile(r"Apache", re.I)],
+    "IIS":          [re.compile(r"Microsoft-IIS|X-Powered-By.*ASP", re.I)],
+    "Tomcat":       [re.compile(r"Apache Tomcat|Coyote", re.I)],
+    "Elasticsearch":[re.compile(r"elasticsearch|You Know, for Search", re.I)],
+    "Jenkins":      [re.compile(r"Jenkins|X-Jenkins", re.I)],
+}
+
+async def run(host, port, timeout=8.0):
+    scheme = "https" if port in (443, 8443) else "http"
+    loop   = asyncio.get_event_loop()
+
+    def _detect():
+        try:
+            ctx = None
+            if scheme == "https":
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                f"{scheme}://{host}:{port}/",
+                headers={"User-Agent": "LightScan/2.0"}
+            )
+            kw = {"context": ctx} if ctx else {}
+            with urllib.request.urlopen(req, timeout=timeout, **kw) as r:
+                body    = r.read(32768).decode("utf-8", "replace")
+                headers = str(dict(r.headers))
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read(8192).decode("utf-8", "replace")
+            except Exception:
+                body = ""
+            headers = str(dict(e.headers))
+        except Exception:
+            return []
+
+        combined = body + headers
+        found = []
+        for tech, patterns in TECH_SIGS.items():
+            for pat in patterns:
+                if pat.search(combined):
+                    found.append(tech)
+                    break
+        return found
+
+    techs = await loop.run_in_executor(None, _detect)
+    if not techs:
+        return []
+    return [ScanResult("script:http_tech_detect", host, port, "tech_detected",
+        Severity.INFO, f"Technologies: {', '.join(techs)}",
+        {"technologies": techs})]
+'''
+
+
 def install_builtin_scripts(script_dir: Optional[str] = None) -> str:
     """Write built-in scripts to disk so ScriptRegistry can load them."""
     if script_dir:
@@ -474,11 +814,13 @@ def install_builtin_scripts(script_dir: Optional[str] = None) -> str:
             base = Path.home() / ".lightscan" / "scripts"
 
     categories = {
-        "http":  ["http_headers", "http_methods"],
-        "tls":   ["tls_cert_info"],
+        "http":  ["http_headers", "http_methods", "http_auth_detect",
+                  "http_cors_check", "http_tech_detect"],
+        "tls":   ["tls_cert_info", "ssl_weak_ciphers"],
         "ssh":   ["ssh_algorithms"],
-        "smb":   ["smb_os_discovery"],
+        "smb":   ["smb_os_discovery", "smb_signing"],
         "dns":   ["dns_recursion"],
+        "ftp":   ["ftp_anon_write"],
     }
 
     for cat, names in categories.items():
