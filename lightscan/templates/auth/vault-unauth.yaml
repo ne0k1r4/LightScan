@@ -1,0 +1,14 @@
+id: vault-unauth
+name: HashiCorp Vault Unauthenticated Access
+severity: critical
+tags: [vault, hashicorp, secrets, unauth]
+port: 8200
+protocol: http
+description: Vault API accessible — secrets engine status visible
+remediation: Enable authentication; restrict Vault API access
+steps:
+  - type: send
+    data: /v1/sys/health
+  - type: match
+    regex: "(initialized|sealed|version)"
+    part: body

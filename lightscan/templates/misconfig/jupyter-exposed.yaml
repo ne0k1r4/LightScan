@@ -1,0 +1,17 @@
+id: jupyter-exposed
+name: Jupyter Notebook Exposed
+severity: critical
+tags: [jupyter, python, rce, unauth]
+port: 8888
+protocol: http
+description: Jupyter Notebook accessible without token — arbitrary Python execution
+remediation: Set notebook password; bind to localhost only
+steps:
+  - type: send
+    data: /api/kernels
+  - type: match
+    regex: "(kernels|kernel_name|jupyter)"
+    part: body
+  - type: match
+    not_contains: "Unauthorized"
+    part: body

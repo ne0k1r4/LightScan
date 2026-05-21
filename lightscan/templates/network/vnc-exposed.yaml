@@ -1,0 +1,17 @@
+id: vnc-exposed
+name: VNC Exposed Without Auth
+severity: critical
+tags: [vnc, remote, unauth, exposure]
+port: 5900
+protocol: tcp
+description: VNC server accessible — potential unauthenticated desktop access
+remediation: Add VNC password; restrict to VPN; use SSH tunnel
+steps:
+  - type: send
+    data: ""
+  - type: match
+    regex: "RFB 00[0-9]"
+  - type: extract
+    regex: "RFB ([0-9.]+)"
+    group: 1
+    name: version

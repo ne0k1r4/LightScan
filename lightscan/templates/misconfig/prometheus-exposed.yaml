@@ -1,0 +1,14 @@
+id: prometheus-exposed
+name: Prometheus Metrics Exposed
+severity: medium
+tags: [prometheus, monitoring, exposure, metrics]
+port: 9090
+protocol: http
+description: Prometheus metrics endpoint publicly accessible — internal data exposed
+remediation: Restrict access to internal network; add authentication
+steps:
+  - type: send
+    data: /metrics
+  - type: match
+    regex: "(go_goroutines|process_cpu|HELP|TYPE)"
+    part: body

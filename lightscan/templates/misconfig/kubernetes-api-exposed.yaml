@@ -1,0 +1,14 @@
+id: kubernetes-api-exposed
+name: Kubernetes API Server Exposed
+severity: critical
+tags: [kubernetes, k8s, api, container]
+port: 6443
+protocol: https
+description: Kubernetes API server accessible — potential cluster compromise
+remediation: Restrict API server access; enable RBAC
+steps:
+  - type: send
+    data: /api/v1/namespaces
+  - type: match
+    regex: "(namespaces|items|kubernetes)"
+    part: body
