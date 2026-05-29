@@ -621,48 +621,9 @@ class WebScanner:
                 print(f"  \033[38;5;196m[XSS]\033[0m "
                       f"param={param} ×{count} URLs vulnerable", flush=True)
 
-
-            parsed = urllib.parse.urlparse(url)
-            params = dict(urllib.parse.parse_qsl(parsed.query))
-            for key in params:
-                for payload in payloads:
-                    test_params = params.copy()
-                    test_params[key] = payload
-                    try:
-                        resp = self._get(
-                            parsed.path + "?" + urllib.parse.urlencode(test_params))
-                        text = self._text(resp)
-                        if payload in text:
-                            ident = f"{url}:{key}"
-                            if ident not in seen:
-                                seen.add(ident)
-                                vulnerable.append({
-                                    "url":       url,
-                                    "parameter": key,
-                                    "payload":   payload,
-                                })
-                                param_key = f"{parsed.netloc}:{key}"
-                                if param_key not in param_hits:
-                                    # First hit — print full detail
-                                    param_hits[param_key] = 1
-                                    print(f"  \033[38;5;196m[XSS]\033[0m "
-                                          f"{url} param={key} payload={payload[:30]}")
-                                else:
-                                    # Subsequent hits — overwrite counter line
-                                    param_hits[param_key] += 1
-                                    print(f"  \033[38;5;196m[XSS]\033[0m "
-                                          f"param={key} ×{param_hits[param_key]} hits "
-                                          f"(last: ...{url[-35:]})",
-                                          end="\r", flush=True)
-                            break
-                    except Exception:
-                        continue
-
-        # Final newline to clear \r line if any
-        if any(v > 1 for v in param_hits.values()):
-            total = sum(1 for v in param_hits.values() if v > 1)
-            print(f"  \033[38;5;196m[XSS]\033[0m "
-                  f"{len(vulnerable)} reflections across {len(param_hits)} param(s)    ")
+        total_vuln = len(vulnerable)
+        if total_vuln > 0:
+            print(f"  \033[38;5;196m[XSS]\033[0m {total_vuln} reflections across {len(param_hits)} param(s)")
 
         self.results["xss"] = vulnerable
         return vulnerable
