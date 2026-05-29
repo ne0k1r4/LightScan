@@ -55,11 +55,6 @@ def build_parser():
     tg.add_argument("--ipv6-only",   action="store_true",   help="Scan IPv6 addresses only")
     tg.add_argument("--dual-stack",  action="store_true",   help="Scan both IPv4 and IPv6 addresses")
     tg.add_argument("--os-v2",       action="store_true",   help="Use improved OS fingerprint database (120+ signatures)")
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> fca4cf4 (Initial LightScan Phantom commit)
     tg.add_argument("--packet-scan",  action="store_true",  help="AF_PACKET half-open SYN scan (Linux root, open/closed/filtered/firewall)")
     tg.add_argument("--stealth-scan", action="store_true",  help="IDS-evasion mode: T1 timing + jitter + sport randomisation (implies --packet-scan)")
     tg.add_argument("--spoof-sport",  type=int, default=0, metavar="PORT", help="Spoof source port (e.g. 53 or 80) to bypass port-based ACLs")
@@ -69,10 +64,6 @@ def build_parser():
     tg.add_argument("--list-scripts",action="store_true",   help="List all available scripts")
     tg.add_argument("--passive",     action="store_true",   help="Passive fingerprinting (TLS/JA3S, HTTP headers, SSH entropy)")
     tg.add_argument("--adaptive",    action="store_true", default=True, help="Adaptive timing (auto-adjusts rate based on RTT/loss)")
-<<<<<<< HEAD
->>>>>>> fca4cf4 (Initial LightScan Phantom commit)
-=======
->>>>>>> fca4cf4 (Initial LightScan Phantom commit)
 
     # Modules
     m = p.add_argument_group("Modules")
@@ -357,11 +348,7 @@ async def async_main(args):
             for res in r:
                 print(f"  \033[38;5;196m[OS]\033[0m {res.target} → {res.detail}")
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> fca4cf4 (Initial LightScan Phantom commit)
+
     # ── AF_PACKET / stealth scan
     _do_packet = getattr(args, 'packet_scan', False) or getattr(args, 'stealth_scan', False)
     if _do_packet and args.target:
@@ -437,10 +424,7 @@ async def async_main(args):
             for res in r:
                 print(f"  \033[38;5;196m[{res.module}]\033[0m {res.detail}")
 
-<<<<<<< HEAD
->>>>>>> fca4cf4 (Initial LightScan Phantom commit)
-=======
->>>>>>> fca4cf4 (Initial LightScan Phantom commit)
+
     # ── Port Scan
     if args.scan and args.target:
         hosts=parse_targets(args.target); ports=parse_ports(args.ports)
