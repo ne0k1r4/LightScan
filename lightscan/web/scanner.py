@@ -2,9 +2,7 @@
 LightScan v2.0 PHANTOM — Web Application Scanner
 Developer: Light (Neok1ra)
 
-Integration of uploaded WebScanner (Doc 4) — all 7 checks preserved + expanded.
-
-Uploaded checks (kept, rewritten async-compatible + LightScan output):
+Feature set:
   1. dir_brute          — threaded directory brute, wordlist or wordlist_file
   2. fingerprint_tech   — server, X-Powered-By, cookies, generator meta, JS libs
   3. sqli_test          — error-based SQLi probe on discovered GET params
@@ -13,15 +11,15 @@ Uploaded checks (kept, rewritten async-compatible + LightScan output):
   6. default_creds_test — POST brute on common admin panels
   7. jwt_none_test       — JWT alg:none downgrade on discovered tokens
 
-Added in LightScan integration:
-  • wordlist_file support (your inline snippet)
+Added features:
+  • wordlist_file support
   • version extraction from tech fingerprint
   • WAF detection (Cloudflare, ModSecurity, AWS WAF, Akamai, Imperva, F5)
   • Security headers audit (missing HSTS, CSP, X-Frame-Options, etc.)
   • Open redirect probe on discovered GET params
   • Sensitive file check (robots.txt, .git/HEAD, .env, backup.sql, etc.)
   • JS secret scanning (API keys, tokens in inline/external script tags)
-  • Form-based login detection for smarter default_creds_test
+  • Form-based login detection for default_creds_test
   • Async run_all_async() wrapper for BruteEngine / PhantomEngine integration
   • Returns list[ScanResult] — plugs directly into reporter / PhantomEngine
 """
@@ -91,7 +89,7 @@ SENSITIVE_FILES = [
     "crossdomain.xml", "clientaccesspolicy.xml",
 ]
 
-# Error patterns for SQLi detection (your uploaded list + extras)
+# Error patterns for SQLi detection
 SQLI_ERRORS = [
     "sql", "mysql", "syntax error", "unclosed quotation",
     "odbc", "driver", "db error", "supplied argument is not a valid",
@@ -137,7 +135,7 @@ JS_SECRET_PATTERNS = [
 
 class WebScanner:
     """
-    Full web application scanner — your uploaded WebScanner + LightScan additions.
+    Full web application scanner.
     Uses requests if available, falls back to urllib.
     """
 
@@ -223,7 +221,7 @@ class WebScanner:
 
     def _get(self, path: str, headers: dict | None = None,
              allow_redirects: bool = True, **kwargs):
-        """Safe GET — your _get() from uploaded code, extended."""
+        """Safe HTTP GET primitive wrapper."""
         try:
             url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
             if self._use_requests:
@@ -429,8 +427,8 @@ class WebScanner:
 
     def fingerprint_tech(self) -> dict:
         """
-        Your uploaded fingerprint_tech() + version extraction + WAF detection
-        + security headers audit.
+        Fingerprint technologies, extract versions, detect WAF,
+        and audit security headers.
         """
         resp = self._get("/")
         if not resp:
@@ -440,13 +438,13 @@ class WebScanner:
         headers = self._headers(resp)
         text    = self._text(resp)
 
-        # ── Your uploaded header checks ──────────────────────────────────────
+        # ── Header checks ────────────────────────────────────────────────────
         if "Server" in headers:
             tech["server"] = headers["Server"]
         if "X-Powered-By" in headers:
             tech["powered_by"] = headers["X-Powered-By"]
 
-        # Cookie-based backend detection (your uploaded logic)
+        # Cookie-based backend detection
         cookie_str = headers.get("Set-Cookie", "")
         if "PHPSESSID"   in cookie_str: tech["backend"] = "PHP"
         if "JSESSIONID"  in cookie_str: tech["backend"] = "Java/Tomcat"
@@ -456,7 +454,7 @@ class WebScanner:
         if "laravel_session" in cookie_str: tech["backend"] = "PHP/Laravel"
         if "django"      in cookie_str.lower(): tech["backend"] = "Python/Django"
 
-        # ── HTML analysis (your uploaded logic + version extraction) ─────────
+        # ── HTML analysis and version extraction ─────────────────────────────
         soup = self._parse_html(text)
         if soup:
             gen = soup.find("meta", attrs={"name": "generator"})
@@ -467,7 +465,7 @@ class WebScanner:
             wp_m = re.search(r"WordPress\s+([\d.]+)", gen["content"] if gen else "")
             if wp_m: tech["cms_version"] = f"WordPress {wp_m.group(1)}"
 
-            # JS libraries — your uploaded script scan + extras
+            # JS libraries detection
             for s in soup.find_all("script", src=True):
                 src = s["src"].lower()
                 if "jquery"    in src:
@@ -526,7 +524,7 @@ class WebScanner:
     # ── 3. SQLi (error-based) ─────────────────────────────────────────────────
 
     def sqli_test(self) -> list[dict]:
-        """Your uploaded sqli_test() — error pattern detection on GET params."""
+        """Test for error-based SQL injection on GET parameters."""
         urls = self._collect_param_urls()
         payload = "'"
         vulnerable: list[dict] = []
@@ -557,12 +555,12 @@ class WebScanner:
         self.results["sqli"] = vulnerable
         return vulnerable
 
-    # ── 4. XSS (reflected) — expanded payloads (your uploaded snippet) ───────
+    # ── 4. XSS (reflected) ───────────────────────────────────────────────────
 
     def xss_test(self, payloads: list | None = None) -> list[dict]:
         """
-        Your uploaded xss_test() with payloads param — 7 payload variants,
-        stops at first hit per param (your uploaded break logic).
+        Test for reflected XSS vulnerability.
+        Stops at the first successful payload hit per parameter.
         """
         if payloads is None:
             payloads = [
@@ -628,13 +626,13 @@ class WebScanner:
         self.results["xss"] = vulnerable
         return vulnerable
 
-    # ── 4b. SQLi POST (form-based) — your uploaded sqli_post_test() ─────────
+    # ── 4b. SQLi POST (form-based) ───────────────────────────────────────────
 
     def sqli_post_test(self) -> list[dict]:
         """
-        Your uploaded sqli_post_test() — finds <form> elements on every
-        discovered page, injects payload into all fields, checks response
-        for SQL error patterns.  GET forms tested too (your comment).
+        Scan form inputs on discovered pages for SQL injection.
+        Finds <form> elements on every page, injects SQL payloads into fields,
+        and analyzes response for SQL error patterns. Supports POST and GET forms.
         """
         # Pages to crawl for forms: homepage + every discovered directory
         pages_to_crawl = ["/"]
@@ -701,12 +699,11 @@ class WebScanner:
         self.results["sqli_post"] = vulnerable
         return vulnerable
 
-    # ── 5b. CMS Detection — your uploaded detect_cms() ───────────────────────
+    # ── 5b. CMS Detection ────────────────────────────────────────────────────
 
     def detect_cms(self) -> dict:
         """
-        Your uploaded detect_cms() — WordPress, Joomla, Drupal + 8 more:
-        Magento, OpenCart, PrestaShop, TYPO3, Laravel, Django, Flask, Ghost.
+        Detect popular CMS engines (WordPress, Joomla, Drupal, etc.).
         Version extracted where possible via meta tags, manifest files, or
         changelog/readme probes.
         """
@@ -718,7 +715,7 @@ class WebScanner:
         soup = self._parse_html(text)
         cms: dict = {}
 
-        # ── WordPress (your uploaded logic) ──────────────────────────────────
+        # ── WordPress ────────────────────────────────────────────────────────
         if not cms and soup:
             gen = soup.find("meta", attrs={"name": "generator"})
             if gen and "wordpress" in (gen.get("content") or "").lower():
@@ -727,7 +724,7 @@ class WebScanner:
                 if m:
                     cms["version"] = m.group(1)
                 else:
-                    # your uploaded fallback: readme.html
+                    # readme.html fallback check
                     readme = self._get("/readme.html")
                     if self._status(readme) == 200:
                         m2 = re.search(r"<h1.*?WordPress.*?([\d.]+)",
@@ -744,19 +741,19 @@ class WebScanner:
                 m = re.search(r'"version"\s*:\s*"([\d.]+)"', self._text(wj))
                 if m: cms["version"] = m.group(1)
 
-        # ── Joomla (your uploaded logic) ─────────────────────────────────────
+        # ── Joomla ───────────────────────────────────────────────────────────
         if not cms:
             adm = self._get("/administrator/")
             if self._status(adm) == 200:
                 cms["name"] = "Joomla"
-                # your uploaded: manifest file for version
+                # manifest file check for version
                 mf = self._get("/administrator/manifests/files/joomla.xml")
                 if self._status(mf) == 200:
                     m = re.search(r"<version>(.*?)</version>",
                                   self._text(mf), re.I)
                     if m: cms["version"] = m.group(1)
 
-        # ── Drupal (your uploaded logic) ─────────────────────────────────────
+        # ── Drupal ───────────────────────────────────────────────────────────
         if not cms and soup:
             dm = soup.find("meta", attrs={"name": "Generator"})
             if dm and "drupal" in (dm.get("content") or "").lower():
@@ -3172,8 +3169,9 @@ class WebScanner:
 
     def cors_test(self) -> dict:
         """
-        Your uploaded cors_test() — checks ACAO header reflection.
-        Extended: tests null origin + sub-domain trust.
+        Test for CORS misconfigurations.
+        Checks for Access-Control-Allow-Origin (ACAO) reflection,
+        null origin trust, and wildcard configuration with credentials allowed.
         """
         findings: dict = {"vulnerable": False, "details": []}
         origins_to_test = [
@@ -3208,8 +3206,8 @@ class WebScanner:
 
     def default_creds_test(self) -> list[dict]:
         """
-        Your uploaded default_creds_test() + form field auto-detection.
-        Detects actual username/password field names from HTML before POST.
+        Test for default credentials on common admin paths.
+        Automatically detects actual username and password field names from form HTML before submitting POST.
         """
         admin_paths = [
             "wp-admin", "wp-login.php", "administrator", "admin/login.php",
@@ -3261,7 +3259,7 @@ class WebScanner:
                     found.append({"path": path, "user": user,
                                   "pass": pwd, "status": sc})
                     print(f"  \033[38;5;196m[CREDS]\033[0m {path} user={user} pass={pwd}")
-                    break  # your uploaded logic: stop at first working cred per path
+                    break  # Stop at first working credential per path
 
         self.results["default_creds"] = found
         return found
@@ -3270,10 +3268,10 @@ class WebScanner:
 
     def jwt_none_test(self) -> dict:
         """
-        Your uploaded jwt_none_test() — extended with more token discovery paths
-        and multiple privileged endpoint probes.
+        Test for JWT 'none' algorithm vulnerability on discovered tokens.
+        Probes discovered tokens against privileged endpoints with signature-less headers.
         """
-        # ── Token discovery — your uploaded approach + more endpoints ─────────
+        # ── Token discovery ───────────────────────────────────────────────────
         token = self._discover_jwt()
         if not token:
             result = {"vulnerable": False, "reason": "No JWT found"}
@@ -3286,7 +3284,7 @@ class WebScanner:
             self.results["jwt_none"] = result
             return result
 
-        # ── Build forged token (your uploaded logic) ───────────────────────
+        # ── Build forged token ─────────────────────────────────────────────
         header_b64 = base64.urlsafe_b64encode(
             json.dumps({"alg": "none", "typ": "JWT"}).encode()
         ).decode().rstrip("=")
@@ -3301,7 +3299,7 @@ class WebScanner:
             ).decode().rstrip("=") + f".{payload_b64}.",
         ]
 
-        # ── Probe privileged endpoints (your /admin + more) ───────────────────
+        # ── Probe privileged endpoints ────────────────────────────────────────
         privileged_paths = [
             "/admin", "/api/admin", "/api/v1/admin",
             "/api/user/me", "/dashboard", "/profile",
@@ -3325,12 +3323,11 @@ class WebScanner:
 
     def _discover_jwt(self) -> str | None:
         """Discover JWT from auth header, cookies, or common API endpoints."""
-        # Your uploaded approach: check request Authorization + cookie names
         for path in ("/", "/api/", "/api/v1/", "/login"):
             resp = self._get(path)
             if not resp: continue
 
-            # Cookies (your uploaded logic)
+            # Cookies
             if hasattr(resp, "cookies"):
                 for cookie in resp.cookies:
                     if cookie.name.lower() in ("token","jwt","access_token",
@@ -3449,11 +3446,11 @@ class WebScanner:
 
         return urls
 
-    # ── run_all (your uploaded run_all + new checks) ──────────────────────────
+    # ── run_all ──────────────────────────────────────────────────────────────
 
     def run_all(self, wordlist_file: str | None = None) -> dict:
         """
-        Your uploaded run_all() — all 7 checks + 3 new ones.
+        Run all configured web application tests.
         Returns raw results dict.
         """
         print(f"\033[38;5;196m[WEB]\033[0m {self.base_url}")

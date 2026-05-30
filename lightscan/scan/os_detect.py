@@ -2,14 +2,14 @@
 LightScan v2.0 PHANTOM — OS Fingerprinting Engine
 Developer: Light (Neok1ra)
 
-Integration of uploaded MultiProbeOSDetector (Doc 6) + 53-entry signature DB (Doc 5).
+MultiProbeOSDetector implementation using a 53-entry signature database.
 
 Method:
   Layer 1 — SYN-ACK passive analysis (TTL, window, TCP options, DF bit)
              Runs automatically when SYN scanner receives a response.
              Zero extra packets. Pure read of what we already got.
 
-  Layer 2 — T2-T7 active probes (Nmap methodology, your uploaded code)
+  Layer 2 — T2-T7 active probes (Nmap methodology)
              6 extra packets to one open + one closed port.
              Needs root + scapy. Much higher confidence.
              --os-probe flag triggers this layer.
@@ -187,7 +187,7 @@ def extract_features_from_banner(banner_data: dict) -> TCPFeatures | None:
 
 
 def _flags_to_str(flags: int) -> str:
-    """Your uploaded _flags_to_str() — kept identical."""
+    """Convert TCP flags integer to its canonical string representation."""
     s = ""
     if flags & 0x01: s += "F"
     if flags & 0x02: s += "S"
@@ -200,12 +200,12 @@ def _flags_to_str(flags: int) -> str:
     return s if s else "0"
 
 
-# ─── Active T2-T7 probe engine (your MultiProbeOSDetector — rewritten async) ─
+# ─── Active T2-T7 probe engine (MultiProbeOSDetector) ─────────────────────────
 
 class MultiProbeOSDetector:
     """
-    Your uploaded MultiProbeOSDetector — integrated into LightScan.
-    Changes:
+    Active OS detection engine using multi-probe sequence.
+    Features:
       • Async-compatible (run_in_executor wrapper)
       • Feeds into SignatureDB.match() for scoring
       • Returns LightScan ScanResult objects
@@ -223,7 +223,7 @@ class MultiProbeOSDetector:
         self.timeout = timeout
 
     def _probe(self, target: str, port: int, flags: int) -> dict | None:
-        """Your _send_probe() — returns parsed feature dict."""
+        """Send a single TCP probe packet and parse returned features."""
         try:
             from scapy.all import IP, TCP, sr1, ICMP
             sport = random.randint(1024, 65535)
@@ -250,7 +250,7 @@ class MultiProbeOSDetector:
     def run_probes(self, target: str, open_port: int,
                    closed_port: int | None = None) -> dict:
         """
-        Your probe_sequence() — T2-T7 against open+closed ports.
+        Run the full probe sequence (T2-T7) against open and closed ports.
         Returns raw probe dict: {"T2": {...}, "T3": {...}, ...}
         """
         if closed_port is None:
@@ -274,7 +274,7 @@ class MultiProbeOSDetector:
         return results
 
     def probe_flags_for_scoring(self, probe_results: dict) -> dict:
-        """Your extract_features_from_probes() — convert to flag strings for DB scoring."""
+        """Convert probe results to flag strings suited for database scoring."""
         out = {}
         for key, resp in probe_results.items():
             if resp and "flags" in resp:
@@ -287,7 +287,7 @@ class MultiProbeOSDetector:
                synack_feat: TCPFeatures | None = None,
                closed_port: int | None = None) -> list[OSMatch]:
         """
-        Your detect() — full pipeline:
+        OS detection pipeline:
           run_probes → extract flags → match signature DB
         Combines T2-T7 probe flags with SYN-ACK features if available.
         """

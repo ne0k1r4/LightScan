@@ -11,27 +11,41 @@ TOP_100 = sorted(set([
 
 def parse_targets(spec: str) -> list:
     if spec.startswith("file:"):
+        targets = []
         with open(spec[5:]) as f:
-            return [t for line in f for t in parse_targets(line.strip()) if line.strip() and not line.startswith("#")]
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    targets.extend(parse_targets(line))
+        return targets
     if "/" in spec:
-        try: return [str(h) for h in ipaddress.ip_network(spec, strict=False).hosts()]
-        except ValueError: pass
+        try:
+            return [str(h) for h in ipaddress.ip_network(spec, strict=False).hosts()]
+        except ValueError:
+            pass
     m = re.match(r"^(\d+\.\d+\.\d+\.)(\d+)-(\d+)$", spec)
     if m:
-        prefix, start, end = m.group(1), int(m.group(2)), int(m.group(3))
-        return [f"{prefix}{i}" for i in range(start, end+1)]
+        prefix = m.group(1)
+        start = int(m.group(2))
+        end = int(m.group(3))
+        return [f"{prefix}{i}" for i in range(start, end + 1)]
     return [spec.strip()]
 
 def parse_ports(spec: str) -> list:
-    if spec.lower() in ("top100", "top-100"): return TOP_100
+    if spec.lower() in ("top100", "top-100"):
+        return TOP_100
     ports = set()
     for part in spec.split(","):
         part = part.strip()
         if "-" in part and not part.startswith("-"):
-            lo, hi = part.split("-", 1); ports.update(range(int(lo), int(hi)+1))
-        elif part.isdigit(): ports.add(int(part))
+            lo, hi = part.split("-", 1)
+            ports.update(range(int(lo), int(hi) + 1))
+        elif part.isdigit():
+            ports.add(int(part))
     return sorted(ports)
 
 def resolve(host: str):
-    try: return socket.gethostbyname(host)
-    except socket.gaierror: return None
+    try:
+        return socket.gethostbyname(host)
+    except socket.gaierror:
+        return None
