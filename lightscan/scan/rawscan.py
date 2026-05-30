@@ -262,8 +262,11 @@ class RawAsyncScanner:
             if probe:
                 w.write(probe); await w.drain()
             data = await asyncio.wait_for(r.read(1024), timeout=1.5)
-            try: w.close(); await w.wait_closed()
-            except: pass
+            try:
+                w.close()
+                await w.wait_closed()
+            except Exception:
+                pass
             return data.decode("utf-8", errors="replace").strip()[:200]
         except Exception:
             return ""

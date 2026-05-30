@@ -2,7 +2,7 @@
 LightScan v2.0 PHANTOM — Raw SMB Handler (NTLMv2)
 Developer: Light (Neok1ra)
 
-Integration of uploaded RawSMBHandler — full SMB1 + NTLMv2 auth
+Raw SMB protocol handler — full SMB1 + NTLMv2 auth
 without impacket dependency.
 
 Protocol flow:
@@ -35,7 +35,6 @@ class RawSMBHandler:
     """
     Full SMB1 + NTLMSSP NTLMv2 authentication handler.
     Zero external dependencies (no impacket).
-    Based on uploaded implementation + NT STATUS checking added.
     """
     SMB_COM_NEGOTIATE      = 0x72
     SMB_COM_SESSION_SETUP  = 0x73

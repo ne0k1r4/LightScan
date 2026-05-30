@@ -414,10 +414,14 @@ async def _probe_root(target: str, dst_ip: str, port: int,
                     continue
             return None
         finally:
-            try: send_s.close()
-            except: pass
-            try: recv_s.close()
-            except: pass
+            try:
+                send_s.close()
+            except Exception:
+                pass
+            try:
+                recv_s.close()
+            except Exception:
+                pass
 
     loop = asyncio.get_event_loop()
     fp = await loop.run_in_executor(None, _do_probe)
@@ -445,8 +449,10 @@ async def _probe_noroot(target: str, dst_ip: str, port: int,
             banner = data.decode("utf-8", errors="replace").lower()
         except Exception:
             banner = ""
-        try: w.close()
-        except: pass
+        try:
+            w.close()
+        except Exception:
+            pass
 
         # Heuristic from banner
         if "openssh" in banner or "ssh-2.0" in banner:

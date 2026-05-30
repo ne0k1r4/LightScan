@@ -301,8 +301,10 @@ async def icmpv6_ping(host: str, timeout: float = 2.0) -> bool:
         except Exception:
             return False
         finally:
-            try: sock.close()
-            except: pass
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _ping)

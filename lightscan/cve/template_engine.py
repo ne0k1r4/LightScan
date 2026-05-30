@@ -226,8 +226,10 @@ class TemplateRunner:
                         with urllib.request.urlopen(req, timeout=self.timeout) as r:
                             return r.status, r.read(8192).decode("utf-8","replace"), str(r.info())
                     except urllib.error.HTTPError as e:
-                        try: body = e.read(2048).decode("utf-8","replace")
-                        except: body = ""
+                        try:
+                            body = e.read(2048).decode("utf-8", "replace")
+                        except Exception:
+                            body = ""
                         return e.code, body, str(e.headers)
                     except Exception as e:
                         return 0, str(e), ""

@@ -68,8 +68,10 @@ class RawSMBAuth:
 
     def close(self):
         if self.sock:
-            try: self.sock.close()
-            except: pass
+            try:
+                self.sock.close()
+            except Exception:
+                pass
             self.sock = None
 
     def _send(self, smb_payload: bytes):
@@ -303,12 +305,14 @@ class RawSMBAuth:
                 if resp and len(resp) > 36:
                     # Parse the challenge from this response
                     try:
-                        wc2 = resp[32]; boff = 32+1+wc2*2+2
+                        wc2 = resp[32]
+                        boff = 32 + 1 + wc2 * 2 + 2
                         blen = struct.unpack('<H', resp[boff:boff+2])[0]
                         blob = resp[boff+2:boff+2+blen]
                         if blob.startswith(b'NTLMSSP\x00'):
                             self._parse_ntlm_challenge(blob)
-                    except: pass
+                    except Exception:
+                        pass
 
             if not self.server_challenge:
                 return False, 'no_challenge_received'
