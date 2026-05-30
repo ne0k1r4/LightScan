@@ -602,8 +602,11 @@ async def _tls_probe(host: str, port: int, timeout: float) -> Tuple[str, str]:
                         if k == "commonName":
                             cn = v
             tls_info = f"{version} {cipher[0] if cipher else ''} CN={cn}".strip()
-        try: w.close(); await w.wait_closed()
-        except: pass
+        try:
+            w.close()
+            await w.wait_closed()
+        except Exception:
+            pass
         return banner, tls_info
     except Exception:
         return "", ""
@@ -631,13 +634,17 @@ async def _probe_port(host: str, port: int, timeout: float) -> Tuple[bytes, bool
             probe_names = PORT_PROBE_MAP.get(port, ["HTTP_HEAD"])
             probe = PROBES.get(probe_names[0], PROBES["NULL"])
             if probe.payload:
-                w.write(probe.payload); await w.drain()
+                w.write(probe.payload)
+                await w.drain()
             try:
                 raw = await asyncio.wait_for(r.read(4096), timeout=2.0)
             except Exception:
                 raw = b""
-            try: w.close(); await w.wait_closed()
-            except: pass
+            try:
+                w.close()
+                await w.wait_closed()
+            except Exception:
+                pass
             is_tls = True
             return raw, is_tls
         except Exception:
@@ -651,14 +658,18 @@ async def _probe_port(host: str, port: int, timeout: float) -> Tuple[bytes, bool
             r, w = await asyncio.wait_for(
                 asyncio.open_connection(host, port), timeout=timeout)
             if probe.payload:
-                w.write(probe.payload); await w.drain()
+                w.write(probe.payload)
+                await w.drain()
             await asyncio.sleep(probe.wait_ms / 1000)
             try:
                 raw = await asyncio.wait_for(r.read(4096), timeout=2.0)
             except asyncio.TimeoutError:
                 raw = b""
-            try: w.close(); await w.wait_closed()
-            except: pass
+            try:
+                w.close()
+                await w.wait_closed()
+            except Exception:
+                pass
             if raw:
                 return raw, is_tls
         except Exception:
@@ -753,8 +764,11 @@ async def detect_service(host: str, port: int,
                 raw = await asyncio.wait_for(r.read(512), timeout=1.5)
             except Exception:
                 raw = b""
-            try: w.close(); await w.wait_closed()
-            except: pass
+            try:
+                w.close()
+                await w.wait_closed()
+            except Exception:
+                pass
         except Exception:
             pass
 

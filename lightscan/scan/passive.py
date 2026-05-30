@@ -167,8 +167,11 @@ async def collect_tls_fingerprint(host: str, port: int,
         # Get raw server hello for JA3S (approximation using cipher+version)
         ja3s = hashlib.md5(f"{version},{cipher}".encode()).hexdigest()
 
-        try: w.close(); await w.wait_closed()
-        except: pass
+        try:
+            w.close()
+            await w.wait_closed()
+        except Exception:
+            pass
         return ja3s, version, cipher, cn
     except Exception:
         return "", "", "", ""
@@ -211,8 +214,11 @@ async def collect_ssh_fingerprint(host: str, port: int,
             banner = await asyncio.wait_for(r.read(256), timeout=2.0)
         except Exception:
             pass
-        try: w.close(); await w.wait_closed()
-        except: pass
+        try:
+            w.close()
+            await w.wait_closed()
+        except Exception:
+            pass
         banner_str = banner.decode("utf-8", errors="replace").strip()
         entropy    = _entropy(banner_str)
         return banner_str, entropy

@@ -10,20 +10,25 @@ import asyncio, base64, hashlib, json, random, string, time
 import urllib.request, urllib.parse, urllib.error
 from lightscan.core.engine import ScanResult, Severity
 
-def _rand(n=32): return "".join(random.choices(string.ascii_letters+string.digits,k=n))
+def _rand(n=32):
+    return "".join(random.choices(string.ascii_letters + string.digits, k=n))
 
 def _fetch(url, method="GET", data=None, headers=None, timeout=10.0):
-    h={"User-Agent":"LightScan-OAuth/2.0"}
-    if headers: h.update(headers)
+    h = {"User-Agent": "LightScan-OAuth/2.0"}
+    if headers:
+        h.update(headers)
     try:
-        req=urllib.request.Request(url,data=data,headers=h,method=method)
-        with urllib.request.urlopen(req,timeout=timeout) as r:
-            return r.status, r.read(4096).decode("utf-8","replace"), r.url
+        req = urllib.request.Request(url, data=data, headers=h, method=method)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read(4096).decode("utf-8", "replace"), r.url
     except urllib.error.HTTPError as e:
-        try: body=e.read(2048).decode("utf-8","replace")
-        except: body=""
+        try:
+            body = e.read(2048).decode("utf-8", "replace")
+        except Exception:
+            body = ""
         return e.code, body, url
-    except Exception as e: return 0, str(e), url
+    except Exception as e:
+        return 0, str(e), url
 
 async def _afetch(url, method="GET", data=None, headers=None, timeout=8.0):
     loop=asyncio.get_event_loop()
@@ -100,7 +105,8 @@ async def test_device_code(client_id, scope="openid profile", timeout=10.0):
                         f"Device code flow enabled. Verification URL: {resp.get('verification_uri','N/A')} "
                         f"| User code: {resp.get('user_code','N/A')}",
                         {"user_code":resp.get("user_code"),"uri":resp.get("verification_uri")}))
-            except: pass
+            except Exception:
+                pass
     if not results:
         results.append(ScanResult("oauth-device-code","login.microsoftonline.com",443,
             "not_enabled",Severity.INFO,"Device code flow not enabled"))

@@ -31,6 +31,3 @@ lightscan_report.*
 # Dev scripts
 apply_*.py
 
-# Checkpoint
-.lightscan_cp.json
-lightscan.egg-info/

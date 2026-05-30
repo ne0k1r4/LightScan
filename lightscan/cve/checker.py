@@ -217,10 +217,11 @@ async def check_mongo_unauth(host, port=27017, timeout=5.0):
         w.write(payload); await w.drain()
         resp = await asyncio.wait_for(r.read(2048), timeout=timeout)
         w.close()
-        if b"ismaster" in resp.lower() or b"maxBsonObjectSize" in resp:
-            return ScanResult("mongo-unauth",host,port,"VULNERABLE",Severity.CRITICAL,
-                "MongoDB UNAUTHENTICATED: ismaster command succeeded",{"service":"MongoDB","auth":False})
-        return ScanResult("mongo-unauth",host,port,"not_vuln",Severity.INFO,"MongoDB: auth required")
+        resp_str = resp.decode("utf-8", errors="ignore").lower()
+        if "ismaster" in resp_str or "maxbsonobjectsize" in resp_str:
+            return ScanResult("mongo-unauth", host, port, "VULNERABLE", Severity.CRITICAL,
+                "MongoDB UNAUTHENTICATED: ismaster command succeeded", {"service": "MongoDB", "auth": False})
+        return ScanResult("mongo-unauth", host, port, "not_vuln", Severity.INFO, "MongoDB: auth required")
     except Exception as e:
         return ScanResult("mongo-unauth",host,port,"error",Severity.INFO,str(e))
 

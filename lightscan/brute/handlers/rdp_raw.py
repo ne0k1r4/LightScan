@@ -2,7 +2,7 @@
 LightScan v2.0 PHANTOM — Raw RDP Handler (MS-RDPBCGR)
 Developer: Light (Neok1ra)
 
-Integration of uploaded RawRDPHandler — full X.224/TPKT negotiation,
+Raw RDP protocol handler — full X.224/TPKT negotiation,
 SSL/TLS upgrade, CredSSP/NLA brute via SPNEGO+NTLM.
 
 Protocol stack (MS-RDPBCGR §1.3):
@@ -267,7 +267,7 @@ def _ts_request(spnego_token: bytes, version: int = 6) -> bytes:
 class RawRDPHandler:
     """
     Full RDP connection handler: X.224 negotiate → TLS → CredSSP/NLA brute.
-    Based on uploaded RawRDPHandler + CredSSP/NTLM auth added.
+    Pure-Python RDP transport layer with NLA support.
     """
 
     def __init__(self, host: str, port: int = 3389, timeout: float = 10.0):
@@ -310,7 +310,7 @@ class RawRDPHandler:
     def negotiate(self, preferred: int = PROTOCOL_HYBRID) -> bool:
         """
         X.224 CR + RDP_NEG_REQ → X.224 CC + RDP_NEG_RSP.
-        Tries HYBRID → SSL → RDP in degradation order (your uploaded logic).
+        Tries HYBRID → SSL → RDP in degradation order.
         """
         for proto in (preferred, PROTOCOL_SSL, PROTOCOL_RDP):
             pkt = _x224_cr(_rdp_neg_req(proto))
