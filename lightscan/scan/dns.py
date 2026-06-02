@@ -325,3 +325,4 @@ async def full_dns_enum_v2(domain: str, axfr: bool = True, ct_logs: bool = True,
         results.append(ScanResult("dns-email", domain, 0, "DKIM", sev, msg))
 
     return results
+# wildcard dns
