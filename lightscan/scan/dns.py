@@ -326,3 +326,4 @@ async def full_dns_enum_v2(domain: str, axfr: bool = True, ct_logs: bool = True,
 
     return results
 # wildcard dns
+# wildcard dns
