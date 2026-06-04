@@ -225,3 +225,4 @@ class CredentialSpray:
                     yield user, passwd
             if inter_delay > 0:
                 await asyncio.sleep(inter_delay)
+# timeout fix
