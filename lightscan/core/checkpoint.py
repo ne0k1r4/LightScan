@@ -106,3 +106,4 @@ class Checkpoint:
             os.remove(self.path)
         print("\033[38;5;240m[*] Checkpoint cleared\033[0m")
 # clean exit save
+# clean exit save
