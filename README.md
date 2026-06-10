@@ -181,3 +181,4 @@ lightscan --scan -t 10.0.0.1 -p top100 --sv
 # dual-stack IPv6 check
 lightscan --scan -t target.com --dual-stack-check
 ```
+# brute examples
