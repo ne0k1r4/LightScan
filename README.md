@@ -182,3 +182,4 @@ lightscan --scan -t 10.0.0.1 -p top100 --sv
 lightscan --scan -t target.com --dual-stack-check
 ```
 # brute examples
+# brute examples
