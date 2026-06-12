@@ -184,6 +184,33 @@ async def async_main(args):
     if args.clear_checkpoint: cp.clear()
     if args.target: cp.set_target(args.target)
 
+    # ── Autonomous mode (--auto domain.com) ──────────────────────────────────
+    if getattr(args, 'auto', None):
+        from lightscan.scan.orchestrator import run_auto
+        scope     = getattr(args, 'scope', None) or []
+        stealth   = getattr(args, 'stealth', False)
+        intensity = getattr(args, 'intensity', 3)
+        ports     = parse_ports(args.ports) if args.ports != "top100" else None
+        users     = parse_userlist(args.users)  if args.users    else None
+        passwords = parse_passwdlist(args.wordlist, mutate=args.mutate) if args.wordlist else None
+        results, comp_map = await run_auto(
+            domain     = args.auto,
+            scope      = scope,
+            timeout    = args.timeout,
+            intensity  = intensity,
+            stealth    = stealth,
+            ports      = ports,
+            userlist   = users,
+            passlist   = passwords,
+            skip_web   = getattr(args, 'skip_web', False),
+            skip_brute = getattr(args, 'skip_brute', False),
+            output_dir = args.output,
+        )
+        all_results.extend(results)
+        if not args.no_report and all_results:
+            Reporter(args.output).save(all_results, meta, args.basename)
+        return all_results
+
     # ── Diff
     if args.diff:
         old_f,new_f=args.diff
