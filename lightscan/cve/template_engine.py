@@ -8,7 +8,7 @@ look for in the response. Adding a new CVE check is just writing a
 
 Template fields: id, name, severity, cve, tags, port, protocol, steps
 (where each step has send/expect/match_regex/on_match logic).
-"""
+
   - type: send
     data: "*1\r\n$4\r\nINFO\r\n"
     encoding: raw                  # raw | hex | base64
