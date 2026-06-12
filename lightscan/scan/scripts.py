@@ -1,18 +1,14 @@
 """
-LightScan v2.0 PHANTOM — Script Engine (NSE-style) | Developer: Light
-───────────────────────────────────────────────────────────────────────
-Equivalent to: nmap --script <name>
+NSE-style script engine — run targeted checks against specific services.
 
-Scripts live in lightscan/scripts/<category>/<name>.py
-Each script is a Python module with:
-  - SCRIPT_NAME   : str
-  - SCRIPT_PORTS  : List[int]  (empty = any port)
-  - SCRIPT_TAGS   : List[str]
-  - async def run(host, port, timeout) -> List[ScanResult]
+Scripts are Python modules dropped into lightscan/scripts/<category>/<name>.py.
+Each exports SCRIPT_NAME, SCRIPT_PORTS, SCRIPT_TAGS, and an async run() function.
+The engine discovers them automatically — no registration needed.
 
-Built-in scripts:
-  http/http_headers       — grab + analyse HTTP headers
-  http/http_methods       — test allowed HTTP methods
+Built-in scripts cover HTTP (headers, methods, title, auth detection),
+SMB (OS discovery, signing), TLS (versions, ciphers, cert info),
+DNS (zone transfer, recursion), and SSH (algorithms, host key).
+
   http/http_title         — extract page title
   http/http_auth          — detect auth type (Basic, Digest, NTLM)
   smb/smb_os_discovery    — SMB OS/hostname enumeration
