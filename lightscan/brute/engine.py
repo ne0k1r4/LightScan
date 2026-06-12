@@ -1,4 +1,11 @@
-"""LightScan v2.0 PHANTOM — Brute Force Engine | Developer: Light"""
+"""
+Brute force engine — async credential testing across 12 protocols.
+
+Handles lockout detection (stops hammering when the target says "account locked"),
+rate limiting (backs off when the server starts throttling), jitter between
+attempts, credential spray mode (1 password per user per window — safer),
+and checkpoint resume so a 50,000-attempt run survives a reboot.
+"""
 from __future__ import annotations
 import asyncio, random, time, sys
 from lightscan.core.engine import ScanResult, Severity

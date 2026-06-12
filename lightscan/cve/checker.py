@@ -1,10 +1,11 @@
 """
-LightScan v2.0 PHANTOM — CVE Checker
-Developer: Light
+CVE checker — handwritten PoC probes for the vulns that actually matter.
 
-EternalBlue (MS17-010) · Log4Shell (CVE-2021-44228) · Spring4Shell (CVE-2022-22965)
-Heartbleed (CVE-2014-0160) · ShellShock (CVE-2014-6271) · BlueKeep (CVE-2019-0708)
-Redis Unauth · MongoDB Unauth · Elasticsearch Unauth · Jupyter NoAuth
+Each check sends the real protocol payload a real attacker would send
+and inspects the response to confirm vulnerability, not just open port.
+Covers: EternalBlue (MS17-010), Log4Shell, Spring4Shell, Heartbleed,
+ShellShock, BlueKeep, Redis unauth, MongoDB unauth, Elasticsearch unauth,
+Jupyter no-auth.
 """
 from __future__ import annotations
 import asyncio, struct, socket, urllib.request, urllib.error

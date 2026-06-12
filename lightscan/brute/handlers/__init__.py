@@ -1,13 +1,13 @@
 """
-LightScan v2.0 PHANTOM — Protocol Handlers (12 protocols)
-Developer: Light
+Protocol handlers — one handler per protocol, all with the same interface.
 
-SSH · FTP · SMTP · HTTP · MySQL · PostgreSQL · MSSQL
-Telnet · VNC · SMB · RDP · LDAP
+Each handler is an async callable: (username, password) → bool.
+Uses the proper library when available (paramiko for SSH, pymysql for MySQL,
+etc.) and falls back to a raw socket implementation when it's not installed.
+That way the core brute engine works out of the box without any optional deps.
 
-Pure stdlib fallbacks when optional libs absent.
-Optional libs for full functionality:
-  pip install paramiko pymysql psycopg2-binary ldap3 impacket
+Supported: SSH · FTP · SMTP · HTTP (form + Basic) · MySQL · PostgreSQL
+           MSSQL · Telnet · VNC · SMB · RDP · LDAP
 """
 from __future__ import annotations
 import asyncio, ftplib, smtplib, socket, struct, time, base64, hashlib, re

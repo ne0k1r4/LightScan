@@ -1,11 +1,9 @@
 """
-LightScan v2.0 PHANTOM — CVE Checker + Template Engine Bridge
-Developer: Light (Neok1ra)
+CVE bridge — single entry point that runs both checker types and deduplicates.
 
-Runs both:
-  1. Legacy hardcoded checks (EternalBlue, Log4Shell, etc.)  — kept for raw protocol accuracy
-  2. Template engine checks for the same + 30 new templates  — extensible
-Results are deduplicated by template_id / module name.
+Runs the hardcoded PoC checks (better protocol accuracy) and the YAML
+template engine (easier to extend) and merges the results, dropping
+duplicates where both checked the same thing.
 """
 from __future__ import annotations
 import asyncio

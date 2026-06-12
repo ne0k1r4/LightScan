@@ -1,4 +1,10 @@
-"""LightScan v2.0 PHANTOM — Target Parser | Developer: Light"""
+"""
+Target parser — turns whatever you typed into a clean list of IPs and ports.
+
+Handles single IPs, CIDR ranges, hyphenated ranges (10.0.0.1-10),
+hostnames, and file:// lists. Port specs accept comma-separated ports,
+ranges (80-443), named lists (top100), or free-form combinations.
+"""
 import ipaddress, re, socket
 
 TOP_100 = sorted(set([

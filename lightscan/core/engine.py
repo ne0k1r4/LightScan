@@ -1,4 +1,11 @@
-"""LightScan v2.0 PHANTOM — Core Engine | Developer: Light"""
+"""
+Core engine — the async task runner everything else is built on.
+
+ScanResult is the single data type that flows through the whole tool.
+Every scanner, brute-forcer, and CVE checker returns a list of these.
+PhantomEngine runs them all concurrently behind a semaphore and shows
+a live progress line while they run.
+"""
 from __future__ import annotations
 
 import asyncio

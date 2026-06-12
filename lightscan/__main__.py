@@ -1,3 +1,3 @@
-"""Entry: python -m lightscan"""
+"""Allows running as: python -m lightscan"""
 from lightscan.cli import main
 if __name__ == "__main__": main()
