@@ -432,13 +432,7 @@ class RawAsyncScanner:
                                         else:
                                             tcp = data
                                         ack_seq = struct.unpack("!L", tcp[8:12])[0]
-                                        send_sock.sendto(
-                                            _build_ipv4_syn(
-                                                self._src_ip, self._dst_ip,
-                                                sport, dport,
-                                                seq=ack_seq, ttl=self.ttl) if True else b"",
-                                            (self._dst_ip, 0)
-                                        )
+                                        self._rst(send_sock, self._dst_ip, dport, sport, ack_seq)
                                     except Exception:
                                         pass
                                 else:
