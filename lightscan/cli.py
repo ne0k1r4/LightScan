@@ -65,6 +65,21 @@ def build_parser():
     tg.add_argument("--passive",     action="store_true",   help="Passive fingerprinting (TLS/JA3S, HTTP headers, SSH entropy)")
     tg.add_argument("--adaptive",    action="store_true", default=True, help="Adaptive timing (auto-adjusts rate based on RTT/loss)")
 
+    # Autonomous / Active
+    aa = p.add_argument_group("Autonomous Red-Team")
+    aa.add_argument("--auto",        metavar="DOMAIN",
+                    help="AUTONOMOUS mode: domain→subdomain→scan→exploit→pivot→DC compromise map")
+    aa.add_argument("--active",      action="store_true",
+                    help="Active red-team scan: host discovery + service probing + vuln validation + pivot map")
+    aa.add_argument("--intensity",   type=int, default=3, choices=range(1,6), metavar="1-5",
+                    help="Active scan intensity: 1=quiet … 5=full-noise (default: 3)")
+    aa.add_argument("--scope",       nargs="+", metavar="CIDR/DOMAIN",
+                    help="Hard scope enforcement: allowed CIDRs or domains (blocks out-of-scope probes)")
+    aa.add_argument("--stealth",     action="store_true",
+                    help="Stealth OPSEC: T1 timing, 1-3s jitter, reduced concurrency, CDN-aware")
+    aa.add_argument("--skip-web",    action="store_true", help="--auto: skip web deep-scan stage")
+    aa.add_argument("--skip-brute",  action="store_true", help="--auto: skip credential brute stage")
+
     # Modules
     m = p.add_argument_group("Modules")
     m.add_argument("--scan",         action="store_true", help="Port scan")
