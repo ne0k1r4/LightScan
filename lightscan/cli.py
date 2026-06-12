@@ -625,12 +625,71 @@ async def async_main(args):
     return all_results
 
 
+def print_minimal_help():
+    print_banner()
+    help_text = """\033[1mUsage:\033[0m
+  lightscan -t <target> [options]
+  lightscan --auto <domain> [options]
+
+\033[1mCore Options:\033[0m
+  -t, --target TARGET     IP / CIDR / range / hostname / file:path.txt
+  -p, --ports PORTS       Ports to probe (e.g. 22,80,443 · 1-1024 · top100)
+  --auto DOMAIN           Autonomous engagement: domain -> recon -> exploit -> pivot map
+  --active                Active red-team scanning mode (host discovery + service probing)
+
+\033[1mModules:\033[0m
+  --scan                  Run standard port scan
+  --dns DOMAIN            DNS enum on target DOMAIN
+  --web-scan URL          OWASP web application security scanner
+  --brute PROTO           Protocol credential audit (ssh, ftp, smb, rdp, etc.)
+  --cve                   Vulnerability audit (CVE checks + templates)
+  --traceroute HOST       TCP traceroute to HOST
+
+\033[1mEvasion & Tuning:\033[0m
+  --stealth               Enable stealth: timing templates, jitter, and lower concurrency
+  -T T0-T5                Timing templates: T0 (paranoid) to T5 (insane)
+  --proxy-file FILE       File containing SOCKS5 proxies (socks5://host:port per line)
+
+\033[1mHelp & Output:\033[0m
+  -h, --help              Show this minimal help menu
+  -o, --output DIR        Output directory (default: .)
+  -v, --verbose           Enable verbose output logging
+
+\033[1mModule Usage Examples:\033[0m
+  # Fully autonomous recon, scan, vulnerability check, and pivot mapping
+  lightscan --auto target.com
+
+  # Stealth active red-team scan on a subnet
+  lightscan --active -t 192.168.1.0/24 --stealth
+
+  # Fast TCP port scan with service version and CVE validation
+  lightscan --scan -t 10.0.0.1 -p top100 --sv --cve
+
+  # OWASP web vulnerability scanner
+  lightscan --web-scan http://target.local
+
+  # Credential audit on SSH using smart mutation
+  lightscan --brute ssh -t 10.0.0.1 -U admin,root -W common --mutate
+"""
+    print(help_text)
+
+
 def main():
+    if len(sys.argv) == 1:
+        print_banner()
+        print("Usage: lightscan -t <target> [options] or lightscan --auto <domain>")
+        print("To view available options, run: \033[38;5;196mlightscan -h\033[0m\n")
+        sys.exit(0)
+
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print_minimal_help()
+        sys.exit(0)
+
     p=build_parser()
     args=p.parse_args()
-    if len(sys.argv)==1: p.print_help(); sys.exit(0)
     try: asyncio.run(async_main(args))
     except KeyboardInterrupt: print(f"\n\033[38;5;240m[!] {t('interrupted')}\033[0m")
 
 
 if __name__=="__main__": main()
+
