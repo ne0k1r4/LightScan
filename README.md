@@ -40,8 +40,6 @@ lightscan --scan -t 10.0.0.1 -p top1000 --sv --cve
 lightscan --brute ssh -t 10.0.0.1 -U admin,root -W common --mutate
 ```
 
-Output language is auto-detected from `$LANG` (supported: `en`, `zh`, `ru`, `ar`, `es`). Override via `--lang <lang>`.
-
 ---
 
 ## Core Capabilities
