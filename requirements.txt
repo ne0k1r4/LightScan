@@ -1,24 +1,32 @@
-# LightScan v2.0 PHANTOM — Developer: Light
-# Zero hard dependencies — all stdlib.
-# Install optionals for full brute capability:
+# LightScan v2.0 PHANTOM — optional dependencies
+# Core runs on pure stdlib. Install these for full capability.
 
-# SSH brute (full)
-paramiko
+# SSH brute
+paramiko==3.4.0
 
-# MySQL brute (full)
-pymysql
+# MySQL brute
+pymysql==1.1.1
 
-# PostgreSQL brute (full)
-psycopg2-binary
+# PostgreSQL brute
+psycopg2-binary==2.9.9
 
-# SMB / RDP brute (full)
-impacket
+# SMB / NTLM / RDP / impacket-based attacks (secretsdump, psexec, etc.)
+impacket==0.12.0
 
-# LDAP brute (full)
-ldap3
+# LDAP brute + AD enumeration
+ldap3==2.9.1
 
-# VNC brute (full)
-pycryptodome
+# VNC brute + crypto
+pycryptodome==3.20.0
 
-# MSSQL brute (full)
-pymssql
+# MSSQL brute
+pymssql==2.3.0
+
+# Packet-level SYN scan (--syn, passive OS fingerprint)
+scapy==2.5.0
+
+# Async HTTP for web scanner / OAuth
+aiohttp==3.9.5
+
+# YAML template engine (--cve templates)
+PyYAML==6.0.1
