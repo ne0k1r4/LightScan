@@ -53,6 +53,7 @@ def _icmp_checksum(data: bytes) -> int:
 
 async def _icmp_ping(host: str, timeout: float = 1.5) -> Optional[tuple]:
     """Returns (method, rtt_ms, ttl, hostname) or None."""
+    sock = None
     try:
         dst = socket.gethostbyname(host)
         sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
@@ -84,12 +85,16 @@ async def _icmp_ping(host: str, timeout: float = 1.5) -> Optional[tuple]:
             return None
 
         result = await asyncio.wait_for(_recv(), timeout=timeout)
-        sock.close()
         return result
     except PermissionError:
         return await _tcp_ping(host, 80, timeout)
     except Exception:
         return None
+    finally:
+        if sock:
+            try: sock.close()
+            except Exception: pass
+
 
 
 async def _tcp_ping(host: str, port: int = 80, timeout: float = 1.5) -> Optional[tuple]:
