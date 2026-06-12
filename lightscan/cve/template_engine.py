@@ -1,18 +1,14 @@
 """
-LightScan v2.0 PHANTOM — Nuclei-style YAML Template Engine
-Developer: Light (Neok1ra)
+YAML template engine — Nuclei-style detection templates for LightScan.
 
-Template format (YAML):
-─────────────────────────────────────────────────────────────────
-id:          redis-unauth
-name:        Redis Unauthenticated Access
-severity:    critical
-cve:         CVE-2022-0543         # optional
-tags:        [redis, unauth, exposure]
-port:        6379
-protocol:    tcp                   # tcp | udp | http | https
+Templates live in lightscan/templates/ as small YAML files. Each one
+describes a vulnerability: which port to check, what to send, what to
+look for in the response. Adding a new CVE check is just writing a
+20-line YAML file — no Python required.
 
-steps:
+Template fields: id, name, severity, cve, tags, port, protocol, steps
+(where each step has send/expect/match_regex/on_match logic).
+"""
   - type: send
     data: "*1\r\n$4\r\nINFO\r\n"
     encoding: raw                  # raw | hex | base64

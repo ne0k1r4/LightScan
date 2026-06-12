@@ -1,4 +1,12 @@
-"""LightScan v2.0 PHANTOM — Mutation Engine | Developer: Light"""
+"""
+Password mutation engine — makes wordlists smarter without making them huge.
+
+Takes a base wordlist and generates realistic variants people actually use:
+leet substitutions (a→4, e→3), common suffixes (123, !, 2024!), capitalisation
+patterns, and username-seeded passwords (username + year, username reversed).
+Also ships a COMMON_PASSWORDS list of the 50 passwords that get you in
+surprisingly often.
+"""
 import itertools
 
 LEET = str.maketrans("aAeEiIoOsS", "4433110055")

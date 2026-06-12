@@ -1,4 +1,11 @@
-"""LightScan v2.0 PHANTOM — Reporter (JSON·MD·HTML) | Developer: Light"""
+"""
+Reporter — turns raw ScanResult lists into something readable.
+
+Writes three files per scan: JSON for machines, Markdown for terminals,
+and a dark-themed HTML dashboard with a donut chart and severity filter.
+Duplicate findings (same param, same module, different URLs) get grouped
+into a single row so the report doesn't drown in 400 identical SQLi lines.
+"""
 import json, time, os, re
 from datetime import datetime
 from collections import defaultdict

@@ -1,4 +1,7 @@
-"""LightScan v2.0 PHANTOM — Banner | Developer: Light"""
+"""
+Banner — the ASCII art header that prints at startup.
+Change VERSION here when cutting a release.
+"""
 VERSION = "2.0.0-PHANTOM"
 AUTHOR  = "Light"
 ALIAS   = "Neok1ra"

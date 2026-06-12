@@ -1,4 +1,10 @@
-"""LightScan v2.0 PHANTOM — Checkpoint & Resume | Developer: Light"""
+"""
+Checkpoint — lets long brute-force runs survive interruptions.
+
+Writes a .lightscan_cp.json file every 100 attempts so you can
+resume from where you left off with --resume. Also tracks locked
+accounts so the engine stops hammering them once lockout is detected.
+"""
 import json
 import os
 import time
