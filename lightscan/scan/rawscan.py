@@ -104,6 +104,64 @@ def _build_ipv4_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
     return ip_hdr + tcp_hdr
 
 
+def _build_ipv4_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
+                    ack_seq: int, ttl: int = 64) -> bytes:
+    """Build a raw IPv4 TCP RST packet."""
+    ip_saddr = socket.inet_aton(src_ip)
+    ip_daddr = socket.inet_aton(dst_ip)
+
+    # TCP header
+    tcp_flags = 0x04  # RST
+    tcp_hdr = struct.pack("!HHLLBBHHH",
+        src_port, dst_port, ack_seq, 0,
+        (5 << 4), tcp_flags, 0, 0, 0)
+
+    # TCP checksum via pseudo-header
+    pseudo = struct.pack("!4s4sBBH", ip_saddr, ip_daddr, 0, socket.IPPROTO_TCP, len(tcp_hdr))
+    tcp_chk = _checksum(pseudo + tcp_hdr)
+    tcp_hdr = struct.pack("!HHLLBBHHH",
+        src_port, dst_port, ack_seq, 0,
+        (5 << 4), tcp_flags, 0, tcp_chk, 0)
+
+    # IP header
+    ip_id = random.randint(1, 65535)
+    ip_hdr = struct.pack("!BBHHHBBH4s4s",
+        (4 << 4) | 5, 0, 0,
+        ip_id, 0,
+        ttl, socket.IPPROTO_TCP, 0,
+        ip_saddr, ip_daddr)
+    ip_chk = _checksum(ip_hdr)
+    ip_hdr = struct.pack("!BBHHHBBH4s4s",
+        (4 << 4) | 5, 0, 0,
+        ip_id, 0,
+        ttl, socket.IPPROTO_TCP, ip_chk,
+        ip_saddr, ip_daddr)
+
+    return ip_hdr + tcp_hdr
+
+
+def _build_ipv6_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
+                    ack_seq: int) -> bytes:
+    """Build a raw IPv6 TCP RST packet (for use with SOCK_RAW AF_INET6)."""
+    src = socket.inet_pton(socket.AF_INET6, src_ip)
+    dst = socket.inet_pton(socket.AF_INET6, dst_ip)
+
+    tcp_flags = 0x04  # RST
+    tcp_hdr = struct.pack("!HHLLBBHHH",
+        src_port, dst_port, ack_seq, 0,
+        (5 << 4), tcp_flags, 0, 0, 0)
+
+    # IPv6 pseudo-header for TCP checksum
+    pseudo = src + dst + struct.pack("!I", len(tcp_hdr)) + b"\x00\x00\x00" + bytes([6])
+    tcp_chk = _checksum(pseudo + tcp_hdr)
+    tcp_hdr = struct.pack("!HHLLBBHHH",
+        src_port, dst_port, ack_seq, 0,
+        (5 << 4), tcp_flags, 0, tcp_chk, 0)
+
+    return tcp_hdr
+
+
+
 def _build_ipv6_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     seq: int = 0) -> bytes:
     """Build a raw IPv6 TCP SYN packet (for use with SOCK_RAW AF_INET6)."""
