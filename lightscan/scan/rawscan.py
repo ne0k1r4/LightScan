@@ -330,34 +330,19 @@ class RawAsyncScanner:
         except Exception:
             return ""
 
-    async def _rst(self, send_sock, dst_ip: str, dst_port: int,
+    def _rst(self, send_sock, dst_ip: str, dst_port: int,
                    src_port: int, ack_seq: int):
         """Send RST to cleanly close half-open connection."""
         try:
-            pkt = _build_ipv4_syn.__wrapped__ if hasattr(_build_ipv4_syn, '__wrapped__') else None
-            # Build RST packet
-            ip_saddr = socket.inet_aton(self._src_ip)
-            ip_daddr = socket.inet_aton(dst_ip)
-            tcp_flags = 0x04  # RST
-            tcp_hdr = struct.pack("!HHLLBBHHH",
-                src_port, dst_port, ack_seq, 0,
-                (5 << 4), tcp_flags, 0, 0, 0)
-            pseudo = struct.pack("!4s4sBBH", ip_saddr, ip_daddr,
-                                 0, socket.IPPROTO_TCP, len(tcp_hdr))
-            tcp_chk = _checksum(pseudo + tcp_hdr)
-            tcp_hdr = struct.pack("!HHLLBBHHH",
-                src_port, dst_port, ack_seq, 0,
-                (5 << 4), tcp_flags, 0, tcp_chk, 0)
-            ip_hdr = struct.pack("!BBHHHBBH4s4s",
-                (4 << 4)|5, 0, 0, random.randint(1,65535), 0,
-                self.ttl, socket.IPPROTO_TCP, 0, ip_saddr, ip_daddr)
-            ip_chk = _checksum(ip_hdr)
-            ip_hdr = struct.pack("!BBHHHBBH4s4s",
-                (4 << 4)|5, 0, 0, random.randint(1,65535), 0,
-                self.ttl, socket.IPPROTO_TCP, ip_chk, ip_saddr, ip_daddr)
-            send_sock.sendto(ip_hdr + tcp_hdr, (dst_ip, 0))
+            if self.ipv6:
+                pkt = _build_ipv6_rst(self._src_ip, dst_ip, src_port, dst_port, ack_seq)
+                send_sock.sendto(pkt, (dst_ip, dst_port, 0, 0))
+            else:
+                pkt = _build_ipv4_rst(self._src_ip, dst_ip, src_port, dst_port, ack_seq, self.ttl)
+                send_sock.sendto(pkt, (dst_ip, 0))
         except Exception:
             pass
+
 
     def scan(self) -> List[ScanResult]:
         """Run the raw scanner synchronously (call from thread or run directly)."""
