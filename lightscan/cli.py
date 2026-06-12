@@ -18,7 +18,6 @@ from lightscan.core.engine import PhantomEngine, ScanResult, Severity
 from lightscan.core.target import parse_targets, parse_ports
 from lightscan.core.checkpoint import Checkpoint
 from lightscan.core.reporter import Reporter
-from lightscan.i18n import t, set_lang
 from lightscan.scan.portscan import build_scan_tasks
 from lightscan.scan.dns import full_dns_enum
 from lightscan.scan.traceroute import tcp_traceroute
@@ -146,8 +145,6 @@ def build_parser():
 
     # Output
     out = p.add_argument_group("Output")
-    out.add_argument("--lang",            default="", metavar="LANG",
-                     help="Output language: en zh ru ar es (auto-detected from $LANG)")
     out.add_argument("-o","--output",     default=".", help="Output directory (default: .)")
     out.add_argument("--basename",        default="lightscan_report")
     out.add_argument("--no-report",       action="store_true", help="Skip file reports")
@@ -179,9 +176,6 @@ def parse_passwdlist(spec, users=None, target_info=None, mutate=False):
 
 async def async_main(args):
     print_banner()
-    # Apply language setting before any output
-    if getattr(args, 'lang', ''):
-        set_lang(args.lang)
     t_start=time.time(); all_results=[]; open_ports={}
     # Build target string — prefer --target, fall back to --web-scan URL
     _target = args.target or getattr(args, 'web_scan', None) or ""
@@ -515,7 +509,7 @@ async def async_main(args):
     # ── Port Scan
     if args.scan and args.target:
         hosts=parse_targets(args.target); ports=parse_ports(args.ports)
-        print(f"\033[38;5;196m[SCAN]\033[0m {t('scan.start', n=len(hosts), p=len(ports), c=args.concurrency)}")
+        print(f"\033[38;5;196m[SCAN]\033[0m Scanning {len(hosts)} host(s) × {len(ports)} port(s) | concurrency={args.concurrency}")
         engine=PhantomEngine(concurrency=args.concurrency,timeout=args.timeout,verbose=args.verbose)
         tasks=build_scan_tasks(hosts,ports,args.timeout,args.udp)
         scan_r=await engine.run(tasks)
@@ -523,7 +517,7 @@ async def async_main(args):
         for r in scan_r:
             if r and r.status=="open":
                 open_ports.setdefault(r.target,[]).append(r.port)
-                print(f"  \033[38;5;196m{t('scan.open', host=r.target, port=r.port, detail=r.detail)}\033[0m")
+                print(f"  \033[38;5;196mOPEN  {r.target}:{r.port:<6} {r.detail}\033[0m")
 
     # ── List templates
     if getattr(args, 'list_templates', False):
@@ -616,7 +610,7 @@ async def async_main(args):
     high=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="HIGH")
     print()
     print(f"\033[38;5;196m{'─'*65}\033[0m")
-    print(f"\033[38;5;196m[DONE]\033[0m {t('scan.done', n=len(all_results), crit=crit, high=high, elapsed=elapsed)}")
+    print(f"\033[38;5;196m[DONE]\033[0m {len(all_results)} findings  |  {crit} CRITICAL  |  {high} HIGH  |  {elapsed:.1f}s")
     print(f"\033[38;5;196m{'─'*65}\033[0m")
 
     if not args.no_report and all_results:
@@ -688,7 +682,7 @@ def main():
     p=build_parser()
     args=p.parse_args()
     try: asyncio.run(async_main(args))
-    except KeyboardInterrupt: print(f"\n\033[38;5;240m[!] {t('interrupted')}\033[0m")
+    except KeyboardInterrupt: print(f"\n\033[38;5;240m[!] Interrupted — checkpoint saved\033[0m")
 
 
 if __name__=="__main__": main()
