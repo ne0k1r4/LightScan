@@ -1,27 +1,33 @@
 """
-LightScan v2.0 PHANTOM — Autonomous Orchestration Engine | Developer: Light
-────────────────────────────────────────────────────────────────────────────
-"Set and forget" red-team pipeline. Feed it a domain; it returns a compromise map.
+Autonomous Orchestration Engine
+────────────────────────────────
+The whole reason this project exists. You give it a domain name.
+It figures out the rest.
 
-Pipeline (each stage feeds findings into the next dynamically):
-  Stage 0  Scope check       Hard-enforce allowed targets / CIDR blocks
-  Stage 1  OSINT / DNS       Subdomain enum, CT logs, AXFR, crt.sh
-  Stage 2  Asset resolution  Resolve subdomains → IPs, detect CDN/WAF
-  Stage 3  Active scan       ICMP discovery + port scan on all live IPs
-  Stage 4  Service profiling Deep banner grab, version detection, OS hint
-  Stage 5  Vuln validation   PoC probes per service (redis, smb, http, ldap…)
-  Stage 6  Exploit chaining  Chain confirmed vulns into ordered attack paths
-  Stage 7  Credential attack Auto-brute services with found usernames
-  Stage 8  DC / AD hunt      Detect Kerberos/LDAP/SMB → AD pivot path
-  Stage 9  Web deep-scan     Run full web scanner on HTTP/HTTPS assets
-  Stage 10 Compromise map    Build host graph + attack narrative
+Internally it runs a 10-stage pipeline where every stage feeds
+its findings directly into the next one — no waiting, no manual
+handoff. If stage 3 finds Redis open, stage 5 immediately tries
+to write a webshell. If stage 7 cracks an SSH password, stage 8
+uses it to check for DCSync access.
 
-Stealth modes:
-  --stealth  T1 timing, jitter 1-3s, rotate User-Agents, fragment packets
-  --opsec    T0 timing, Tor/SOCKS proxy, minimal footprint
+Stages in order:
+  1  DNS / OSINT       Subdomain enum via crt.sh CT logs + DNS brute
+  2  Asset resolution  Resolve subdomains → IPs, filter to scope, flag CDN
+  3  Active scan       ICMP discovery + async port scan on live hosts
+  5  Vuln validation   CVE template checks on every open port
+  6  Exploit chains    Build ordered attack paths from confirmed findings
+  7  Credential attack Auto-brute SSH, FTP, MySQL, RDP, MSSQL
+  8  DC detection      Spot Kerberos+LDAP → print DCSync / Kerberoasting path
+  9  Web deep-scan     Full OWASP scanner on all HTTP/HTTPS targets
+  10 Compromise map    Structured JSON attack graph saved to disk
 
-Context memory: TargetContext remembers OS family, open ports, found creds,
-   pivot hosts — skips irrelevant probes automatically.
+TargetContext is the shared memory that carries facts across stages.
+It remembers OS family, open ports, cracked creds, and pivot hosts —
+so stages skip irrelevant probes automatically. No point running
+Windows-only checks on a box that answered with Linux TTLs.
+
+Stealth mode (--stealth) drops to T1 timing with 1-3s jitter and
+halves concurrency. Not invisible, but much quieter.
 """
 from __future__ import annotations
 
