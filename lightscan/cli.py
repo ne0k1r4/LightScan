@@ -211,6 +211,44 @@ async def async_main(args):
             Reporter(args.output).save(all_results, meta, args.basename)
         return all_results
 
+    # ── Active red-team scan (--active -t target) ─────────────────────────────
+    if getattr(args, 'active', False) and args.target:
+        from lightscan.scan.active import active_scan
+        from lightscan.core.target import parse_targets
+        hosts     = parse_targets(args.target)
+        intensity = getattr(args, 'intensity', 3)
+        scope     = getattr(args, 'scope', None) or []
+        if scope:
+            import ipaddress as _ip
+            def _in_scope(h):
+                for s in scope:
+                    try:
+                        if _ip.ip_address(h) in _ip.ip_network(s, strict=False): return True
+                    except ValueError:
+                        if h == s or h.endswith("." + s): return True
+                return False
+            filtered = [h for h in hosts if _in_scope(h)]
+            dropped  = len(hosts) - len(filtered)
+            if dropped:
+                print(f"\033[38;5;240m[SCOPE] Dropped {dropped} out-of-scope host(s)\033[0m")
+            hosts = filtered
+        if not hosts:
+            print("\033[38;5;208m[!] No in-scope targets to scan.\033[0m")
+            return all_results
+        ports = parse_ports(args.ports) if args.ports != "top100" else None
+        results = await active_scan(
+            targets     = hosts,
+            ports       = ports,
+            timeout     = args.timeout,
+            concurrency = args.concurrency,
+            intensity   = intensity,
+            verbose     = args.verbose,
+        )
+        all_results.extend(results)
+        if not args.no_report and all_results:
+            Reporter(args.output).save(all_results, meta, args.basename)
+        return all_results
+
     # ── Diff
     if args.diff:
         old_f,new_f=args.diff
