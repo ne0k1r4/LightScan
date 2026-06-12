@@ -35,6 +35,7 @@ def build_parser():
         prog="lightscan",
         description="LightScan v2.0 PHANTOM — Async Network Recon & Attack Framework",
         formatter_class=argparse.RawTextHelpFormatter,
+        add_help=False
     )
     # Target
     tg = p.add_argument_group("Target")
