@@ -446,8 +446,15 @@ class RawAsyncScanner:
         interval = 1.0 / min(tmpl.max_rate, 10000)
 
         # Send loop
+        used_sports: Set[int] = set()
         for i, port in enumerate(scan_ports):
-            sport = random.randint(32768, 60999)
+            while True:
+                sport = random.randint(32768, 60999)
+                if sport not in used_sports:
+                    used_sports.add(sport)
+                    break
+                if len(used_sports) >= 28230:
+                    used_sports.clear()
             port_map[sport] = port
             src_ports[port] = sport
 
