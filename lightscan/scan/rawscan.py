@@ -88,15 +88,16 @@ def _build_ipv4_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
 
     # IP header
     frag_off = 0x2000 if fragment else 0  # More Fragments bit
+    ip_id = random.randint(1, 65535)
     ip_hdr = struct.pack("!BBHHHBBH4s4s",
         (4 << 4) | 5, 0, 0,
-        random.randint(1, 65535), frag_off,
+        ip_id, frag_off,
         ttl, socket.IPPROTO_TCP, 0,
         ip_saddr, ip_daddr)
     ip_chk = _checksum(ip_hdr)
     ip_hdr = struct.pack("!BBHHHBBH4s4s",
         (4 << 4) | 5, 0, 0,
-        random.randint(1, 65535), frag_off,
+        ip_id, frag_off,
         ttl, socket.IPPROTO_TCP, ip_chk,
         ip_saddr, ip_daddr)
 
