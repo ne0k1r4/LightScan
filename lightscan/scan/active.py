@@ -1,10 +1,25 @@
 """
-LightScan v2.0 PHANTOM — Active Red-Team Engine | Developer: Light
-────────────────────────────────────────────────────────────────────
-Phase 1  Host Discovery     ICMP ping, ARP (LAN), TCP-connect fallback
-Phase 2  Service Probing    Protocol-specific banner + deep interrogation
-Phase 3  Vuln Validation    PoC payloads per detected service
-Phase 4  Pivot Mapping      Lateral-move candidates from confirmed vulns
+Active Red-Team Engine
+──────────────────────
+This is the hands-on part of the scanner — it doesn't just observe,
+it actually pokes things and figures out if they're exploitable.
+
+Four phases run in sequence, each feeding the next:
+
+  Phase 1  Who's home?        ICMP ping, ARP table check for LAN hosts,
+                               TCP-connect fallback when raw sockets aren't available.
+
+  Phase 2  What's running?    Protocol-specific payloads per open port — not just
+                               "port is open" but "this is Redis 7.2 and here's the
+                               INFO dump to prove it."
+
+  Phase 3  Is it vulnerable?  Real PoC probes: FTP anonymous login, Redis CONFIG SET,
+                               MongoDB isMaster with no auth, SMBv1 negotiate,
+                               LDAP anonymous bind, HTTP secret file exposure.
+
+  Phase 4  Where do we go?    Pivot and RCE chain suggestions built from confirmed
+                               vulns — Redis unauth becomes a webshell walkthrough,
+                               EternalBlue gets the Metasploit stager, and so on.
 """
 from __future__ import annotations
 
