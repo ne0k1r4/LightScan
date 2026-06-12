@@ -140,28 +140,6 @@ def _build_ipv4_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
     return ip_hdr + tcp_hdr
 
 
-def _build_ipv6_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
-                    ack_seq: int) -> bytes:
-    """Build a raw IPv6 TCP RST packet (for use with SOCK_RAW AF_INET6)."""
-    src = socket.inet_pton(socket.AF_INET6, src_ip)
-    dst = socket.inet_pton(socket.AF_INET6, dst_ip)
-
-    tcp_flags = 0x04  # RST
-    tcp_hdr = struct.pack("!HHLLBBHHH",
-        src_port, dst_port, ack_seq, 0,
-        (5 << 4), tcp_flags, 0, 0, 0)
-
-    # IPv6 pseudo-header for TCP checksum
-    pseudo = src + dst + struct.pack("!I", len(tcp_hdr)) + b"\x00\x00\x00" + bytes([6])
-    tcp_chk = _checksum(pseudo + tcp_hdr)
-    tcp_hdr = struct.pack("!HHLLBBHHH",
-        src_port, dst_port, ack_seq, 0,
-        (5 << 4), tcp_flags, 0, tcp_chk, 0)
-
-    return tcp_hdr
-
-
-
 def _build_ipv6_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     seq: int = 0) -> bytes:
     """Build a raw IPv6 TCP SYN packet (for use with SOCK_RAW AF_INET6)."""
@@ -182,6 +160,28 @@ def _build_ipv6_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
         (5 << 4), tcp_flags, tcp_win, tcp_chk, 0)
 
     return tcp_hdr  # IPv6 kernel prepends IP header automatically
+
+
+def _build_ipv6_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
+                    ack_seq: int) -> bytes:
+    """Build a raw IPv6 TCP RST packet (for use with SOCK_RAW AF_INET6)."""
+    src = socket.inet_pton(socket.AF_INET6, src_ip)
+    dst = socket.inet_pton(socket.AF_INET6, dst_ip)
+
+    tcp_flags = 0x04  # RST
+    tcp_hdr = struct.pack("!HHLLBBHHH",
+        src_port, dst_port, ack_seq, 0,
+        (5 << 4), tcp_flags, 0, 0, 0)
+
+    # IPv6 pseudo-header for TCP checksum
+    pseudo = src + dst + struct.pack("!I", len(tcp_hdr)) + b"\x00\x00\x00" + bytes([6])
+    tcp_chk = _checksum(pseudo + tcp_hdr)
+    tcp_hdr = struct.pack("!HHLLBBHHH",
+        src_port, dst_port, ack_seq, 0,
+        (5 << 4), tcp_flags, 0, tcp_chk, 0)
+
+    return tcp_hdr
+
 
 
 def _get_src_ip(dst: str, ipv6: bool = False) -> str:
@@ -384,141 +384,151 @@ class RawAsyncScanner:
               f"src={self._src_ip}")
 
         # Create sockets
+        send_sock = None
+        recv_sock = None
+        ep = None
         try:
-            if self.ipv6:
-                send_sock = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_TCP)
-                recv_sock = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_TCP)
-            else:
-                send_sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
-                send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
-                recv_sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
-            recv_sock.setblocking(False)
-        except PermissionError:
-            raise PermissionError("Raw socket requires root")
-
-        # epoll for non-blocking receive
-        ep = select.epoll()
-        ep.register(recv_sock.fileno(), select.EPOLLIN)
-
-        responded: Set[int] = set()
-        outstanding: Dict[int, float] = {}  # dst_port → time sent
-
-        def _flush_responses(deadline: float):
-            """Drain epoll responses until deadline."""
-            while time.time() < deadline:
-                events = ep.poll(timeout=0.01)
-                if not events:
-                    break
-                for fd, _ in events:
-                    if fd != recv_sock.fileno():
-                        continue
-                    try:
-                        data, addr = recv_sock.recvfrom(65535)
-                        result = _parse_tcp_response(
-                            data, self._dst_ip, port_map, self.ipv6)
-                        if result:
-                            dport, state = result
-                            if dport not in responded:
-                                responded.add(dport)
-                                sport = src_ports.get(dport, 0)
-                                if state == "open":
-                                    self._open.append(dport)
-                                    # Send RST immediately
-                                    try:
-                                        # Extract ack from packet
-                                        if not self.ipv6:
-                                            ihl = (data[0] & 0x0F) * 4
-                                            tcp = data[ihl:]
-                                        else:
-                                            tcp = data
-                                        ack_seq = struct.unpack("!L", tcp[8:12])[0]
-                                        self._rst(send_sock, self._dst_ip, dport, sport, ack_seq)
-                                    except Exception:
-                                        pass
-                                else:
-                                    self._closed.append(dport)
-                    except BlockingIOError:
-                        break
-                    except Exception:
-                        break
-
-        # Rate control
-        interval = 1.0 / min(tmpl.max_rate, 10000)
-
-        # Send loop
-        used_sports: Set[int] = set()
-        for i, port in enumerate(scan_ports):
-            while True:
-                sport = random.randint(32768, 60999)
-                if sport not in used_sports:
-                    used_sports.add(sport)
-                    break
-                if len(used_sports) >= 28230:
-                    used_sports.clear()
-            port_map[sport] = port
-            src_ports[port] = sport
-
-            # Build + send SYN
             try:
                 if self.ipv6:
-                    pkt = _build_ipv6_syn(self._src_ip, self._dst_ip, sport, port,
-                                          seq=random.randint(0, 2**32-1))
-                    send_sock.sendto(pkt, (self._dst_ip, port, 0, 0))
+                    send_sock = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_TCP)
+                    recv_sock = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_TCP)
                 else:
-                    pkt = _build_ipv4_syn(
-                        self._src_ip, self._dst_ip, sport, port,
-                        seq=random.randint(0, 2**32-1),
-                        ttl=self.ttl, fragment=self.fragment)
-                    send_sock.sendto(pkt, (self._dst_ip, 0))
+                    send_sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+                    send_sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+                    recv_sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
+                recv_sock.setblocking(False)
+            except PermissionError:
+                raise PermissionError("Raw socket requires root")
 
-                # Send decoys
-                if decoy_ips:
-                    _send_decoys(send_sock, self._dst_ip, port, sport,
-                                 decoy_ips, self.ttl)
+            # epoll for non-blocking receive
+            ep = select.epoll()
+            ep.register(recv_sock.fileno(), select.EPOLLIN)
 
-                outstanding[port] = time.time()
-            except Exception as e:
-                if self.verbose:
-                    print(f"\n  [!] send {port}: {e}")
+            responded: Set[int] = set()
+            outstanding: Dict[int, float] = {}  # dst_port → time sent
 
-            self._sent += 1
-            if not self.verbose and self._sent % 50 == 0:
-                self._progress()
+            def _flush_responses(deadline: float):
+                """Drain epoll responses until deadline."""
+                while time.time() < deadline:
+                    events = ep.poll(timeout=0.01)
+                    if not events:
+                        break
+                    for fd, _ in events:
+                        if fd != recv_sock.fileno():
+                            continue
+                        try:
+                            data, addr = recv_sock.recvfrom(65535)
+                            result = _parse_tcp_response(
+                                data, self._dst_ip, port_map, self.ipv6)
+                            if result:
+                                dport, state = result
+                                if dport not in responded:
+                                    responded.add(dport)
+                                    sport = src_ports.get(dport, 0)
+                                    if state == "open":
+                                        self._open.append(dport)
+                                        # Send RST immediately
+                                        try:
+                                            # Extract ack from packet
+                                            if not self.ipv6:
+                                                ihl = (data[0] & 0x0F) * 4
+                                                tcp = data[ihl:]
+                                            else:
+                                                tcp = data
+                                            ack_seq = struct.unpack("!L", tcp[8:12])[0]
+                                            self._rst(send_sock, self._dst_ip, dport, sport, ack_seq)
+                                        except Exception:
+                                            pass
+                                    else:
+                                        self._closed.append(dport)
+                        except BlockingIOError:
+                            break
+                        except Exception:
+                            break
 
-            # Flush responses + rate control
-            _flush_responses(time.time() + interval * 0.5)
-            time.sleep(max(0, interval - 0.001))
+            # Rate control
+            interval = 1.0 / min(tmpl.max_rate, 10000)
 
-            # Scan delay (T0/T1 only)
-            if tmpl.scan_delay > 0.1 and i % 10 == 0:
-                time.sleep(tmpl.scan_delay)
+            # Send loop
+            used_sports: Set[int] = set()
+            for i, port in enumerate(scan_ports):
+                while True:
+                    sport = random.randint(32768, 60999)
+                    if sport not in used_sports:
+                        used_sports.add(sport)
+                        break
+                    if len(used_sports) >= 28230:
+                        used_sports.clear()
+                port_map[sport] = port
+                src_ports[port] = sport
 
-        self._progress()
-
-        # Wait for stragglers
-        straggler_deadline = time.time() + tmpl.timeout
-        print(f"\n\033[38;5;240m[+] Probes sent — waiting {tmpl.timeout:.1f}s for responses...\033[0m")
-        _flush_responses(straggler_deadline)
-
-        # Retransmit non-responded ports
-        if tmpl.retries > 0:
-            retry_ports = [p for p in scan_ports if p not in responded]
-            if retry_ports and self.verbose:
-                print(f"\033[38;5;240m[+] Retrying {len(retry_ports)} ports...\033[0m")
-            for port in retry_ports:
-                sport = src_ports.get(port, random.randint(32768, 60999))
+                # Build + send SYN
                 try:
-                    pkt = _build_ipv4_syn(
-                        self._src_ip, self._dst_ip, sport, port,
-                        seq=random.randint(0, 2**32-1), ttl=self.ttl)
-                    send_sock.sendto(pkt, (self._dst_ip, 0))
-                except Exception:
-                    pass
-            _flush_responses(time.time() + tmpl.timeout * 0.5)
+                    if self.ipv6:
+                        pkt = _build_ipv6_syn(self._src_ip, self._dst_ip, sport, port,
+                                              seq=random.randint(0, 2**32-1))
+                        send_sock.sendto(pkt, (self._dst_ip, port, 0, 0))
+                    else:
+                        pkt = _build_ipv4_syn(
+                            self._src_ip, self._dst_ip, sport, port,
+                            seq=random.randint(0, 2**32-1),
+                            ttl=self.ttl, fragment=self.fragment)
+                        send_sock.sendto(pkt, (self._dst_ip, 0))
 
-        ep.close()
-        send_sock.close()
-        recv_sock.close()
+                    # Send decoys
+                    if decoy_ips:
+                        _send_decoys(send_sock, self._dst_ip, port, sport,
+                                     decoy_ips, self.ttl)
+
+                    outstanding[port] = time.time()
+                except Exception as e:
+                    if self.verbose:
+                        print(f"\n  [!] send {port}: {e}")
+
+                self._sent += 1
+                if not self.verbose and self._sent % 50 == 0:
+                    self._progress()
+
+                # Flush responses + rate control
+                _flush_responses(time.time() + interval * 0.5)
+                time.sleep(max(0, interval - 0.001))
+
+                # Scan delay (T0/T1 only)
+                if tmpl.scan_delay > 0.1 and i % 10 == 0:
+                    time.sleep(tmpl.scan_delay)
+
+            self._progress()
+
+            # Wait for stragglers
+            straggler_deadline = time.time() + tmpl.timeout
+            print(f"\n\033[38;5;240m[+] Probes sent — waiting {tmpl.timeout:.1f}s for responses...\033[0m")
+            _flush_responses(straggler_deadline)
+
+            # Retransmit non-responded ports
+            if tmpl.retries > 0:
+                retry_ports = [p for p in scan_ports if p not in responded]
+                if retry_ports and self.verbose:
+                    print(f"\033[38;5;240m[+] Retrying {len(retry_ports)} ports...\033[0m")
+                for port in retry_ports:
+                    sport = src_ports.get(port, random.randint(32768, 60999))
+                    try:
+                        pkt = _build_ipv4_syn(
+                            self._src_ip, self._dst_ip, sport, port,
+                            seq=random.randint(0, 2**32-1), ttl=self.ttl)
+                        send_sock.sendto(pkt, (self._dst_ip, 0))
+                    except Exception:
+                        pass
+                _flush_responses(time.time() + tmpl.timeout * 0.5)
+        finally:
+            if ep:
+                try: ep.close()
+                except Exception: pass
+            if send_sock:
+                try: send_sock.close()
+                except Exception: pass
+            if recv_sock:
+                try: recv_sock.close()
+                except Exception: pass
 
         # Classify non-responded as filtered
         for port in scan_ports:
