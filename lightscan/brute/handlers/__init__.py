@@ -17,7 +17,7 @@ from typing import Callable
 
 def _wrap(fn) -> Callable:
     async def wrapper(user, passwd):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, fn, user, passwd)
     return wrapper
 
@@ -48,7 +48,7 @@ def make_ssh_handler(host, port=22, timeout=8.0, **kw):
                         c.close()
                     except Exception:
                         pass
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, _try)
         return handler
     except ImportError:
@@ -464,7 +464,7 @@ def make_smb_handler(host, port=445, timeout=8.0, domain='', **kw):
                         return True, "SUCCESS"
                     except Exception as e:
                         return False, str(e).lower()
-                return await _a.get_event_loop().run_in_executor(None, _imp)
+                return await asyncio.get_running_loop().run_in_executor(None, _imp)
             except ImportError: pass
         return ok, msg
     return handler
@@ -494,7 +494,7 @@ def make_ldap_handler(host, port=389, base_dn="", timeout=8.0, **kw):
                     return False, str(conn.result)
                 except Exception as e:
                     return False, str(e)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, _try)
         return handler
     except ImportError:

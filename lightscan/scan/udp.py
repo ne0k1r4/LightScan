@@ -361,5 +361,5 @@ def udp_scan(target: str, ports: List[int], timeout: float = 2.0,
 async def async_udp_scan(target: str, ports: List[int], timeout: float = 2.0,
                          threads: int = 50, verbose: bool = False) -> List[ScanResult]:
     """Async wrapper — runs UDP scan in executor so it doesn't block the event loop."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, udp_scan, target, ports, timeout, threads, verbose)

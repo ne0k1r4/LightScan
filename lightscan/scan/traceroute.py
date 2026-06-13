@@ -51,7 +51,7 @@ async def tcp_traceroute(target, port=80, max_hops=30, timeout=2.0, resolve=True
                 hop_ip = addr[0]
                 rtt = (time.time() - t0) * 1000
                 if resolve:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     try:
                         hop_host = await loop.run_in_executor(
                             None, lambda ip: socket.gethostbyaddr(ip)[0], hop_ip

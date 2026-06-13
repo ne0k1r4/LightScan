@@ -423,7 +423,7 @@ async def _probe_root(target: str, dst_ip: str, port: int,
             except Exception:
                 pass
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     fp = await loop.run_in_executor(None, _do_probe)
     if not fp:
         return []

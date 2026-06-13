@@ -316,7 +316,7 @@ def make_smb_raw_handler(host: str, port: int = 445, timeout: float = 8.0,
     import asyncio
 
     async def handler(user: str, passwd: str) -> tuple[bool, str]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         def _try():
             h = RawSMBHandler(host, port, timeout)
             return h.authenticate(user, passwd, domain)

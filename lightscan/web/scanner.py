@@ -3831,7 +3831,7 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
                         'creds','jwt','files','secrets']
             None = run all
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _run():
         ws = WebScanner(url, timeout=timeout, threads=threads)

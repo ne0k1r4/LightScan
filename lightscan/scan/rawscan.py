@@ -610,7 +610,7 @@ async def async_raw_scan(
         results = await asyncio.gather(*[_one(p) for p in ports])
         return [r for r in results if r]
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     scanner = RawAsyncScanner(
         target, ports, timing, ttl, decoys, fragment,
         randomize, grab_banner, verbose, ipv6)

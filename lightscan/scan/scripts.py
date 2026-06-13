@@ -177,7 +177,7 @@ SECURITY_HEADERS = [
 async def run(host, port, timeout=8.0):
     scheme = "https" if port in (443, 8443) else "http"
     url    = f"{scheme}://{host}:{port}/"
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
     def _fetch():
         try:
             ctx = ssl.create_default_context()
@@ -225,7 +225,7 @@ DANGEROUS = {"PUT", "DELETE", "TRACE", "CONNECT", "PATCH"}
 
 async def run(host, port, timeout=8.0):
     scheme = "https" if port in (443, 8443) else "http"
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
     allowed = []
     def _try(method):
         import urllib.request, urllib.error
@@ -266,7 +266,7 @@ SCRIPT_TAGS  = ["tls", "ssl", "safe", "discovery"]
 from lightscan.core.engine import ScanResult, Severity
 
 async def run(host, port, timeout=8.0):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _get_cert():
         try:
             ctx = ssl.create_default_context()
@@ -323,7 +323,7 @@ from lightscan.core.engine import ScanResult, Severity
 WEAK_ALGOS = ["arcfour","blowfish","cast128","3des","des","md5","sha1","diffie-hellman-group1","diffie-hellman-group-exchange-sha1"]
 
 async def run(host, port, timeout=8.0):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _get_kex():
         import struct, socket
         try:
@@ -432,7 +432,7 @@ def _build_dns_query(name):
     return hdr + qname + b"\\x00" + struct.pack("!HH", 1, 1)
 
 async def run(host, port, timeout=8.0):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _test():
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -471,7 +471,7 @@ WEAK_CIPHERS = [
 WEAK_PROTOCOLS = ["SSLv2", "SSLv3", "TLSv1", "TLSv1.1"]
 
 async def run(host, port, timeout=8.0):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     results = []
 
     def _check():
@@ -520,7 +520,7 @@ from lightscan.core.engine import ScanResult, Severity
 
 async def run(host, port, timeout=8.0):
     scheme = "https" if port in (443, 8443) else "http"
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
 
     def _probe(path="/"):
         try:
@@ -575,7 +575,7 @@ SCRIPT_TAGS  = ["ftp", "safe", "auth", "discovery"]
 from lightscan.core.engine import ScanResult, Severity
 
 async def run(host, port, timeout=8.0):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _test():
         results = []
@@ -621,7 +621,7 @@ SCRIPT_TAGS  = ["smb", "windows", "safe", "discovery"]
 from lightscan.core.engine import ScanResult, Severity
 
 async def run(host, port, timeout=8.0):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _check():
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -671,7 +671,7 @@ from lightscan.core.engine import ScanResult, Severity
 
 async def run(host, port, timeout=8.0):
     scheme = "https" if port in (443, 8443) else "http"
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
 
     def _test():
         try:
@@ -752,7 +752,7 @@ TECH_SIGS = {
 
 async def run(host, port, timeout=8.0):
     scheme = "https" if port in (443, 8443) else "http"
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
 
     def _detect():
         try:
