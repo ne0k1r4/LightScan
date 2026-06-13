@@ -351,7 +351,7 @@ def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
                     if 'locked' in msg:      return False, 'ACCOUNT_LOCKED'
                     if 'logon_failure' in msg or 'wrong' in msg: return False, 'auth_failed'
                     return False, str(e)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, _try)
 
         return impacket_handler
@@ -364,7 +364,7 @@ def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
         def _try():
             auth = RawSMBAuth(host, port, timeout)
             return auth.authenticate(user, passwd, domain)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _try)
 
     return raw_handler

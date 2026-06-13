@@ -546,7 +546,7 @@ def make_rdp_handler(host: str, port: int = 3389, timeout: float = 10.0,
     for use with BruteEngine.
     """
     async def handler(user: str, passwd: str) -> tuple[bool, str]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         def _try():
             h = RawRDPHandler(host, port, timeout)
             return h.authenticate(user, passwd, domain)

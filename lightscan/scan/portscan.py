@@ -93,7 +93,7 @@ async def udp_scan(host, port, timeout=2.0):
         123: b"\x1b" + b"\x00" * 47,
     }
     probe = UDP_PROBES.get(port, b"\x00" * 8)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     class P(asyncio.DatagramProtocol):
         def __init__(self):

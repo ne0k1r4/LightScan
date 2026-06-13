@@ -65,7 +65,7 @@ LOG4SHELL_PAYLOADS = [
 async def check_log4shell(host, port=80, path="/", timeout=8.0, callback="127.0.0.1:1389"):
     scheme = "https" if port in (443,8443) else "http"
     url    = f"{scheme}://{host}:{port}{path}"
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
 
     for header in LOG4SHELL_HEADERS[:4]:
         payload = LOG4SHELL_PAYLOADS[0].replace("{{cb}}", callback)
@@ -94,7 +94,7 @@ S4S_PAYLOAD = ("class.module.classLoader.resources.context.parent.pipeline"
 
 async def check_spring4shell(host, port=8080, timeout=8.0):
     scheme = "https" if port in (443,8443) else "http"
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
     for path in ("/","/?class.module.classLoader","/login","/api/users"):
         url = f"{scheme}://{host}:{port}{path}"
         try:
@@ -165,7 +165,7 @@ async def check_shellshock(host, port=80, timeout=8.0):
     scheme = "https" if port in (443,8443) else "http"
     paths  = ["/cgi-bin/test.cgi","/cgi-bin/status","/cgi-bin/env.cgi",
               "/cgi-sys/entropybanner.cgi","/cgi-bin/bash","/cgi-bin/php"]
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
     for path in paths:
         url = f"{scheme}://{host}:{port}{path}"
         try:
@@ -229,7 +229,7 @@ async def check_mongo_unauth(host, port=27017, timeout=5.0):
 
 # ─── Elasticsearch Unauth ─────────────────────────────────────────────────────
 async def check_elastic_unauth(host, port=9200, timeout=5.0):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _try():
         try:
             req = urllib.request.Request(f"http://{host}:{port}/", headers={"User-Agent":"LightScan/2.0"})

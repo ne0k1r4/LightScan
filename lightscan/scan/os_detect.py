@@ -385,7 +385,7 @@ async def os_probe_async(target: str, open_port: int,
                          synack_feat: TCPFeatures | None = None) -> list[ScanResult]:
     """Async wrapper — runs active T2-T7 probes in thread pool."""
     import asyncio
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     eng  = active_engine()
     matches = await loop.run_in_executor(
         None, eng.detect, target, open_port, synack_feat, closed_port)

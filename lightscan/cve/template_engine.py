@@ -204,7 +204,7 @@ class TemplateRunner:
 
     async def _run_http(self, tpl: Template, host: str, port: int) -> ScanResult | None:
         scheme = "https" if tpl.protocol == "https" or port in (443,8443) else "http"
-        loop   = asyncio.get_event_loop()
+        loop   = asyncio.get_running_loop()
         matched    = False
         extracted: dict = {}
         last_status = 0

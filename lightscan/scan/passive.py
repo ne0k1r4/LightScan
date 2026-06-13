@@ -182,7 +182,7 @@ async def collect_http_fingerprint(host: str, port: int,
     """Collect HTTP headers passively."""
     import urllib.request, urllib.error
     scheme = "https" if port in (443, 8443, 9443) else "http"
-    loop   = asyncio.get_event_loop()
+    loop   = asyncio.get_running_loop()
     def _fetch():
         try:
             ctx = None

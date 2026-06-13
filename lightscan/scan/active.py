@@ -64,7 +64,7 @@ async def _icmp_ping(host: str, timeout: float = 1.5) -> Optional[tuple]:
         hdr   = struct.pack("!BBHHH", 8, 0, 0, ident, seq)
         chk   = _icmp_checksum(hdr + pay)
         pkt   = struct.pack("!BBHHH", 8, 0, chk, ident, seq) + pay
-        loop  = asyncio.get_event_loop()
+        loop  = asyncio.get_running_loop()
         t0    = time.monotonic()
         await loop.run_in_executor(None, lambda: sock.sendto(pkt, (dst, 0)))
 
@@ -117,7 +117,7 @@ async def _arp_check(host: str) -> Optional[tuple]:
     try:
         if not ipaddress.ip_address(host).is_private:
             return None
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         def _read():
             try:
                 with open("/proc/net/arp") as f:
@@ -334,7 +334,7 @@ async def _check_telnet(host, port, timeout) -> Optional[ScanResult]:
 async def _check_http_exposures(host, port, timeout) -> List[ScanResult]:
     results   = []
     scheme    = "https" if port in (443, 8443, 9443) else "http"
-    loop      = asyncio.get_event_loop()
+    loop      = asyncio.get_running_loop()
     ctx       = None
     if scheme == "https":
         ctx = ssl.create_default_context()

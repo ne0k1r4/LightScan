@@ -106,7 +106,7 @@ def _stage(n: int, name: str):
 
 
 async def _resolve(host: str) -> Optional[str]:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         return await loop.run_in_executor(None, socket.gethostbyname, host)
     except Exception:
@@ -116,7 +116,7 @@ async def _resolve(host: str) -> Optional[str]:
 async def _crtsh(domain: str) -> List[str]:
     """Pull subdomains from crt.sh CT logs."""
     import urllib.request as ur
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _fetch():
         try:
             url = f"https://crt.sh/?q=%25.{domain}&output=json"
