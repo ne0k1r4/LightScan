@@ -11,22 +11,21 @@ Usage:
   lightscan --diff old.json new.json
 """
 from __future__ import annotations
-import argparse, asyncio, sys, time
+import argparse
+import asyncio
+import sys
+import time
 
+# only truly core imports at top level — everything else is lazy-loaded inside
+# the relevant branch. this way a missing optional dep (scapy, paramiko, etc.)
+# doesn't crash the CLI before it even prints the banner or --help.
 from lightscan.banner import print_banner
 from lightscan.core.engine import PhantomEngine, ScanResult, Severity
 from lightscan.core.target import parse_targets, parse_ports
 from lightscan.core.checkpoint import Checkpoint
 from lightscan.core.reporter import Reporter
-from lightscan.scan.portscan import build_scan_tasks
-from lightscan.scan.dns import full_dns_enum
-from lightscan.scan.traceroute import tcp_traceroute
-from lightscan.scan.diff import diff_scans
-from lightscan.brute.engine import BruteEngine, CredentialSpray
-from lightscan.brute.mutation import MutationEngine, COMMON_PASSWORDS
-from lightscan.brute.handlers import get_handler, PROTOCOLS
-from lightscan.cve.checker import CVEChecker
-from lightscan.cve.oauth import OAuthScanner
+from lightscan.i18n import t, set_lang
+from lightscan.scan.evasion import parse_timing  # used in multiple branches
 
 
 def build_parser():
@@ -114,7 +113,12 @@ def build_parser():
 
     # Brute force
     bf = p.add_argument_group("Brute Force")
-    bf.add_argument("--brute",       metavar="PROTO", help=f"Protocol: {', '.join(PROTOCOLS)}")
+    try:
+        from lightscan.brute.handlers import PROTOCOLS as _P
+        _proto_list = ', '.join(sorted(_P))
+    except Exception:
+        _proto_list = "ssh ftp smb rdp http mysql mssql redis mongo"
+    bf.add_argument("--brute",       metavar="PROTO", help=f"Protocol: {_proto_list}")
     bf.add_argument("--brute-port",  type=int,        help="Override brute port")
     bf.add_argument("-U","--users",  help="Users: admin,root | file:users.txt")
     bf.add_argument("-W","--wordlist",help="Passwords: file:path | 'common' | word1,word2")
@@ -145,12 +149,15 @@ def build_parser():
 
     # Output
     out = p.add_argument_group("Output")
+    out.add_argument("--lang",            default="", metavar="LANG",
+                     help="Output language: en zh ru ar es (auto-detected from $LANG)")
     out.add_argument("-o","--output",     default=".", help="Output directory (default: .)")
     out.add_argument("--basename",        default="lightscan_report")
     out.add_argument("--no-report",       action="store_true", help="Skip file reports")
     out.add_argument("--resume",          action="store_true", help="Resume from checkpoint")
     out.add_argument("--clear-checkpoint",action="store_true", help="Clear checkpoint and start fresh")
     out.add_argument("-v","--verbose",    action="store_true", help="Verbose output")
+    out.add_argument("--no-banner",       action="store_true", help="Suppress banner (useful with --format json or scripted use)")
     return p
 
 
@@ -162,6 +169,7 @@ def parse_userlist(spec):
     return [u.strip() for u in spec.split(",")]
 
 def parse_passwdlist(spec, users=None, target_info=None, mutate=False):
+    from lightscan.brute.mutation import MutationEngine, COMMON_PASSWORDS
     if not spec: return list(COMMON_PASSWORDS)
     if spec.lower()=="common": base=list(COMMON_PASSWORDS)
     elif spec.startswith("file:"): base=MutationEngine.load_wordlist(spec[5:])
@@ -175,7 +183,58 @@ def parse_passwdlist(spec, users=None, target_info=None, mutate=False):
 
 
 async def async_main(args):
-    print_banner()
+    # ── flag conflict validation ─────────────────────────────────────────────
+    # catch obvious mistakes before we get deep into the scan and fail weirdly
+    scan_modes = [
+        args.scan,
+        args.syn,
+        getattr(args, 'syn_c', False),
+        getattr(args, 'raw', False),
+        getattr(args, 'packet_scan', False),
+        getattr(args, 'stealth_scan', False),
+    ]
+    if sum(bool(m) for m in scan_modes) > 1:
+        print("\033[38;5;208m[!] Multiple scan modes active — pick one: "
+              "--scan / --syn / --raw / --packet-scan / --stealth-scan\033[0m")
+        sys.exit(1)
+
+    if (args.syn or getattr(args, 'raw', False) or
+            getattr(args, 'packet_scan', False) or
+            getattr(args, 'stealth_scan', False)):
+        try:
+            import os as _os
+            if _os.geteuid() != 0:
+                print("\033[38;5;208m[!] Raw/SYN scans require root. "
+                      "Re-run with sudo or use --scan for connect-scan.\033[0m")
+                sys.exit(1)
+        except AttributeError:
+            pass  # windows — let it fail naturally
+
+    if getattr(args, 'brute', None) and not args.target:
+        print("\033[38;5;208m[!] --brute requires -t / --target\033[0m")
+        sys.exit(1)
+
+    if getattr(args, 'brute', None):
+        from lightscan.brute.handlers import PROTOCOLS
+        proto = args.brute.lower()
+        if proto not in PROTOCOLS:
+            print(f"\033[38;5;208m[!] Unknown brute protocol: {proto!r}\033[0m")
+            print(f"    Available: {', '.join(sorted(PROTOCOLS))}\033[0m")
+            sys.exit(1)
+
+    timing_raw = getattr(args, 'timing', 'T4')
+    try:
+        parse_timing(timing_raw)
+    except (ValueError, KeyError):
+        print(f"\033[38;5;208m[!] Invalid timing: {timing_raw!r} — use T0..T5\033[0m")
+        sys.exit(1)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    if not getattr(args, 'no_banner', False):
+        print_banner()
+    # Apply language setting before any output
+    if getattr(args, 'lang', ''):
+        set_lang(args.lang)
     t_start=time.time(); all_results=[]; open_ports={}
     # Build target string — prefer --target, fall back to --web-scan URL
     _target = args.target or getattr(args, 'web_scan', None) or ""
@@ -215,7 +274,6 @@ async def async_main(args):
     # ── Active red-team scan (--active -t target) ─────────────────────────────
     if getattr(args, 'active', False) and args.target:
         from lightscan.scan.active import active_scan
-        from lightscan.core.target import parse_targets
         hosts     = parse_targets(args.target)
         intensity = getattr(args, 'intensity', 3)
         scope     = getattr(args, 'scope', None) or []
@@ -252,6 +310,7 @@ async def async_main(args):
 
     # ── Diff
     if args.diff:
+        from lightscan.scan.diff import diff_scans
         old_f,new_f=args.diff
         results,summary=diff_scans(old_f,new_f)
         print(f"\033[38;5;196m[DIFF]\033[0m {summary}")
@@ -259,6 +318,7 @@ async def async_main(args):
 
     # ── DNS
     if args.dns:
+        from lightscan.scan.dns import full_dns_enum
         r=await full_dns_enum(args.dns,axfr=not args.no_axfr,
             brute=not args.no_brute_dns,use_crtsh=not args.no_crtsh)
         all_results.extend(r)
@@ -337,6 +397,7 @@ async def async_main(args):
 
     # ── Traceroute
     if args.traceroute:
+        from lightscan.scan.traceroute import tcp_traceroute
         tr=await tcp_traceroute(args.traceroute,timeout=args.timeout)
         for hop in tr: print(f"  {hop.detail}")
         all_results.extend(tr)
@@ -378,7 +439,6 @@ async def async_main(args):
     # ── Raw async SYN scan (epoll, nmap speed)
     if getattr(args, 'raw', False) and args.target:
         from lightscan.scan.rawscan import async_raw_scan
-        from lightscan.scan.evasion import parse_timing
         hosts  = parse_targets(args.target)
         ports  = parse_ports(args.ports)
         timing = parse_timing(getattr(args, 'timing', 'T4'))
@@ -434,7 +494,6 @@ async def async_main(args):
     _do_packet = getattr(args, 'packet_scan', False) or getattr(args, 'stealth_scan', False)
     if _do_packet and args.target:
         from lightscan.scan.packetscan import async_packet_scan
-        from lightscan.scan.evasion import parse_timing
         hosts       = parse_targets(args.target)
         ports       = parse_ports(args.ports)
         timing      = parse_timing(getattr(args, 'timing', 'T4'))
@@ -509,15 +568,22 @@ async def async_main(args):
     # ── Port Scan
     if args.scan and args.target:
         hosts=parse_targets(args.target); ports=parse_ports(args.ports)
-        print(f"\033[38;5;196m[SCAN]\033[0m Scanning {len(hosts)} host(s) × {len(ports)} port(s) | concurrency={args.concurrency}")
-        engine=PhantomEngine(concurrency=args.concurrency,timeout=args.timeout,verbose=args.verbose)
+        print(f"\033[38;5;196m[SCAN]\033[0m {t('scan.start', n=len(hosts), p=len(ports), c=args.concurrency)}")
+        engine=PhantomEngine(
+            concurrency=args.concurrency,
+            timeout=args.timeout,
+            verbose=args.verbose,
+            adaptive=getattr(args, 'adaptive', False),
+            timing=parse_timing(getattr(args, 'timing', 'T4')),
+        )
+        from lightscan.scan.portscan import build_scan_tasks
         tasks=build_scan_tasks(hosts,ports,args.timeout,args.udp)
         scan_r=await engine.run(tasks)
         all_results.extend(scan_r)
         for r in scan_r:
             if r and r.status=="open":
                 open_ports.setdefault(r.target,[]).append(r.port)
-                print(f"  \033[38;5;196mOPEN  {r.target}:{r.port:<6} {r.detail}\033[0m")
+                print(f"  \033[38;5;196m{t('scan.open', host=r.target, port=r.port, detail=r.detail)}\033[0m")
 
     # ── List templates
     if getattr(args, 'list_templates', False):
@@ -527,10 +593,10 @@ async def async_main(args):
         if getattr(args, 'template_dir', None): dirs.append(args.template_dir)
         lib = TemplateLibrary(dirs)
         print(f"\033[38;5;196m[TEMPLATES]\033[0m {lib.summary()}")
-        for t in sorted(lib, key=lambda x: (x.severity.value, x.id)):
-            cve = f" {t.cve}" if t.cve else ""
-            tags = ",".join(t.tags[:4])
-            print(f"  {t.severity.value:<8} {t.id:<35}{cve:<22} [{tags}]  port={t.port}")
+        for tmpl in sorted(lib, key=lambda x: (x.severity.value, x.id)):
+            cve = f" {tmpl.cve}" if tmpl.cve else ""
+            tags = ",".join(tmpl.tags[:4])
+            print(f"  {tmpl.severity.value:<8} {tmpl.id:<35}{cve:<22} [{tags}]  port={tmpl.port}")
         return all_results
 
     # ── CVE + Templates
@@ -571,6 +637,8 @@ async def async_main(args):
 
     # ── Brute
     if args.brute and args.target:
+        from lightscan.brute.engine import BruteEngine, CredentialSpray
+        from lightscan.brute.handlers import get_handler, PROTOCOLS
         proto=args.brute.lower(); hosts=parse_targets(args.target)
         users=parse_userlist(args.users)
         target_info={"domain":args.target if "." in args.target else ""}
@@ -610,7 +678,7 @@ async def async_main(args):
     high=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="HIGH")
     print()
     print(f"\033[38;5;196m{'─'*65}\033[0m")
-    print(f"\033[38;5;196m[DONE]\033[0m {len(all_results)} findings  |  {crit} CRITICAL  |  {high} HIGH  |  {elapsed:.1f}s")
+    print(f"\033[38;5;196m[DONE]\033[0m {t('scan.done', n=len(all_results), crit=crit, high=high, elapsed=elapsed)}")
     print(f"\033[38;5;196m{'─'*65}\033[0m")
 
     if not args.no_report and all_results:
@@ -619,70 +687,107 @@ async def async_main(args):
     return all_results
 
 
-def print_minimal_help():
-    print_banner()
-    help_text = """\033[1mUsage:\033[0m
-  lightscan -t <target> [options]
-  lightscan --auto <domain> [options]
+def print_minimal_help() -> None:
+    """Print a readable --help page derived from the real parser.
 
-\033[1mCore Options:\033[0m
-  -t, --target TARGET     IP / CIDR / range / hostname / file:path.txt
-  -p, --ports PORTS       Ports to probe (e.g. 22,80,443 · 1-1024 · top100)
-  --auto DOMAIN           Autonomous engagement: domain -> recon -> exploit -> pivot map
-  --active                Active red-team scanning mode (host discovery + service probing)
+    This replaces the old hand-written help block that inevitably drifted.
+    Groups come from the parser's argument groups so new flags show up
+    automatically. The examples section is the only manually maintained part.
+    """
+    p = build_parser()
+    DIM   = "\033[38;5;240m"
+    RED   = "\033[38;5;196m"
+    BOLD  = "\033[1m"
+    RESET = "\033[0m"
 
-\033[1mModules:\033[0m
-  --scan                  Run standard port scan
-  --dns DOMAIN            DNS enum on target DOMAIN
-  --web-scan URL          OWASP web application security scanner
-  --brute PROTO           Protocol credential audit (ssh, ftp, smb, rdp, etc.)
-  --cve                   Vulnerability audit (CVE checks + templates)
-  --traceroute HOST       TCP traceroute to HOST
+    print(f"{BOLD}Usage:{RESET}")
+    print(f"  lightscan -t <target> [options]")
+    print(f"  lightscan --auto <domain>\n")
 
-\033[1mEvasion & Tuning:\033[0m
-  --stealth               Enable stealth: timing templates, jitter, and lower concurrency
-  -T T0-T5                Timing templates: T0 (paranoid) to T5 (insane)
-  --proxy-file FILE       File containing SOCKS5 proxies (socks5://host:port per line)
+    # Print each argument group with coloured header
+    skip_groups = {"positional arguments", "options"}
+    for group in p._action_groups:
+        if group.title in skip_groups:
+            continue
+        if not group._group_actions:
+            continue
+        print(f"{RED}{BOLD}{group.title}{RESET}")
+        for action in group._group_actions:
+            # build the flag string
+            if not action.option_strings:
+                continue
+            flags = ", ".join(action.option_strings)
+            metavar = ""
+            if action.metavar:
+                metavar = f" {action.metavar}"
+            elif action.type and action.type != bool:
+                metavar = f" <{action.dest.upper()}>"
+            default = ""
+            if action.default not in (None, False, True, "==SUPPRESS=="):
+                default = f"{DIM} [default: {action.default}]{RESET}"
+            helpstr = action.help or ""
+            print(f"  {RED}{flags}{metavar}{RESET}  {helpstr}{default}")
+        print()
 
-\033[1mHelp & Output:\033[0m
-  -h, --help              Show this minimal help menu
-  -o, --output DIR        Output directory (default: .)
-  -v, --verbose           Enable verbose output logging
-
-\033[1mModule Usage Examples:\033[0m
-  # Fully autonomous recon, scan, vulnerability check, and pivot mapping
-  lightscan --auto target.com
-
-  # Stealth active red-team scan on a subnet
-  lightscan --active -t 192.168.1.0/24 --stealth
-
-  # Fast TCP port scan with service version and CVE validation
-  lightscan --scan -t 10.0.0.1 -p top100 --sv --cve
-
-  # OWASP web vulnerability scanner
-  lightscan --web-scan http://target.local
-
-  # Credential audit on SSH using smart mutation
-  lightscan --brute ssh -t 10.0.0.1 -U admin,root -W common --mutate
-"""
-    print(help_text)
+    print(f"{BOLD}Examples:{RESET}")
+    examples = [
+        ("Autonomous recon + exploit + pivot map",
+         "lightscan --auto target.com"),
+        ("Stealth active scan on subnet",
+         "lightscan --active -t 192.168.1.0/24 --stealth -T T1"),
+        ("Fast TCP scan + service version + CVE check",
+         "lightscan --scan -t 10.0.0.1 -p top100 --sv --cve"),
+        ("AF_PACKET half-open SYN (root required)",
+         "lightscan --packet-scan -t 10.0.0.1 -p 1-1024"),
+        ("Web application scan",
+         "lightscan --web-scan http://target.local"),
+        ("SSH credential audit with mutation",
+         "lightscan --brute ssh -t 10.0.0.1 -U admin,root -W common --mutate"),
+        ("DNS full enum including AXFR",
+         "lightscan --dns target.com"),
+        ("Resume interrupted brute from checkpoint",
+         "lightscan --brute ftp -t 10.0.0.1 -U admin -W rockyou.txt --resume"),
+        ("Diff two scan JSONs",
+         "lightscan --diff before.json after.json"),
+    ]
+    for desc, cmd in examples:
+        print(f"  {DIM}# {desc}{RESET}")
+        print(f"  {RED}{cmd}{RESET}\n")
 
 
 def main():
+    # no-arg invocation — short usage hint, not full --help wall
     if len(sys.argv) == 1:
         print_banner()
-        print("Usage: lightscan -t <target> [options] or lightscan --auto <domain>")
-        print("To view available options, run: \033[38;5;196mlightscan -h\033[0m\n")
+        print("  Usage: lightscan -t <target> [options]")
+        print("         lightscan --auto <domain>")
+        print(f"\n  \033[38;5;196mlightscan -h\033[0m  for full help\n")
         sys.exit(0)
 
+    # intercept -h/--help before argparse so we control the format
     if "-h" in sys.argv or "--help" in sys.argv:
+        no_banner = "--no-banner" in sys.argv
+        if not no_banner:
+            print_banner(no_quote=True)
         print_minimal_help()
         sys.exit(0)
 
-    p=build_parser()
-    args=p.parse_args()
-    try: asyncio.run(async_main(args))
-    except KeyboardInterrupt: print(f"\n\033[38;5;240m[!] Interrupted — checkpoint saved\033[0m")
+    p    = build_parser()
+    args = p.parse_args()
+
+    # asyncio.run() is fine on Linux/Mac; on Windows Python<3.12 the default
+    # ProactorEventLoop breaks some socket operations — set SelectorEventLoop.
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    try:
+        asyncio.run(async_main(args))
+    except KeyboardInterrupt:
+        print(f"\n\033[38;5;240m[!] {t('interrupted')}\033[0m")
+    except PermissionError as e:
+        print(f"\n\033[38;5;208m[!] Permission denied: {e}")
+        print("    Raw/packet scans require root. Try sudo or use --scan.\033[0m")
+        sys.exit(1)
 
 
 if __name__=="__main__": main()

@@ -507,146 +507,151 @@ class PacketScanner:
         tmpl  = self.tmpl
         t_idx = list(TIMING.values()).index(tmpl)
         t0    = time.time()
-
-        mode = "STEALTH" if self.stealth else "HALF-OPEN-SYN"
-        print(
-            f"\033[38;5;196m[PACKET]\033[0m {self._dst_ip} | "
-            f"{self._total} ports | T{t_idx} ({tmpl.name}) | {mode} | "
-            f"iface={iface} | src={self._src_ip}"
-            + (f" | sport-spoof={self.spoof_sport}" if self.spoof_sport else "")
-        )
-
-        def _eth(ip_pkt: bytes) -> bytes:
-            return (gw_mac + iface_mac + b"\x08\x00" + ip_pkt) if gw_mac is not None else ip_pkt
-
-        def _send(pkt: bytes):
-            if use_eth_send:
-                send_sock.send(pkt)
-            else:
-                send_sock.sendto(pkt, (self._dst_ip, 0))
-
-        def _send_rst(sport: int, dport: int, rst_seq: int):
-            try:
-                _send(_eth(_build_rst(self._src_ip, self._dst_ip, sport, dport, rst_seq)))
-            except Exception:
-                pass
-
-        def _flush_recv(deadline: float):
-            while time.time() < deadline:
-                evts = ep.poll(timeout=0.005)
-                if not evts:
-                    break
-                for fd, _ in evts:
-                    if fd != recv_sock.fileno():
-                        continue
-                    try:
-                        data, _ = recv_sock.recvfrom(65535)
-                        if use_af_packet:
-                            r = _parse_af_packet(data, self._dst_ip, port_map)
-                        else:
-                            # AF_INET fallback — build synthetic meta
-                            from lightscan.scan.rawscan import _parse_tcp_response
-                            from lightscan.scan.tcpflags import flags_str as _fstr
-                            raw = _parse_tcp_response(data, self._dst_ip, port_map)
-                            if raw:
-                                try:
-                                    ihl = (data[0] & 0x0F) * 4
-                                    tcp = data[ihl:]
-                                    ack_field = struct.unpack("!L", tcp[8:12])[0]
-                                    flg       = tcp[13]
-                                except Exception:
-                                    ack_field, flg = 0, 0
-                                r = (raw[0], raw[1], ack_field, {
-                                    'flags_str':   flags_str(flg),
-                                    'firewall_rst': False,
-                                    'icmp_reason': '',
-                                    'firewall':    False,
-                                })
-                            else:
-                                r = None
-
-                        if r:
-                            dport, state, rst_seq, meta = r
-                            if dport not in responded:
-                                responded.add(dport)
-                                sport = src_ports.get(dport, 0)
-                                self._meta[dport] = meta
-
-                                if state == 'open':
-                                    if sport:
-                                        _send_rst(sport, dport, rst_seq)
-                                    self._open.append(dport)
-                                elif state == 'closed':
-                                    self._closed.append(dport)
-                                elif state == 'firewall':
-                                    self._firewall.append(dport)
-                                else:
-                                    self._filtered.append(dport)
-                    except BlockingIOError:
-                        break
-                    except Exception:
-                        break
-
-        base_interval = 1.0 / min(tmpl.max_rate, 50000)
-
-        with _suppress_kernel_rst(self.SPORT_LO, self.SPORT_HI) as suppressed:
-            if self.verbose:
-                s = "kernel RSTs suppressed (iptables)" if suppressed else "iptables unavailable — kernel RSTs not suppressed"
-                print(f"\033[38;5;240m[~] {s}\033[0m")
-
-            for port in scan_order:
-                # Source port: fixed (spoof) or random
-                if self.spoof_sport:
-                    sport = self.spoof_sport
-                else:
-                    sport = random.randint(self.SPORT_LO, self.SPORT_HI)
-                    while sport in port_map:
-                        sport = random.randint(self.SPORT_LO, self.SPORT_HI)
-
-                port_map[sport]  = port
-                src_ports[port]  = sport
-
-                try:
-                    ip_pkt = _build_ipv4_syn(
-                        self._src_ip, self._dst_ip, sport, port,
-                        seq=random.randint(0, 2**32 - 1),
-                        ttl=self.ttl, fragment=self.fragment)
-                    _send(_eth(ip_pkt))
-                except Exception as e:
-                    if self.verbose:
-                        print(f"\n  [!] send {port}: {e}")
-
-                self._sent += 1
-                if self._sent % 100 == 0:
-                    self._progress()
-
-                interval = self._interval(base_interval)
-                _flush_recv(time.time() + interval * 0.3)
-                time.sleep(max(0.0, interval))
-
-            self._progress()
+        try:
+    
+            mode = "STEALTH" if self.stealth else "HALF-OPEN-SYN"
             print(
-                f"\n\033[38;5;240m[+] Sent {self._total} SYNs — "
-                f"waiting {tmpl.timeout:.1f}s for stragglers...\033[0m"
+                f"\033[38;5;196m[PACKET]\033[0m {self._dst_ip} | "
+                f"{self._total} ports | T{t_idx} ({tmpl.name}) | {mode} | "
+                f"iface={iface} | src={self._src_ip}"
+                + (f" | sport-spoof={self.spoof_sport}" if self.spoof_sport else "")
             )
-            _flush_recv(time.time() + tmpl.timeout)
-
-            if tmpl.retries > 0:
-                retry = [p for p in scan_order if p not in responded]
-                for port in retry:
-                    sport = src_ports.get(port, random.randint(self.SPORT_LO, self.SPORT_HI))
+    
+            def _eth(ip_pkt: bytes) -> bytes:
+                return (gw_mac + iface_mac + b"\x08\x00" + ip_pkt) if gw_mac is not None else ip_pkt
+    
+            def _send(pkt: bytes):
+                if use_eth_send:
+                    send_sock.send(pkt)
+                else:
+                    send_sock.sendto(pkt, (self._dst_ip, 0))
+    
+            def _send_rst(sport: int, dport: int, rst_seq: int):
+                try:
+                    _send(_eth(_build_rst(self._src_ip, self._dst_ip, sport, dport, rst_seq)))
+                except Exception:
+                    pass
+    
+            def _flush_recv(deadline: float):
+                while time.time() < deadline:
+                    evts = ep.poll(timeout=0.005)
+                    if not evts:
+                        break
+                    for fd, _ in evts:
+                        if fd != recv_sock.fileno():
+                            continue
+                        try:
+                            data, _ = recv_sock.recvfrom(65535)
+                            if use_af_packet:
+                                r = _parse_af_packet(data, self._dst_ip, port_map)
+                            else:
+                                # AF_INET fallback — build synthetic meta
+                                from lightscan.scan.rawscan import _parse_tcp_response
+                                from lightscan.scan.tcpflags import flags_str as _fstr
+                                raw = _parse_tcp_response(data, self._dst_ip, port_map)
+                                if raw:
+                                    try:
+                                        ihl = (data[0] & 0x0F) * 4
+                                        tcp = data[ihl:]
+                                        ack_field = struct.unpack("!L", tcp[8:12])[0]
+                                        flg       = tcp[13]
+                                    except Exception:
+                                        ack_field, flg = 0, 0
+                                    r = (raw[0], raw[1], ack_field, {
+                                        'flags_str':   flags_str(flg),
+                                        'firewall_rst': False,
+                                        'icmp_reason': '',
+                                        'firewall':    False,
+                                    })
+                                else:
+                                    r = None
+    
+                            if r:
+                                dport, state, rst_seq, meta = r
+                                if dport not in responded:
+                                    responded.add(dport)
+                                    sport = src_ports.get(dport, 0)
+                                    self._meta[dport] = meta
+    
+                                    if state == 'open':
+                                        if sport:
+                                            _send_rst(sport, dport, rst_seq)
+                                        self._open.append(dport)
+                                    elif state == 'closed':
+                                        self._closed.append(dport)
+                                    elif state == 'firewall':
+                                        self._firewall.append(dport)
+                                    else:
+                                        self._filtered.append(dport)
+                        except BlockingIOError:
+                            break
+                        except Exception:
+                            break
+    
+            base_interval = 1.0 / min(tmpl.max_rate, 50000)
+    
+            with _suppress_kernel_rst(self.SPORT_LO, self.SPORT_HI) as suppressed:
+                if self.verbose:
+                    s = "kernel RSTs suppressed (iptables)" if suppressed else "iptables unavailable — kernel RSTs not suppressed"
+                    print(f"\033[38;5;240m[~] {s}\033[0m")
+    
+                for port in scan_order:
+                    # Source port: fixed (spoof) or random
+                    if self.spoof_sport:
+                        sport = self.spoof_sport
+                    else:
+                        sport = random.randint(self.SPORT_LO, self.SPORT_HI)
+                        while sport in port_map:
+                            sport = random.randint(self.SPORT_LO, self.SPORT_HI)
+    
+                    port_map[sport]  = port
+                    src_ports[port]  = sport
+    
                     try:
                         ip_pkt = _build_ipv4_syn(
                             self._src_ip, self._dst_ip, sport, port,
-                            seq=random.randint(0, 2**32 - 1), ttl=self.ttl)
+                            seq=random.randint(0, 2**32 - 1),
+                            ttl=self.ttl, fragment=self.fragment)
                         _send(_eth(ip_pkt))
-                    except Exception:
-                        pass
-                _flush_recv(time.time() + tmpl.timeout * 0.5)
-
-        ep.close()
-        send_sock.close()
-        recv_sock.close()
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"\n  [!] send {port}: {e}")
+    
+                    self._sent += 1
+                    if self._sent % 100 == 0:
+                        self._progress()
+    
+                    interval = self._interval(base_interval)
+                    _flush_recv(time.time() + interval * 0.3)
+                    time.sleep(max(0.0, interval))
+    
+                self._progress()
+                print(
+                    f"\n\033[38;5;240m[+] Sent {self._total} SYNs — "
+                    f"waiting {tmpl.timeout:.1f}s for stragglers...\033[0m"
+                )
+                _flush_recv(time.time() + tmpl.timeout)
+    
+                if tmpl.retries > 0:
+                    retry = [p for p in scan_order if p not in responded]
+                    for port in retry:
+                        sport = src_ports.get(port, random.randint(self.SPORT_LO, self.SPORT_HI))
+                        try:
+                            ip_pkt = _build_ipv4_syn(
+                                self._src_ip, self._dst_ip, sport, port,
+                                seq=random.randint(0, 2**32 - 1), ttl=self.ttl)
+                            _send(_eth(ip_pkt))
+                        except Exception:
+                            pass
+                    _flush_recv(time.time() + tmpl.timeout * 0.5)
+    
+        finally:
+            try: ep.close()
+            except Exception: pass
+            try: send_sock.close()
+            except Exception: pass
+            try: recv_sock.close()
+            except Exception: pass
 
         for port in scan_order:
             if port not in responded:
@@ -733,7 +738,7 @@ async def async_packet_scan(
         from lightscan.scan.rawscan import async_raw_scan
         return await async_raw_scan(
             target, ports, timing, ttl, decoys, fragment, True, grab_banner, verbose)
-    loop    = asyncio.get_event_loop()
+    loop    = asyncio.get_running_loop()
     scanner = PacketScanner(
         target, ports, timing, ttl, decoys, fragment, True,
         grab_banner, verbose, iface, stealth, spoof_sport)

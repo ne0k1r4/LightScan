@@ -48,7 +48,7 @@ async def dns_query(host, qtype="A", ns="8.8.8.8", timeout=3.0):
             self.e.set()
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         t, p = await loop.create_datagram_endpoint(P, remote_addr=(ns, 53))
         t.sendto(_build_query(host, qt))
         await asyncio.wait_for(p.e.wait(), timeout=timeout)
@@ -172,19 +172,61 @@ async def full_dns_enum(domain, ns="8.8.8.8", axfr=True, brute=True, use_crtsh=T
                     pass
 
     if axfr and ns_ips:
+        # AXFR over TCP is length-prefixed: each DNS message is preceded by a
+        # 2-byte big-endian length field. A single read(65535) returns partial
+        # data on large zones and concatenated messages on fast servers.
+        # Correct approach: readexactly(2) → readexactly(n) per message,
+        # loop until SOA repeat (AXFR terminator) or connection closes.
+        async def _read_dns_tcp_msg(reader):
+            """Read one length-prefixed DNS message from a TCP stream."""
+            length_bytes = await asyncio.wait_for(reader.readexactly(2), timeout=5.0)
+            length = struct.unpack("!H", length_bytes)[0]
+            if length == 0:
+                return b""
+            return await asyncio.wait_for(reader.readexactly(length), timeout=8.0)
+
         for ns_ip in ns_ips[:3]:
+            writer = None
             try:
-                reader, writer = await asyncio.wait_for(asyncio.open_connection(ns_ip, 53), timeout=5.0)
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ns_ip, 53), timeout=5.0)
                 q = _build_query(domain, 252)
                 writer.write(struct.pack("!H", len(q)) + q)
                 await writer.drain()
-                raw = await asyncio.wait_for(reader.read(65535), timeout=8.0)
-                writer.close()
-                for m in re.finditer(r"[a-zA-Z0-9_\-]+\." + re.escape(domain), raw.decode("utf-8", "replace")):
-                    results.append(ScanResult("dns-axfr", domain, 53, "zone-transfer",
-                        Severity.CRITICAL, f"AXFR from {ns_ip}: {m.group()}"))
+
+                # Read all AXFR messages until connection closes or SOA seen twice
+                soa_count = 0
+                while True:
+                    try:
+                        msg = await _read_dns_tcp_msg(reader)
+                    except (asyncio.IncompleteReadError, asyncio.TimeoutError):
+                        break
+                    if not msg:
+                        break
+                    # Count SOA records (AXFR terminates on second SOA)
+                    # SOA type = 0x0006
+                    if len(msg) > 12 and struct.unpack("!H", msg[2:4])[0] > 0:
+                        # crude SOA scan — type field is in answer RRs at offset 12+
+                        if b"\x00\x06" in msg[12:]:
+                            soa_count += 1
+                    for m in re.finditer(
+                        r"[a-zA-Z0-9_\-]+\." + re.escape(domain),
+                        msg.decode("utf-8", "replace")
+                    ):
+                        sub = m.group()
+                        if not any(r.module == "dns-axfr" and sub in r.detail
+                                   for r in results):
+                            results.append(ScanResult(
+                                "dns-axfr", domain, 53, "zone-transfer",
+                                Severity.CRITICAL, f"AXFR from {ns_ip}: {sub}"))
+                    if soa_count >= 2:
+                        break
             except Exception:
                 pass
+            finally:
+                if writer:
+                    try: writer.close()
+                    except Exception: pass
 
     if use_crtsh:
         for sub in crtsh(domain):

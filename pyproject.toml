@@ -51,6 +51,9 @@ Issues = "https://github.com/ne0k1r4/LightScan/issues"
 [project.scripts]
 lightscan = "lightscan.cli:main"
 
+[tool.setuptools]
+editable-mode = "compat"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["lightscan*"]
