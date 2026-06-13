@@ -91,15 +91,17 @@ class Checkpoint:
         self._save()
 
     def clear(self):
-        self._state = {
-            "tried": [],
-            "found": [],
-            "locked": [],
-            "scanned": [],
-            "meta": {"started": time.time()}
-        }
-        self._tried_set.clear()
-        self._locked_set.clear()
+        # needs the lock — concurrent mark_tried() calls can race the set reset
+        with self._lock:
+            self._state = {
+                "tried": [],
+                "found": [],
+                "locked": [],
+                "scanned": [],
+                "meta": {"started": time.time()}
+            }
+            self._tried_set.clear()
+            self._locked_set.clear()
         if os.path.exists(self.path):
             os.remove(self.path)
         print("\033[38;5;240m[*] Checkpoint cleared\033[0m")

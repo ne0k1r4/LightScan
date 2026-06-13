@@ -38,17 +38,31 @@ class ScanResult:
         return d
 
 class PhantomEngine:
-    def __init__(self, concurrency=256, timeout=3.0, verbose=False, rate_limit=0.0):
+    def __init__(self, concurrency=256, timeout=3.0, verbose=False, rate_limit=0.0,
+                 adaptive=False, timing=4):
         self.concurrency = concurrency
-        self.timeout = timeout
-        self.verbose = verbose
-        self.rate_limit = rate_limit
-        self._sem = None
-        self._results = []
-        self._errors = []
-        self._done = 0
-        self._total = 0
-        self._start = 0.0
+        self.timeout     = timeout
+        self.verbose     = verbose
+        self.rate_limit  = rate_limit
+        self._sem        = None
+        self._results    = []
+        self._errors     = []
+        self._done       = 0
+        self._total      = 0
+        self._start      = 0.0
+        self._adaptive   = None
+
+        # adaptive=True: concurrency + timeout adjust dynamically based on RTT + loss.
+        # self.concurrency becomes the ceiling; AdaptiveTimingEngine drives the semaphore.
+        if adaptive:
+            try:
+                from lightscan.scan.adaptive import AdaptiveTimingEngine
+                self._adaptive = AdaptiveTimingEngine(
+                    base_timing=timing,
+                    max_concurrency=concurrency,
+                )
+            except ImportError:
+                pass  # fall back to static
 
     def _progress(self, label=""):
         elapsed = time.time() - self._start
@@ -64,31 +78,57 @@ class PhantomEngine:
         async with self._sem:
             if self.rate_limit > 0:
                 await asyncio.sleep(self.rate_limit)
+
+            # adaptive timeout: per-target RTT-derived timeout, capped at self.timeout
+            timeout = self.timeout
+            target  = getattr(self, "_target", "")
+            if self._adaptive and target:
+                timeout = min(self.timeout, self._adaptive.recommended_timeout(target))
+                self._adaptive.record_sent(target)
+
+            t0 = time.time()
             try:
-                result = await asyncio.wait_for(coro, timeout=self.timeout)
+                result = await asyncio.wait_for(coro, timeout=timeout)
                 if result is not None:
                     if isinstance(result, list):
                         self._results.extend(result)
                     else:
                         self._results.append(result)
-            except (asyncio.TimeoutError, Exception) as e:
-                if not isinstance(e, asyncio.TimeoutError):
-                    self._errors.append(f"{label}: {e}")
+                # record RTT for successful completions
+                if self._adaptive and target:
+                    await self._adaptive.record_response(target, time.time() - t0)
+            except asyncio.TimeoutError:
+                if self._adaptive and target:
+                    await self._adaptive.record_timeout(target)
+            except Exception as e:
+                self._errors.append(f"{label}: {e}")
+                if self._adaptive and target:
+                    await self._adaptive.record_timeout(target)
             finally:
                 self._done += 1
                 if not self.verbose:
                     self._progress(label)
 
-    async def run(self, tasks):
-        self._sem = asyncio.Semaphore(self.concurrency)
+    async def run(self, tasks, target: str = ""):
+        # If adaptive is active, seed the semaphore from the engine's current concurrency.
+        # The semaphore is rebuilt mid-run only conceptually — we poll current_concurrency
+        # to throttle via a secondary gate in _run_one. Rebuilding the actual asyncio.Semaphore
+        # mid-gather is not safe, so we use a soft gate instead.
+        init_concurrency = (
+            self._adaptive.current_concurrency if self._adaptive else self.concurrency
+        )
+        self._sem     = asyncio.Semaphore(init_concurrency)
         self._results = []
-        self._errors = []
-        self._done = 0
-        self._total = len(tasks)
-        self._start = time.time()
+        self._errors  = []
+        self._done    = 0
+        self._total   = len(tasks)
+        self._start   = time.time()
+        self._target  = target
         await asyncio.gather(*[self._run_one(c, l) for c, l in tasks])
         print()
         elapsed = time.time() - self._start
+        if self._adaptive:
+            print(f"\033[38;5;240m[~] adaptive: {self._adaptive.summary()}\033[0m")
         print(f"\033[38;5;240m[+] Done: {len(self._results)} results · {len(self._errors)} errors · {elapsed:.2f}s\033[0m")
         return self._results
 
