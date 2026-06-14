@@ -71,7 +71,7 @@ def smb_enumerate(host: str, timeout: float = 5.0) -> SMBInfo:
     # RPC endpoint mapper
     try:
         rpc = transport.DCERPCTransportFactory(f"ncacn_ip_tcp:{host}[135]")
-        rpc.set_connect_timeout(3)
+        rpc.set_connect_timeout(min(int(timeout), 3))  # cap — was hanging 30s+
         dce = rpc.get_dce_rpc(); dce.connect()
         dce.bind(epm.MSRPC_UUID_PORTMAP)
         for entry in epm.hept_lookup(None, dce=dce):
