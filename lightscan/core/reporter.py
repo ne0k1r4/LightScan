@@ -111,7 +111,7 @@ td{{padding:6px 8px;border-bottom:1px solid #222}}tr:hover{{background:#151515}}
         with open(path, "w") as f:
             f.write(html)
 
-    def _write_csv(self, path, results, meta=None):
+    def _write_csv(self, path: str, results: list, meta: dict | None = None):
         with open(path, "w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["host","port","service","severity","detail","module"])
