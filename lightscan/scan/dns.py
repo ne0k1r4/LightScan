@@ -264,8 +264,8 @@ def _crtsh_lookup(domain: str, timeout: float = 10.0) -> list[str]:
                 if sub.endswith(f".{domain}") or sub == domain:
                     subs.add(sub)
         return sorted(subs)
-    except Exception:
-        return []
+    except Exception as e:
+        return []  # timeout, json error, rate limit — all recoverable
 
 
 async def ct_log_enum(domain: str, timeout: float = 10.0) -> list[str]:
@@ -274,8 +274,8 @@ async def ct_log_enum(domain: str, timeout: float = 10.0) -> list[str]:
         return await asyncio.wait_for(
             loop.run_in_executor(None, _crtsh_lookup, domain, timeout),
             timeout=timeout + 2)
-    except Exception:
-        return []
+    except Exception as e:
+        return []  # timeout, json error, rate limit — all recoverable
 
 
 DKIM_SELECTORS = [
