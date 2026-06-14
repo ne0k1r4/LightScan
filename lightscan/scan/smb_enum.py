@@ -66,6 +66,7 @@ def smb_enumerate(host: str, timeout: float = 5.0) -> SMBInfo:
 
     except Exception as e:
         info.errors.append(str(e))
+        # common: port closed, auth issues, SMBv1 only
 
     # RPC endpoint mapper
     try:
