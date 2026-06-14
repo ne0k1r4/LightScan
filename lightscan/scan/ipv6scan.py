@@ -137,7 +137,7 @@ async def full_ipv6_scan(targets: list[str], ports: list[int],
         else:
             addrs = [target]
         for addr in addrs:
-            for p in await scan_ipv6_host(addr, ports, timeout):
+            for p in await scan_ipv6_host(addr, ports, timeout, concurrency=100):
                 results.append(ScanResult("ipv6", addr, p, f"TCP6/{p}",
                     Severity.INFO, f"open on IPv6 ({addr})"))
     return results
