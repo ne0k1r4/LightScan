@@ -46,7 +46,8 @@ async def check_dual_stack(hostname: str) -> dict:
             if af == socket.AF_INET  and addr not in result["ipv4"]:
                 result["ipv4"].append(addr)
             elif af == socket.AF_INET6 and addr not in result["ipv6"]:
-                if not addr.startswith("fe80") and addr != "::1":
+                # skip loopback and link-local — we want global unicast only
+                if not addr.startswith("fe80") and addr not in ("::1", "::"):
                     result["ipv6"].append(addr)
         result["dual_stack"] = bool(result["ipv4"] and result["ipv6"])
     except Exception:
