@@ -228,6 +228,7 @@ class DropRateDetector:
         return "ok", 0.0
 
     def summary(self) -> str:
+        """short status line for engine output"""
         self._prune()
         return (f"sent={len(self._sent)} recv={len(self._recv)} "
                 f"drop={self.drop_rate:.1%} "
