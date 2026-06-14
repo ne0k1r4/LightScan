@@ -81,7 +81,8 @@ class Reporter:
 
     def _write_html(self, path, results, meta):
         crit = sum(1 for r in results if r.severity == Severity.CRITICAL)
-        high = sum(1 for r in results if r.severity == Severity.HIGH)
+        high   = sum(1 for r in results if r.severity == Severity.HIGH)
+        medium = sum(1 for r in results if r.severity == Severity.MEDIUM)
         rows = "\n".join(
             f"<tr class='{r.severity.value.lower()}'>"
             f"<td>{r.host}</td><td>{r.port}</td><td>{r.service}</td>"
