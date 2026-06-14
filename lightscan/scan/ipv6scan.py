@@ -58,7 +58,7 @@ def mac_to_eui64(mac: str) -> str:
     """MAC → EUI-64 interface ID for SLAAC prediction"""
     try:
         parts    = [int(x, 16) for x in mac.replace("-", ":").split(":")]
-        parts[0] ^= 0x02  # flip universal/local bit
+        parts[0] ^= 0x02  # flip 7th bit (universal/local) per RFC 4291
         eui64    = parts[:3] + [0xff, 0xfe] + parts[3:]
         groups   = [f"{eui64[i]:02x}{eui64[i+1]:02x}" for i in range(0, 8, 2)]
         return ":".join(groups)
