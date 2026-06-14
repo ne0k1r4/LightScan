@@ -115,6 +115,13 @@ async def probe_memcached(host, port):
     m = re.match(r"VERSION (.+)", t)
     return {"service": "Memcached", "version": m.group(1).strip()} if m else {}
 
+async def probe_telnet(host, port):
+    d = await _banner(host, port)
+    if not d: return {}
+    import re as _re
+    text = _re.sub(r'\xff..', '', _s(d)).strip()
+    return {"service": "Telnet", "version": text[:80]} if text else {"service": "Telnet", "version": "binary negotiation"}
+
 PROBE_MAP: dict[int, list] = {
     21: [probe_ftp], 22: [probe_ssh], 23: [], 25: [probe_smtp],
     80: [probe_http], 110: [probe_pop3], 143: [probe_imap],
@@ -127,7 +134,14 @@ GENERIC = [probe_ftp, probe_smtp, probe_ssh, probe_http]
 
 
 async def detect_version(host: str, port: int, timeout: float = _T) -> dict:
-    for fn in PROBE_MAP.get(port, GENERIC):
+    for fn in async def probe_telnet(host, port):
+    d = await _banner(host, port)
+    if not d: return {}
+    import re as _re
+    text = _re.sub(r'\xff..', '', _s(d)).strip()
+    return {"service": "Telnet", "version": text[:80]} if text else {"service": "Telnet", "version": "binary negotiation"}
+
+PROBE_MAP.get(port, GENERIC):
         try:
             r = await asyncio.wait_for(fn(host, port), timeout=timeout)
             if r: return r
