@@ -93,7 +93,9 @@ async def probe_redis(host, port):
     m = re.search(r"redis_version:(.+?)(?:\r|\n)", t)
     if m: return {"service": "Redis", "version": m.group(1).strip()}
     ping = await _probe(host, port, b"PING\r\n")
-    return {"service": "Redis", "version": "auth required"} if b"+PONG" in ping else {}
+    if b"+PONG" in ping or b"-NOAUTH" in ping:
+        return {"service": "Redis", "version": "auth required"}
+    return {}
 
 async def probe_postgres(host, port):
     msg = struct.pack(">II", 0, 196608) + b"user\x00lightscan\x00\x00"
