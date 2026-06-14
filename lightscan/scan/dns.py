@@ -288,7 +288,7 @@ DKIM_SELECTORS = [
 async def check_dkim(domain: str, selectors: list | None = None,
                      timeout: float = 3.0) -> list[str]:
     """probe common DKIM selectors — present = DKIM configured"""
-    sels  = selectors or DKIM_SELECTORS
+    sels  = selectors if selectors is not None else DKIM_SELECTORS
     found = []
     loop  = asyncio.get_running_loop()
 
