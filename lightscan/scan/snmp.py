@@ -153,7 +153,7 @@ async def snmp_enumerate(host: str, port: int = 161,
         if val:
             community = c
             sys_descr = val
-            break
+            break  # stop on first hit — no need to try remaining
 
     if not community:
         return results
