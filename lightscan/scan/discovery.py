@@ -95,7 +95,8 @@ def arp_sweep(network: str, timeout: float = 2.0) -> list[str]:
 async def discover_hosts(targets: list[str], timeout: float = 1.0,
                          concurrency: int = 256, verbose: bool = False) -> list[str]:
     """run host discovery — single targets skip ping, subnets get swept"""
-    if len(targets) == 1:
+    # also skip /32 and /128 — single host in CIDR notation
+    if len(targets) <= 1:
         return targets
 
     if verbose:
