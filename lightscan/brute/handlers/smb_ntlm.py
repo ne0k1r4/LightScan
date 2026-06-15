@@ -368,3 +368,58 @@ def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
         return await loop.run_in_executor(None, _try)
 
     return raw_handler
+
+
+# ── null session + anonymous pre-check (Jun 13) ──────────────────────────────
+# added after i ran a credential brute against a target with anonymous access
+# and wasted 500 attempts. check this first, always.
+async def check_null_session(host: str, port: int = 445,
+                              timeout: float = 5.0) -> dict:
+    """try SMB null session and anonymous login before brute forcing.
+    
+    returns: {null_session, anonymous, shares, os, error}
+    """
+    result = {"null_session": False, "anonymous": False,
+               "shares": [], "os": "", "error": ""}
+    try:
+        from impacket.smbconnection import SMBConnection
+    except ImportError:
+        result["error"] = "impacket not installed"; return result
+
+    for username, key in [("", "null_session"), ("anonymous", "anonymous")]:
+        conn = None
+        try:
+            conn = SMBConnection(host, host, timeout=int(timeout))
+            result["os"] = conn.getServerOS() or ""
+            conn.login(username, "")
+            result[key] = True
+            try:
+                for s in conn.listShares():
+                    result["shares"].append(s["shi1_netname"].rstrip("\x00"))
+            except Exception: pass
+            break
+        except Exception as e:
+            if "logon_failure" in str(e).lower() or "wrong password" in str(e).lower():
+                continue
+            result["error"] = str(e); break
+        finally:
+            if conn:
+                try: conn.close()
+                except Exception: pass
+    return result
+
+
+async def smb_precheck(host: str, port: int = 445, timeout: float = 5.0) -> list[str]:
+    """run null/anonymous checks — call BEFORE brute force"""
+    r = await check_null_session(host, port, timeout)
+    out = []
+    if r.get("error"): return []
+    if r["null_session"]:
+        out.append(f"[CRITICAL] null session on {host}:{port}")
+        if r["shares"]: out.append(f"  shares: {', '.join(r['shares'])}")
+    if r["anonymous"]:
+        out.append(f"[HIGH] anonymous login on {host}:{port}")
+    if not out:
+        out.append(f"[INFO] null session denied on {host}:{port}" +
+                   (f" | OS: {r['os']}" if r["os"] else ""))
+    return out
