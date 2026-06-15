@@ -157,6 +157,10 @@ def build_parser():
     out.add_argument("--resume",          action="store_true", help="Resume from checkpoint")
     out.add_argument("--clear-checkpoint",action="store_true", help="Clear checkpoint and start fresh")
     out.add_argument("-v","--verbose",    action="store_true", help="Verbose output")
+    out.add_argument("--no-discovery", action="store_true", help="Skip host discovery")
+    out.add_argument("--smb-enum", action="store_true", help="SMB null session + share enum")
+    out.add_argument("--snmp", action="store_true", help="SNMP enumeration")
+    out.add_argument("--snmp-community", default="public")
     out.add_argument("--no-banner",       action="store_true", help="Suppress banner (useful with --format json or scripted use)")
     return p
 
