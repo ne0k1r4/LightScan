@@ -72,7 +72,10 @@ class Reporter:
                     sc.set("id", "lightscan-severity")
                     sc.set("output", f"{r.severity.value}: {r.detail}")
 
+        # minidom adds <?xml?> declaration — strip extra blank line it adds
         pretty = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
+        pretty = "
+".join(l for l in pretty.splitlines() if l.strip())
         with open(path, "w") as f:
             f.write(pretty)
 
