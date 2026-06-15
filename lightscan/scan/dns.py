@@ -238,3 +238,90 @@ async def full_dns_enum(domain, ns="8.8.8.8", axfr=True, brute=True, use_crtsh=T
 
     print(f"\033[38;5;196m[DNS]\033[0m {domain}: {len(results)} records found")
     return results
+
+
+# ── CT log + email security extensions (Jun 13) ──────────────────────────────
+import json
+import urllib.request
+
+
+def _crtsh_lookup(domain: str, timeout: float = 10.0) -> list[str]:
+    """certificate transparency log lookup via crt.sh — passive subdomain discovery.
+    
+    way more effective than wordlist brute — CT logs contain every cert ever
+    issued. completely passive: only hits crt.sh API, zero DNS probes.
+    """
+    try:
+        req = urllib.request.Request(
+            f"https://crt.sh/?q=%.{domain}&output=json",
+            headers={"User-Agent": "lightscan/2.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+        subs = set()
+        for entry in data:
+            for sub in entry.get("name_value", "").split("\n"):
+                sub = sub.strip().lstrip("*.").lower()
+                if sub.endswith(f".{domain}") or sub == domain:
+                    subs.add(sub)
+        return sorted(subs)
+    except Exception:
+        return []
+
+
+async def ct_log_enum(domain: str, timeout: float = 10.0) -> list[str]:
+    loop = asyncio.get_running_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _crtsh_lookup, domain, timeout),
+            timeout=timeout + 2)
+    except Exception:
+        return []
+
+
+DKIM_SELECTORS = [
+    "default", "google", "k1", "k2", "mail", "email", "dkim",
+    "selector1", "selector2", "s1", "s2", "mandrill", "sendgrid",
+    "mailchimp", "postmark", "smtp", "key1", "key2", "mimecast",
+]
+
+
+async def check_dkim(domain: str, selectors: list | None = None,
+                     timeout: float = 3.0) -> list[str]:
+    """probe common DKIM selectors — present = DKIM configured"""
+    sels  = selectors or DKIM_SELECTORS
+    found = []
+    loop  = asyncio.get_running_loop()
+
+    async def _probe(sel):
+        try:
+            await asyncio.wait_for(
+                loop.run_in_executor(None, socket.gethostbyname, f"{sel}._domainkey.{domain}"),
+                timeout=timeout)
+            found.append(sel)
+        except Exception:
+            pass
+
+    await asyncio.gather(*[_probe(s) for s in sels])
+    return found
+
+
+async def full_dns_enum_v2(domain: str, axfr: bool = True, ct_logs: bool = True,
+                            check_email: bool = True, timeout: float = 5.0) -> list:
+    """full DNS enumeration v2 — base + CT logs + DKIM + SRV"""
+    from lightscan.core.engine import ScanResult, Severity
+    results = list(await full_dns_enum(domain, axfr=axfr, timeout=timeout))
+
+    if ct_logs:
+        subs = await ct_log_enum(domain, timeout)
+        if subs:
+            results.append(ScanResult("dns-ct", domain, 0, "CT-Logs", Severity.INFO,
+                f"crt.sh: {len(subs)} subdomains — " + ", ".join(subs[:8]) +
+                ("..." if len(subs) > 8 else "")))
+
+    if check_email:
+        dkim = await check_dkim(domain, timeout=timeout)
+        sev  = Severity.INFO if dkim else Severity.HIGH
+        msg  = f"selectors: {', '.join(dkim)}" if dkim else "no DKIM selectors found — email spoofing possible"
+        results.append(ScanResult("dns-email", domain, 0, "DKIM", sev, msg))
+
+    return results
