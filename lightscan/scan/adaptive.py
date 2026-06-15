@@ -165,3 +165,70 @@ class AdaptiveTimingEngine:
                 f"sent={self._global_sent}  "
                 f"recv={self._global_recv}  "
                 f"loss={loss:.1%}")
+
+
+# ── drop-rate detector (Jun 13) ──────────────────────────────────────────────
+# RTT-based backoff (existing) handles slow responses.
+# this handles something different: target actively DROPPING packets.
+# IDS rate limiting, iptables connlimit, whatever — when responses stop
+# coming we need to back off hard before we get banned.
+import collections as _col
+import time as _t
+
+
+class DropRateDetector:
+    """sliding window packet drop rate detector.
+    
+    tracks sent vs received over a window. when drop rate exceeds
+    threshold, signals caller to slow down or halt.
+    
+    warn at 30% drop, halt at 70% drop, resume after 10s backoff.
+    """
+    def __init__(self, window_secs: float = 5.0,
+                 warn_at: float = 0.30, halt_at: float = 0.70):
+        self._window     = window_secs
+        self._warn_at    = warn_at
+        self._halt_at    = halt_at
+        self._sent       = _col.deque()
+        self._recv       = _col.deque()
+        self._backoff_until = 0.0
+
+    def record_sent(self):
+        self._sent.append(_t.monotonic())
+        self._prune()
+
+    def record_recv(self):
+        self._recv.append(_t.monotonic())
+
+    def _prune(self):
+        cutoff = _t.monotonic() - self._window
+        while self._sent and self._sent[0] < cutoff: self._sent.popleft()
+        while self._recv and self._recv[0] < cutoff: self._recv.popleft()
+
+    @property
+    def drop_rate(self) -> float:
+        self._prune()
+        s = len(self._sent)
+        return 0.0 if s == 0 else max(0.0, 1.0 - len(self._recv) / s)
+
+    @property
+    def is_backing_off(self) -> bool:
+        return _t.monotonic() < self._backoff_until
+
+    def check(self) -> tuple[str, float]:
+        """returns (status, delay_secs) — 'ok' | 'slow' | 'halt' | 'backoff'"""
+        if self.is_backing_off:
+            return "backoff", self._backoff_until - _t.monotonic()
+        r = self.drop_rate
+        if r >= self._halt_at:
+            self._backoff_until = _t.monotonic() + 10.0
+            return "halt", 10.0
+        if r >= self._warn_at:
+            return "slow", 0.5 + (r - self._warn_at) * 2.0
+        return "ok", 0.0
+
+    def summary(self) -> str:
+        self._prune()
+        return (f"sent={len(self._sent)} recv={len(self._recv)} "
+                f"drop={self.drop_rate:.1%} "
+                f"{'[backoff]' if self.is_backing_off else ''}")
