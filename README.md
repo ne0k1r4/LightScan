@@ -156,3 +156,28 @@ Don't run this against systems you don't own or have explicit written permission
 ---
 
 *Built by [Light](https://github.com/ne0k1r4)*
+
+## new in v2.1.0
+
+```bash
+# passive mode — zero packets
+sudo lightscan --passive-mode --passive-iface eth0 --passive-time 120
+
+# nmap-xml for metasploit
+lightscan --scan -t 10.0.0.1 -p top100 --format nmap-xml
+
+# CT log subdomain discovery
+lightscan --dns target.com
+
+# SMB enumeration
+lightscan --scan -t 10.0.0.1 -p 445 --smb-enum
+
+# SNMP enumeration
+lightscan --scan -t 10.0.0.1 -p 161 --snmp
+
+# full version detection
+lightscan --scan -t 10.0.0.1 -p top100 --sv
+
+# dual-stack IPv6 check
+lightscan --scan -t target.com --dual-stack-check
+```
