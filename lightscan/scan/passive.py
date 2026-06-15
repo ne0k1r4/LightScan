@@ -106,7 +106,7 @@ class PassiveSniffer:
                     except Exception:
                         pass
 
-            if UDP in pkt and pkt[UDP].dport == 5353 and DNS in pkt:
+            if UDP in pkt and IP in pkt and pkt[UDP].dport == 5353 and DNS in pkt:
                 src = pkt[IP].src if IP in pkt else ""
                 if src and pkt[DNS].qr == 1:
                     h = self._host(src)
