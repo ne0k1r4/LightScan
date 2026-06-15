@@ -135,6 +135,8 @@ class PassiveSniffer:
                 h = self._host(pkt[IP].src)
                 if not h.os_hints:
                     h.os_hints.append("Windows (NetBIOS)")
+                if "windows" not in h.services:
+                    h.services.append("windows")
         except Exception:
             pass
 
