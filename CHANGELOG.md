@@ -1,5 +1,23 @@
 # Changelog
 
+
+## v2.1.0 — 2026-06-13
+- feat: host discovery (ICMP ping + ARP sweep) before port scan
+- feat: passive sniffer mode (ARP/DNS/mDNS/DHCP/NetBIOS) — zero packets
+- feat: nmap-xml, HTML, CSV, minimal output formats
+- feat: nmap-style protocol probes (SSH/HTTP/FTP/SMTP/MySQL/Redis/Postgres/MongoDB/RDP/Memcached)
+- feat: SMB null session + share listing + RPC endpoint mapping
+- feat: crt.sh CT log passive subdomain discovery
+- feat: DKIM selector probing (18 selectors)
+- feat: SNMP v1/v2c enumeration (pure stdlib — sysDescr, interfaces, processes)
+- feat: IPv6 rewrite — ICMPv6 ND, dual-stack detection, SLAAC EUI-64 prediction
+- feat: drop-rate detector in adaptive engine — halts on IDS throttle
+- feat: SMB null session + anon login pre-check before credential brute
+- fix: sversion not wired into --sv flag
+- fix: IPv6 link-local zone ID stripping
+- fix: SNMP BER multi-byte length parser
+- fix: SMB null session error handling
+
 All notable changes to LightScan are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
