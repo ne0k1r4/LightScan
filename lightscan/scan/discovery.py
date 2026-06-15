@@ -100,7 +100,7 @@ async def discover_hosts(targets: list[str], timeout: float = 1.0,
         return targets
 
     if verbose:
-        print(f"[DISCOVER] pinging {len(targets)} hosts...")
+        print(f"[DISCOVER] pinging {len(targets)} hosts (timeout={timeout:.1f}s, concurrency={concurrency})...")
 
     sem  = asyncio.Semaphore(concurrency)
     live = []
