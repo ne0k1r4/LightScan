@@ -57,7 +57,7 @@ clean:
 
 # Quick smoke test — checks imports and --help work
 smoke:
-	$(PYTHON) -c "import lightscan; from lightscan.i18n import t; print(t('scan.done', n=0, crit=0, high=0, elapsed=0.0))"
+	$(PYTHON) -c "import lightscan; print('✓ import OK')"
 	$(PYTHON) -m lightscan --help > /dev/null && echo "✓ --help OK"
 
 # Tag and push a release

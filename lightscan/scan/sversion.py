@@ -136,14 +136,7 @@ GENERIC = [probe_ftp, probe_smtp, probe_ssh, probe_http]
 
 
 async def detect_version(host: str, port: int, timeout: float = _T) -> dict:
-    for fn in async def probe_telnet(host, port):
-    d = await _banner(host, port)
-    if not d: return {}
-    import re as _re
-    text = _re.sub(r'\xff..', '', _s(d)).strip()
-    return {"service": "Telnet", "version": text[:80]} if text else {"service": "Telnet", "version": "binary negotiation"}
-
-PROBE_MAP.get(port, GENERIC):
+    for fn in PROBE_MAP.get(port, GENERIC):
         try:
             r = await asyncio.wait_for(fn(host, port), timeout=timeout)
             if r: return r

@@ -128,7 +128,6 @@ The Python engine calls it automatically when `lscan` is in PATH and `--raw-go` 
 ```
 lightscan/
 ├── cli.py              # entry point
-├── i18n.py             # EN/ZH/RU/AR/ES output layer
 ├── core/               # engine, reporter, checkpoint, target parser
 ├── scan/
 │   ├── orchestrator.py # autonomous 10-stage pipeline
