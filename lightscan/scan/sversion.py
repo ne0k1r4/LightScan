@@ -125,7 +125,7 @@ async def probe_telnet(host, port):
     return {"service": "Telnet", "version": text[:80]} if text else {"service": "Telnet", "version": "binary negotiation"}
 
 PROBE_MAP: dict[int, list] = {
-    21: [probe_ftp], 22: [probe_ssh], 23: [], 25: [probe_smtp],
+    21: [probe_ftp], 22: [probe_ssh], 23: [probe_telnet], 25: [probe_smtp],
     80: [probe_http], 110: [probe_pop3], 143: [probe_imap],
     443: [probe_https], 465: [probe_smtp], 587: [probe_smtp],
     993: [probe_imap], 995: [probe_pop3], 3306: [probe_mysql],

@@ -78,6 +78,7 @@ class Checkpoint:
             if user not in self._locked_set:
                 self._locked_set.add(user)
                 self._state["locked"].append(user)
+                self._save()
 
     def is_locked(self, user):
         with self._lock:
@@ -105,5 +106,3 @@ class Checkpoint:
         if os.path.exists(self.path):
             os.remove(self.path)
         print("\033[38;5;240m[*] Checkpoint cleared\033[0m")
-# clean exit save
-# clean exit save

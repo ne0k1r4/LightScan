@@ -242,6 +242,16 @@ async def async_main(args):
     if args.clear_checkpoint: cp.clear()
     if args.target: cp.set_target(args.target)
 
+    try:
+        return await _run_main_body(args, cp, t_start, all_results, open_ports, meta)
+    finally:
+        # ctrl+c during a brute run shouldn't lose progress — main() prints
+        # "checkpoint saved" on KeyboardInterrupt so this needs to actually
+        # be true, not just true on the happy path
+        cp.flush()
+
+async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
+
     # ── Autonomous mode (--auto domain.com) ──────────────────────────────────
     if getattr(args, 'auto', None):
         from lightscan.scan.orchestrator import run_auto
@@ -681,7 +691,6 @@ async def async_main(args):
 
     if not args.no_report and all_results:
         Reporter(args.output).save(all_results, meta, args.basename)
-    cp.flush()
     return all_results
 
 
@@ -789,17 +798,3 @@ def main():
 
 
 if __name__=="__main__": main()
-
-# --quiet flag
-# imports cleaned
-# --output-dir
-# --quiet flag
-# imports cleaned
-# --output-dir
-# rate limit
-# format stub
-# --quiet flag
-# imports cleaned
-# --output-dir
-# rate limit
-# format stub
