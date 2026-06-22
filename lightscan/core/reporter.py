@@ -35,7 +35,7 @@ class Reporter:
     def _write_json(self, path, results, meta):
         with open(path, "w") as f:
             json.dump({"meta": meta, "results": [
-                {"host": r.host, "port": r.port, "service": r.service,
+                {"host": r.target, "port": r.port, "service": r.module,
                  "severity": r.severity.value, "detail": r.detail, "module": r.module}
                 for r in results]}, f, indent=2)
 
@@ -43,7 +43,7 @@ class Reporter:
         """nmap-compatible XML — metasploit db_import + crackmapexec accept this"""
         by_host: dict[str, list] = {}
         for r in results:
-            by_host.setdefault(r.host, []).append(r)
+            by_host.setdefault(r.target, []).append(r)
 
         root = ET.Element("nmaprun")
         root.set("scanner", "lightscan")
@@ -63,7 +63,7 @@ class Reporter:
                 p.set("protocol", "tcp"); p.set("portid", str(r.port))
                 ET.SubElement(p, "state").set("state", "open")
                 svc = ET.SubElement(p, "service")
-                svc.set("name", r.service.lower())
+                svc.set("name", r.module.lower())
                 parts = r.detail.split("|")
                 svc.set("product", parts[0].strip())
                 if len(parts) > 1: svc.set("version", parts[1].strip())
@@ -72,7 +72,6 @@ class Reporter:
                     sc.set("id", "lightscan-severity")
                     sc.set("output", f"{r.severity.value}: {r.detail}")
 
-        # minidom adds <?xml?> declaration — strip extra blank line it adds
         pretty = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
         pretty = "\n".join(l for l in pretty.splitlines() if l.strip())
         with open(path, "w") as f:
@@ -84,7 +83,7 @@ class Reporter:
         medium = sum(1 for r in results if r.severity == Severity.MEDIUM)
         rows = "\n".join(
             f"<tr class='{r.severity.value.lower()}'>"
-            f"<td>{r.host}</td><td>{r.port}</td><td>{r.service}</td>"
+            f"<td>{r.target}</td><td>{r.port}</td><td>{r.module}</td>"
             f"<td><span class='s {r.severity.value.lower()}'>{r.severity.value}</span></td>"
             f"<td>{r.detail}</td></tr>"
             for r in results)
@@ -115,11 +114,9 @@ td{{padding:6px 8px;border-bottom:1px solid #222}}tr:hover{{background:#151515}}
             w = csv.writer(f)
             w.writerow(["host","port","service","severity","detail","module"])
             for r in results:
-                w.writerow([r.host,r.port,r.service,r.severity.value,r.detail,r.module])
+                w.writerow([r.target,r.port,r.module,r.severity.value,r.detail,r.module])
 
     def _write_minimal(self, path, results, meta=None):
         with open(path, "w") as f:
-            for r in sorted(results, key=lambda x: (x.host, x.port)):
-                f.write(f"{r.host}:{r.port}\n")
-# filename fix
-# filename fix
+            for r in sorted(results, key=lambda x: (x.target, x.port)):
+                f.write(f"{r.target}:{r.port}\n")
