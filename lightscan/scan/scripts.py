@@ -100,6 +100,24 @@ class ScriptRegistry:
             })
         return sorted(result, key=lambda x: x["name"])
 
+    def search(self, query: str) -> List[Dict]:
+        q = query.lower().strip()
+        results = []
+        for name, mod in self._scripts.items():
+            desc = (mod.__doc__ or "").strip()
+            tags = getattr(mod, "SCRIPT_TAGS", [])
+            match = (q in name.lower() or
+                     q in desc.lower() or
+                     any(q in t.lower() for t in tags))
+            if match:
+                results.append({
+                    "name":  name,
+                    "tags":  tags,
+                    "ports": getattr(mod, "SCRIPT_PORTS", []),
+                    "desc":  desc.split("\n")[0][:60],
+                })
+        return sorted(results, key=lambda x: x["name"])
+
     def __len__(self): return len(self._scripts)
 
 
@@ -628,11 +646,11 @@ async def run(host, port, timeout=8.0):
             s.settimeout(timeout)
             s.connect((host, port))
             # SMB1 negotiate request
-            pkt = (b"\x00\x00\x00\x54" + b"\xffSMB" + b"\x72"
-                   + b"\x00" * 4 + b"\x08\x00" + b"\x00" * 6
-                   + b"\xff\xff\xff\xff" + b"\x00" * 10
-                   + b"\x00\x31" + b"\x00\x02NT LM 0.12\x00"
-                   + b"\x02SMB 2.002\x00" + b"\x02SMB 2.???\x00")
+            pkt = (b"\\x00\\x00\\x00\\x54" + b"\\xffSMB" + b"\\x72"
+                   + b"\\x00" * 4 + b"\\x08\\x00" + b"\\x00" * 6
+                   + b"\\xff\\xff\\xff\\xff" + b"\\x00" * 10
+                   + b"\\x00\\x31" + b"\\x00\\x02NT LM 0.12\\x00"
+                   + b"\\x02SMB 2.002\\x00" + b"\\x02SMB 2.???\\x00")
             s.send(pkt)
             resp = s.recv(256)
             s.close()
@@ -729,19 +747,19 @@ from lightscan.core.engine import ScanResult, Severity
 
 TECH_SIGS = {
     "WordPress":    [re.compile(r"wp-content|wp-includes|WordPress", re.I)],
-    "Drupal":       [re.compile(r"Drupal|sites/default|drupal\.js", re.I)],
+    "Drupal":       [re.compile(r"Drupal|sites/default|drupal\\.js", re.I)],
     "Joomla":       [re.compile(r"Joomla|/components/com_", re.I)],
     "Laravel":      [re.compile(r"laravel_session|Laravel", re.I)],
     "Django":       [re.compile(r"csrfmiddlewaretoken|Django", re.I)],
     "React":        [re.compile(r"react-root|__REACT|ReactDOM", re.I)],
-    "Angular":      [re.compile(r"ng-version|angular\.min\.js", re.I)],
-    "Vue.js":       [re.compile(r"vue\.min\.js|__vue__", re.I)],
-    "jQuery":       [re.compile(r"jquery[\-./]([0-9.]+)", re.I)],
-    "Bootstrap":    [re.compile(r"bootstrap[\-./]([0-9.]+)", re.I)],
+    "Angular":      [re.compile(r"ng-version|angular\\.min\\.js", re.I)],
+    "Vue.js":       [re.compile(r"vue\\.min\\.js|__vue__", re.I)],
+    "jQuery":       [re.compile(r"jquery[\\-./]([0-9.]+)", re.I)],
+    "Bootstrap":    [re.compile(r"bootstrap[\\-./]([0-9.]+)", re.I)],
     "Spring Boot":  [re.compile(r"Spring Framework|Whitelabel Error|actuator", re.I)],
-    "ASP.NET":      [re.compile(r"__VIEWSTATE|ASP\.NET|X-AspNet-Version", re.I)],
-    "PHP":          [re.compile(r"X-Powered-By.*PHP|\.php", re.I)],
-    "Node.js":      [re.compile(r"X-Powered-By.*Express|node\.js", re.I)],
+    "ASP.NET":      [re.compile(r"__VIEWSTATE|ASP\\.NET|X-AspNet-Version", re.I)],
+    "PHP":          [re.compile(r"X-Powered-By.*PHP|\\.php", re.I)],
+    "Node.js":      [re.compile(r"X-Powered-By.*Express|node\\.js", re.I)],
     "Nginx":        [re.compile(r"nginx", re.I)],
     "Apache":       [re.compile(r"Apache", re.I)],
     "IIS":          [re.compile(r"Microsoft-IIS|X-Powered-By.*ASP", re.I)],

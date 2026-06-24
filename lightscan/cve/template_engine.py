@@ -349,6 +349,19 @@ class TemplateLibrary:
         if cve:      out = [t for t in out if cve.lower() in t.cve.lower()]
         return out
 
+    def search(self, query: str) -> list[Template]:
+        q = query.lower().strip()
+        out = []
+        for t in self._templates:
+            match = (q in t.id.lower() or
+                     q in t.name.lower() or
+                     q in t.description.lower() or
+                     q in t.cve.lower() or
+                     any(q in tg.lower() for tg in t.tags))
+            if match:
+                out.append(t)
+        return out
+
     def for_ports(self, open_ports: list[int]) -> list[Template]:
         return [t for t in self._templates if t.port in open_ports]
 

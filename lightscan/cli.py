@@ -104,6 +104,8 @@ def build_parser():
     m.add_argument("--template-tags", nargs="+", metavar="TAG", help="Filter templates by tag (redis unauth rce ...)")
     m.add_argument("--template-ids",  nargs="+", metavar="ID",  help="Run specific template IDs only")
     m.add_argument("--list-templates",action="store_true", help="List all loaded templates and exit")
+    m.add_argument("--search",        metavar="QUERY",     help="Search scripts and templates by keyword/tag/CVE")
+    m.add_argument("--update-templates", nargs="?", const="ne0k1r4/LightScan", metavar="REPO", help="Update templates from GitHub repository (default: ne0k1r4/LightScan)")
     m.add_argument("--oauth",        metavar="AUTH_URL",  help="OAuth 2.0 audit on AUTH_URL")
     m.add_argument("--oauth-client", metavar="CLIENT_ID", help="OAuth client_id")
     m.add_argument("--oauth-redirect",metavar="URI",      help="OAuth redirect_uri")
@@ -250,7 +252,119 @@ async def async_main(args):
         # be true, not just true on the happy path
         cp.flush()
 
+async def run_search(query: str):
+    print(f"\033[38;5;196m[SEARCH]\033[0m Searching scripts and templates for: {query!r}\n")
+    
+    # Search CVE templates
+    from lightscan.cve.template_engine import TemplateLibrary
+    from pathlib import Path
+    dirs = [str(Path(__file__).parent / "templates")]
+    lib = TemplateLibrary(dirs)
+    matching_templates = lib.search(query)
+    
+    # Search NSE scripts
+    from lightscan.scan.scripts import ScriptRegistry, install_builtin_scripts
+    script_base = install_builtin_scripts()
+    registry = ScriptRegistry([script_base])
+    matching_scripts = registry.search(query)
+    
+    # Print templates
+    if matching_templates:
+        print(f"\033[1mFound {len(matching_templates)} matching CVE/vulnerability template(s):\033[0m")
+        for tmpl in sorted(matching_templates, key=lambda x: (x.severity.value, x.id)):
+            cve = f" {tmpl.cve}" if tmpl.cve else ""
+            tags = ",".join(tmpl.tags[:3])
+            print(f"  [Template] {tmpl.severity.value:<8} {tmpl.id:<35}{cve:<22} [{tags}]  port={tmpl.port}")
+        print()
+        
+    # Print scripts
+    if matching_scripts:
+        print(f"\033[1mFound {len(matching_scripts)} matching NSE script(s):\033[0m")
+        for s in matching_scripts:
+            tags = ",".join(s['tags'][:3])
+            ports = ",".join(map(str, s['ports'][:4])) if s['ports'] else "all"
+            print(f"  [Script]   {s['name']:<30} [{tags}]  ports={ports}")
+            if s['desc']:
+                print(f"             {s['desc']}")
+        print()
+        
+    if not matching_templates and not matching_scripts:
+        print(f"\033[38;5;240m[-] No matching templates or scripts found for {query!r}\033[0m\n")
+
+
+def run_update_templates(repo_spec: str):
+    import urllib.request
+    import zipfile
+    import shutil
+    import tempfile
+    from pathlib import Path
+    
+    if "/" not in repo_spec:
+        print(f"\033[38;5;208m[!] Invalid repo format. Must be owner/repo (e.g., ne0k1r4/LightScan)\033[0m")
+        return
+        
+    owner, repo = repo_spec.split("/", 1)
+    url = f"https://github.com/{owner}/{repo}/archive/refs/heads/main.zip"
+    
+    print(f"\033[38;5;196m[UPDATE]\033[0m Downloading templates from: {url}")
+    
+    local_template_dir = Path(__file__).parent / "templates"
+    
+    try:
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        
+        with urllib.request.urlopen(req, timeout=15) as response:
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_file:
+                shutil.copyfileobj(response, tmp_file)
+                tmp_zip_path = Path(tmp_file.name)
+                
+        print(f"\033[38;5;196m[UPDATE]\033[0m Extracting templates...")
+        
+        with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
+            extracted_count = 0
+            for file_info in zip_ref.infolist():
+                parts = Path(file_info.filename).parts
+                if len(parts) >= 3 and "templates" in parts:
+                    tpl_idx = parts.index("templates")
+                    if tpl_idx > 0 and parts[tpl_idx - 1] == "lightscan":
+                        rel_path = Path(*parts[tpl_idx + 1:])
+                        target_path = local_template_dir / rel_path
+                        
+                        if file_info.is_dir():
+                            target_path.mkdir(parents=True, exist_ok=True)
+                        else:
+                            target_path.parent.mkdir(parents=True, exist_ok=True)
+                            with zip_ref.open(file_info) as source, open(target_path, "wb") as target:
+                                shutil.copyfileobj(source, target)
+                            extracted_count += 1
+                            
+        try:
+            tmp_zip_path.unlink()
+        except Exception:
+            pass
+            
+        if extracted_count > 0:
+            print(f"\033[38;5;82m[+] Successfully updated {extracted_count} templates from {repo_spec}!\033[0m\n")
+        else:
+            print(f"\033[38;5;208m[!] No templates found in the repository archive.\033[0m\n")
+            
+    except Exception as e:
+        print(f"\033[38;5;196m[!] Error updating templates: {e}\033[0m")
+
+
 async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
+    # ── Search option
+    if getattr(args, 'search', None):
+        await run_search(args.search)
+        return all_results
+
+    # ── Update templates option
+    if getattr(args, 'update_templates', None):
+        run_update_templates(args.update_templates)
+        return all_results
 
     # ── Autonomous mode (--auto domain.com) ──────────────────────────────────
     if getattr(args, 'auto', None):
@@ -526,8 +640,22 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         from lightscan.scan.scripts import ScriptRegistry, install_builtin_scripts
         script_base = install_builtin_scripts()
         registry    = ScriptRegistry([script_base])
-        print(f"\033[38;5;196m[SCRIPTS]\033[0m {len(registry)} scripts available\n")
-        for s in registry.list_all():
+        
+        s_tags = getattr(args, 'script_tags', None)
+        s_ports = parse_ports(args.ports) if args.ports != "top100" else None
+        
+        scripts = registry.list_all()
+        if s_tags:
+            scripts = [s for s in scripts if any(t in s['tags'] for t in s_tags)]
+        if s_ports:
+            scripts = [s for s in scripts if not s['ports'] or any(p in s['ports'] for p in s_ports)]
+            
+        if s_tags or s_ports:
+            print(f"\033[38;5;196m[SCRIPTS]\033[0m Found {len(scripts)} matching script(s)\n")
+        else:
+            print(f"\033[38;5;196m[SCRIPTS]\033[0m {len(registry)} scripts available\n")
+            
+        for s in scripts:
             print(f"  {s['name']:<30} [{', '.join(s['tags'][:3])}]  ports={s['ports'][:4]}")
             if s['desc']: print(f"    {s['desc']}")
         return all_results
@@ -600,8 +728,17 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         dirs = [str(Path(__file__).parent / "templates")]
         if getattr(args, 'template_dir', None): dirs.append(args.template_dir)
         lib = TemplateLibrary(dirs)
-        print(f"\033[38;5;196m[TEMPLATES]\033[0m {lib.summary()}")
-        for tmpl in sorted(lib, key=lambda x: (x.severity.value, x.id)):
+        
+        t_tags = getattr(args, 'template_tags', None)
+        t_ids = getattr(args, 'template_ids', None)
+        templates = lib.filter(tags=t_tags, ids=t_ids) if (t_tags or t_ids) else list(lib)
+        
+        if t_tags or t_ids:
+            print(f"\033[38;5;196m[TEMPLATES]\033[0m Found {len(templates)} matching template(s)")
+        else:
+            print(f"\033[38;5;196m[TEMPLATES]\033[0m {lib.summary()}")
+            
+        for tmpl in sorted(templates, key=lambda x: (x.severity.value, x.id)):
             cve = f" {tmpl.cve}" if tmpl.cve else ""
             tags = ",".join(tmpl.tags[:4])
             print(f"  {tmpl.severity.value:<8} {tmpl.id:<35}{cve:<22} [{tags}]  port={tmpl.port}")
