@@ -152,6 +152,7 @@ def build_parser():
     out = p.add_argument_group("Output")
     out.add_argument("-o","--output",     default=".", help="Output directory (default: .)")
     out.add_argument("--basename",        default="lightscan_report")
+    out.add_argument("--format",          choices=["json", "html", "csv", "nmap-xml", "minimal"], default="json", help="Report format (default: json)")
     out.add_argument("--no-report",       action="store_true", help="Skip file reports")
     out.add_argument("--resume",          action="store_true", help="Resume from checkpoint")
     out.add_argument("--clear-checkpoint",action="store_true", help="Clear checkpoint and start fresh")
@@ -414,7 +415,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         )
         all_results.extend(results)
         if not args.no_report and all_results:
-            Reporter(args.output).save(all_results, meta, args.basename)
+            Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
         return all_results
 
     # ── Active red-team scan (--active -t target) ─────────────────────────────
@@ -451,7 +452,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         )
         all_results.extend(results)
         if not args.no_report and all_results:
-            Reporter(args.output).save(all_results, meta, args.basename)
+            Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
         return all_results
 
     # ── Diff
@@ -845,10 +846,39 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
     elapsed=time.time()-t_start; meta["duration"]=elapsed
     crit=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="CRITICAL")
     high=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="HIGH")
+    med=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="MEDIUM")
+    low=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="LOW")
+    info=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="INFO")
+    
+    high_critical_findings = [r for r in all_results if hasattr(r,"severity") and r.severity.value in ("CRITICAL", "HIGH")]
+    
     print()
-    print(f"\033[38;5;196m{'─'*65}\033[0m")
-    print(f"\033[38;5;196m[DONE]\033[0m {len(all_results)} findings  |  {crit} CRITICAL  |  {high} HIGH  |  {elapsed:.1f}s")
-    print(f"\033[38;5;196m{'─'*65}\033[0m")
+    if high_critical_findings:
+        print(f"\033[38;5;196m┌───\033[0m \033[1mCRITICAL & HIGH FINDINGS SUMMARY\033[0m \033[38;5;196m" + "─" * 40 + "\033[0m")
+        print(f"  \033[38;5;244m%-10s %-20s %-8s %-38s\033[0m" % ("SEVERITY", "TARGET", "PORT", "DETAILS"))
+        print(f"  " + "\033[38;5;238m─\033[0m" * 74)
+        for r in high_critical_findings:
+            col = "\033[38;5;196;1m" if r.severity.value == "CRITICAL" else "\033[38;5;202;1m"
+            print(f"  {col}%-10s\033[0m %-20s %-8s %-38s" % (
+                r.severity.value, r.target[:20], str(r.port) if r.port else "-", r.detail[:38]
+            ))
+        print(f"\033[38;5;196m└" + "─" * 76 + "\033[0m\n")
+
+    C = "\033[38;5;196m"; YEL = "\033[38;5;208m"; GRN = "\033[38;5;82m"; R = "\033[0m"
+    print(f"{C}┌───────────────────────────────────────────────────────────────┐{R}")
+    print(f"{C}│                      SCAN EXECUTION COMPLETE                  │{R}")
+    print(f"{C}├───────────────────────────────────────────────────────────────┤{R}")
+    print(f"{C}│{R}  Total Duration : {f'{elapsed:.1f}s':<44} {C}│{R}")
+    print(f"{C}│{R}  Total Findings : {len(all_results):<44} {C}│{R}")
+    print(f"{C}│{R}  {C}CRITICAL{R}       : {C}{crit:<44}{R} {C}│{R}")
+    print(f"{C}│{R}  {YEL}HIGH{R}           : {YEL}{high:<44}{R} {C}│{R}")
+    print(f"{C}│{R}  MEDIUM         : {med:<44} {C}│{R}")
+    print(f"{C}│{R}  LOW / INFO     : {f'{low} / {info}':<44} {C}│{R}")
+    if not args.no_report and all_results:
+        base = args.basename or f"lightscan_report_{int(t_start)}"
+        saved_part = f"{base}.html / .json"
+        print(f"{C}│{R}  Saved Report   : {GRN}{saved_part:<44}{R} {C}│{R}")
+    print(f"{C}└───────────────────────────────────────────────────────────────┘{R}\n")
 
     if not args.no_report and all_results:
         Reporter(args.output).save(all_results, meta, args.basename)
@@ -856,21 +886,69 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
 
 
 def print_minimal_help() -> None:
-    """Print a readable --help page derived from the real parser.
+    """Print an animated, compact terminal dashboard help guide."""
+    import time
+    import sys
+    
+    RED = "\033[38;5;196m"
+    ORANGE = "\033[38;5;202m"
+    YEL = "\033[38;5;220m"
+    DIM = "\033[38;5;242m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+    
+    help_lines = [
+        f"{RED}┌───\033[0m {BOLD}LIGHTSCAN CORE COMMANDS\033[0m {RED}" + "─" * 49 + f"\033[0m",
+        f"  {ORANGE}--auto <domain>{RESET}           Autonomous red-team audit flow: recon → exploit → pivot map",
+        f"  {ORANGE}--scan -t <target>{RESET}        Basic port discovery scan (default top100 TCP ports)",
+        f"  {ORANGE}--active -t <target>{RESET}      Full active scan: service probe → vuln check → pivot map",
+        f"  {ORANGE}--web-scan <url>{RESET}          Vulnerability audit for web directories, SQLi, XSS, CORS, etc.",
+        f"  {ORANGE}--brute <proto> -t <ip>{RESET}    High-speed credential spray & brute-force (ssh, ftp, mysql...)",
+        f"{RED}└" + "─" * 76 + f"\033[0m",
+        "",
+        f"{RED}┌───\033[0m {BOLD}ESSENTIAL CONTROLS\033[0m {RED}" + "─" * 54 + f"\033[0m",
+        f"  {ORANGE}-p, --ports <ports>{RESET}       Specific ports (e.g. 80,443) or presets (e.g. top100)",
+        f"  {ORANGE}--cve{RESET}                   Validate common vulnerabilities (EternalBlue, Heartbleed...)",
+        f"  {ORANGE}--templates{RESET}             Run YAML template vulnerability checks only",
+        f"  {ORANGE}--stealth{RESET}               IDS evasion timing template (T1 timing + jitter)",
+        f"  {ORANGE}--proxy-file <file>{RESET}     Route all traffic through list of SOCKS5 proxies",
+        f"  {ORANGE}-o, --output <dir>{RESET}       Save results to custom output directory (default: .)",
+        f"  {ORANGE}--format <fmt>{RESET}           Select output format: json, html, csv, nmap-xml, minimal",
+        f"{RED}└" + "─" * 76 + f"\033[0m",
+        "",
+        f"{RED}┌───\033[0m {BOLD}PRACTICAL EXAMPLES\033[0m {RED}" + "─" * 54 + f"\033[0m",
+        f"  {DIM}# Full autonomous scan on a target domain{RESET}",
+        f"  {YEL}lightscan --auto target.com{RESET}",
+        "",
+        f"  {DIM}# Active network sweep + vulnerability validation + HTML report{RESET}",
+        f"  {YEL}lightscan --active -t 192.168.1.0/24 --cve --format html{RESET}",
+        "",
+        f"  {DIM}# Targeted SSH brute force with password list mutation{RESET}",
+        f"  {YEL}lightscan --brute ssh -t 10.0.0.50 -U root -W path/to/words.txt --mutate{RESET}",
+        f"{RED}└" + "─" * 76 + f"\033[0m",
+        "",
+        f"  \033[38;5;39m💡 Tip:\033[0m Use \033[1;38;5;196mlightscan -ha\033[0m or \033[1;38;5;196mlightscan --help-all\033[0m to list all 50+ flags.",
+        ""
+    ]
+    
+    is_tty = sys.stdout.isatty()
+    for line in help_lines:
+        print(line)
+        if is_tty:
+            time.sleep(0.012)  # Fast cascading render
 
-    This replaces the old hand-written help block that inevitably drifted.
-    Groups come from the parser's argument groups so new flags show up
-    automatically. The examples section is the only manually maintained part.
-    """
+
+def print_full_help() -> None:
+    """Print the complete verbose list of all CLI flags and parameters."""
     p = build_parser()
     DIM   = "\033[38;5;240m"
     RED   = "\033[38;5;196m"
-    BOLD  = "\033[1m"
     RESET = "\033[0m"
 
-    print(f"{BOLD}Usage:{RESET}")
-    print(f"  lightscan -t <target> [options]")
-    print(f"  lightscan --auto <domain>\n")
+    print(f"\033[38;5;196m┌───\033[0m \033[1mUSAGE COMMANDS\033[0m \033[38;5;196m" + "─" * 58 + "\033[0m")
+    print(f"  \033[38;5;196mlightscan\033[0m -t <target> [options]")
+    print(f"  \033[38;5;196mlightscan\033[0m --auto <domain>")
+    print(f"\033[38;5;196m└" + "─" * 74 + "\033[0m\n")
 
     # Print each argument group with coloured header
     skip_groups = {"positional arguments", "options"}
@@ -879,9 +957,10 @@ def print_minimal_help() -> None:
             continue
         if not group._group_actions:
             continue
-        print(f"{RED}{BOLD}{group.title}{RESET}")
+        title = group.title.upper()
+        rem = max(2, 74 - 5 - len(title))
+        print(f"\033[38;5;196m┌───\033[0m \033[1m{title}\033[0m \033[38;5;196m" + "─" * rem + "\033[0m")
         for action in group._group_actions:
-            # build the flag string
             if not action.option_strings:
                 continue
             flags = ", ".join(action.option_strings)
@@ -892,35 +971,10 @@ def print_minimal_help() -> None:
                 metavar = f" <{action.dest.upper()}>"
             default = ""
             if action.default not in (None, False, True, "==SUPPRESS=="):
-                default = f"{DIM} [default: {action.default}]{RESET}"
+                default = f" {DIM}[default: {action.default}]{RESET}"
             helpstr = action.help or ""
-            print(f"  {RED}{flags}{metavar}{RESET}  {helpstr}{default}")
-        print()
-
-    print(f"{BOLD}Examples:{RESET}")
-    examples = [
-        ("Autonomous recon + exploit + pivot map",
-         "lightscan --auto target.com"),
-        ("Stealth active scan on subnet",
-         "lightscan --active -t 192.168.1.0/24 --stealth -T T1"),
-        ("Fast TCP scan + service version + CVE check",
-         "lightscan --scan -t 10.0.0.1 -p top100 --sv --cve"),
-        ("AF_PACKET half-open SYN (root required)",
-         "lightscan --packet-scan -t 10.0.0.1 -p 1-1024"),
-        ("Web application scan",
-         "lightscan --web-scan http://target.local"),
-        ("SSH credential audit with mutation",
-         "lightscan --brute ssh -t 10.0.0.1 -U admin,root -W common --mutate"),
-        ("DNS full enum including AXFR",
-         "lightscan --dns target.com"),
-        ("Resume interrupted brute from checkpoint",
-         "lightscan --brute ftp -t 10.0.0.1 -U admin -W rockyou.txt --resume"),
-        ("Diff two scan JSONs",
-         "lightscan --diff before.json after.json"),
-    ]
-    for desc, cmd in examples:
-        print(f"  {DIM}# {desc}{RESET}")
-        print(f"  {RED}{cmd}{RESET}\n")
+            print(f"  \033[38;5;196m%-24s\033[0m %s%s" % (flags + metavar, helpstr, default))
+        print(f"\033[38;5;196m└" + "─" * 74 + "\033[0m\n")
 
 
 def main():
@@ -941,6 +995,14 @@ def main():
         print("  Usage: lightscan -t <target> [options]")
         print("         lightscan --auto <domain>")
         print(f"\n  \033[38;5;196mlightscan -h\033[0m  for full help\n")
+        sys.exit(0)
+
+    # intercept full help
+    if "-ha" in sys.argv or "--help-all" in sys.argv:
+        no_banner = "--no-banner" in sys.argv
+        if not no_banner:
+            print_banner(no_quote=True)
+        print_full_help()
         sys.exit(0)
 
     # intercept -h/--help before argparse so we control the format
