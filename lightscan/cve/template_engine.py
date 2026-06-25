@@ -217,9 +217,10 @@ class TemplateRunner:
                 url  = f"{scheme}://{host}:{port}{path}"
                 def _fetch(u=url):
                     try:
-                        req = urllib.request.Request(u, headers={
-                            "User-Agent": "LightScan/2.0 PHANTOM"})
-                        with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                        from lightscan.evasion import get_evasion_client_profile
+                        ua, ctx = get_evasion_client_profile()
+                        req = urllib.request.Request(u, headers={"User-Agent": ua})
+                        with urllib.request.urlopen(req, timeout=self.timeout, context=ctx) as r:
                             return r.status, r.read(8192).decode("utf-8","replace"), str(r.info())
                     except urllib.error.HTTPError as e:
                         try:

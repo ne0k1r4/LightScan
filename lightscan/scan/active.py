@@ -478,13 +478,13 @@ async def active_scan(
 
     # Phase 1 ─ Discovery
     if not skip_discovery:
-        print(f"{C}[ACTIVE]{R} Phase 1 — Host discovery ({len(targets)} targets)")
+        print(f"\n{C}⚡{R} \033[1m[PHASE 1] HOST DISCOVERY\033[0m \033[38;5;240m({len(targets)} targets)\033[0m")
         live = await discover_hosts(targets, timeout=min(timeout, 1.5), concurrency=concurrency)
         live_ips = []
         for ip, method, rtt, ttl, hn in live:
             live_ips.append(ip)
             tag = f" ({hn})" if hn else ""
-            print(f"  {G}ALIVE{R}  {ip:<18}{tag:<22} [{method}] rtt={rtt}ms ttl={ttl}")
+            print(f"  {G}✔ ALIVE{R}  {ip:<18}{tag:<22} [{method}] rtt={rtt}ms ttl={ttl}")
             results.append(ScanResult("active:discovery", ip, 0, "alive", Severity.INFO,
                 f"Host alive via {method} rtt={rtt}ms",
                 {"method":method,"rtt_ms":rtt,"ttl":ttl,"hostname":hn}))
@@ -504,7 +504,7 @@ async def active_scan(
             from lightscan.core.target import parse_ports
             spec = parse_ports(raw_spec)
 
-    print(f"{C}[ACTIVE]{R} Phase 2 — Port scan ({len(live_ips)} host(s) × {len(spec)} ports)")
+    print(f"\n{C}⚡{R} \033[1m[PHASE 2] PORT SCANNING\033[0m \033[38;5;240m({len(live_ips)} host(s) × {len(spec)} ports)\033[0m")
     open_map: Dict[str, List[int]] = {}
     sem = asyncio.Semaphore(concurrency)
 
@@ -514,15 +514,15 @@ async def active_scan(
             if r and r.status == "open":
                 open_map.setdefault(h, []).append(p)
                 if verbose:
-                    print(f"  {C}OPEN{R}  {h}:{p:<6} {r.detail}")
+                    print(f"  {C}✚ OPEN{R}  {h}:{p:<6} {r.detail}")
                 results.append(r)
 
     await asyncio.gather(*[_scan(h, p) for h in live_ips for p in spec])
     total_open = sum(len(v) for v in open_map.values())
-    print(f"  {C}→{R} {total_open} open port(s) on {len(open_map)} host(s)")
+    print(f"  {C}➥{R} {total_open} open port(s) on {len(open_map)} host(s)")
 
     # Phase 3 ─ Service probing
-    print(f"{C}[ACTIVE]{R} Phase 3 — Deep service probing")
+    print(f"\n{C}⚡{R} \033[1m[PHASE 3] DEEP SERVICE PROBING\033[0m")
     for host, plist in open_map.items():
         tasks = [deep_probe(host, p, timeout) for p in plist]
         probed = await asyncio.gather(*tasks, return_exceptions=True)
@@ -530,13 +530,13 @@ async def active_scan(
             if isinstance(pr, dict) and (pr["version"] or pr["banner"]):
                 svc = pr["service"]
                 ver = pr.get("version","")
-                print(f"  \033[38;5;117m[SVC]{R} {host}:{p} {svc} {ver}")
+                print(f"  \033[38;5;117m◈ [SVC]{R} {host}:{p} {svc} {ver}")
                 results.append(ScanResult("active:service", host, p, "detected", Severity.INFO,
                     f"{svc} {ver} — {pr['banner'][:80]}",
                     {"service":svc,"version":ver,"banner":pr["banner"][:200]}))
 
     # Phase 4 ─ Vuln validation
-    print(f"{C}[ACTIVE]{R} Phase 4 — Vulnerability validation")
+    print(f"\n{C}⚡{R} \033[1m[PHASE 4] VULNERABILITY VALIDATION\033[0m")
     vuln_map: Dict[str, List[ScanResult]] = {}
 
     async def _validate(h, p):
@@ -546,21 +546,21 @@ async def active_scan(
             results.extend(vulns)
             for v in vulns:
                 col = C if v.severity == Severity.CRITICAL else "\033[38;5;208m"
-                print(f"  {col}[{v.severity.value}]{R} {v.module} {v.target}:{v.port} — {v.detail[:80]}")
+                print(f"  {col}☣ [{v.severity.value}]{R} {v.module} {v.target}:{v.port} — {v.detail[:80]}")
 
     await asyncio.gather(*[_validate(h, p) for h, pl in open_map.items() for p in pl])
 
     # Phase 5 ─ Pivot map
-    print(f"{C}[ACTIVE]{R} Phase 5 — Pivot & exploit chain analysis")
+    print(f"\n{C}⚡{R} \033[1m[PHASE 5] PIVOT & EXPLOIT CHAINS\033[0m")
     for host, plist in open_map.items():
         for pv in pivot_suggestions(host, plist, vuln_map.get(host, [])):
             results.append(pv)
             chain = pv.data.get("chain") or pv.data.get("commands",[])
-            print(f"  \033[38;5;208m[PIVOT]{R} {pv.target} — {pv.detail}")
+            print(f"  \033[38;5;208m➦ [PIVOT]{R} {pv.target} — {pv.detail}")
             for step in chain[:3]:
-                print(f"    {DIM}→ {step}{R}")
+                print(f"    {DIM}↳ {step}{R}")
 
     crit = sum(1 for r in results if r.severity == Severity.CRITICAL)
     high = sum(1 for r in results if r.severity == Severity.HIGH)
-    print(f"\n{C}[ACTIVE DONE]{R} {len(results)} findings | {C}{crit} CRITICAL{R} | {high} HIGH")
+    print(f"\n{C}⚡{R} \033[1m[ACTIVE SCAN COMPLETE]\033[0m {len(results)} findings | {C}{crit} CRITICAL{R} | {high} HIGH\n")
     return results

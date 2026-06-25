@@ -253,7 +253,7 @@ async def async_main(args):
         cp.flush()
 
 async def run_search(query: str):
-    print(f"\033[38;5;196m[SEARCH]\033[0m Searching scripts and templates for: {query!r}\n")
+    print(f"\033[38;5;196m[SEARCH]\033[0m Searching scripts and templates for: \033[38;5;220m{query!r}\033[0m\n")
     
     # Search CVE templates
     from lightscan.cve.template_engine import TemplateLibrary
@@ -268,25 +268,49 @@ async def run_search(query: str):
     registry = ScriptRegistry([script_base])
     matching_scripts = registry.search(query)
     
+    SEV_COLORS = {
+        "CRITICAL": "\033[38;5;196;1m",  # bold red
+        "HIGH": "\033[38;5;202;1m",      # bold orange
+        "MEDIUM": "\033[38;5;220;1m",    # bold yellow
+        "LOW": "\033[38;5;82;1m",        # bold green
+        "INFO": "\033[38;5;39;1m"        # bold blue
+    }
+    
     # Print templates
     if matching_templates:
-        print(f"\033[1mFound {len(matching_templates)} matching CVE/vulnerability template(s):\033[0m")
+        title = f"VULNERABILITY TEMPLATES ({len(matching_templates)} matches)"
+        rem = max(2, 76 - 5 - len(title))
+        print(f"\033[38;5;196m┌───\033[0m \033[1m{title}\033[0m \033[38;5;196m" + "─" * rem + "\033[0m")
+        print(f"  \033[38;5;244m%-10s %-32s %-20s %-10s %s\033[0m" % ("SEVERITY", "ID", "CVE", "PORT", "TAGS"))
+        print(f"  " + "\033[38;5;238m─\033[0m" * 74)
         for tmpl in sorted(matching_templates, key=lambda x: (x.severity.value, x.id)):
-            cve = f" {tmpl.cve}" if tmpl.cve else ""
+            cve = tmpl.cve if tmpl.cve else "-"
             tags = ",".join(tmpl.tags[:3])
-            print(f"  [Template] {tmpl.severity.value:<8} {tmpl.id:<35}{cve:<22} [{tags}]  port={tmpl.port}")
-        print()
+            col = SEV_COLORS.get(tmpl.severity.value.upper(), "\033[0m")
+            print(f"  {col}%-10s\033[0m %-32s %-20s %-10s \033[38;5;242m[%s]\033[0m" % (
+                tmpl.severity.value, tmpl.id[:32], cve[:20], str(tmpl.port), tags
+            ))
+        print(f"\033[38;5;196m└" + "─" * 76 + "\033[0m\n")
         
     # Print scripts
     if matching_scripts:
-        print(f"\033[1mFound {len(matching_scripts)} matching NSE script(s):\033[0m")
+        title = f"RECON & DETECTION SCRIPTS ({len(matching_scripts)} matches)"
+        rem = max(2, 76 - 5 - len(title))
+        print(f"\033[38;5;39m┌───\033[0m \033[1m{title}\033[0m \033[38;5;39m" + "─" * rem + "\033[0m")
+        print(f"  \033[38;5;244m%-30s %-18s %s\033[0m" % ("SCRIPT NAME", "PORTS", "TAGS"))
+        print(f"  " + "\033[38;5;238m─\033[0m" * 74)
         for s in matching_scripts:
             tags = ",".join(s['tags'][:3])
             ports = ",".join(map(str, s['ports'][:4])) if s['ports'] else "all"
-            print(f"  [Script]   {s['name']:<30} [{tags}]  ports={ports}")
+            print(f"  \033[38;5;111m%-30s\033[0m %-18s \033[38;5;242m[%s]\033[0m" % (
+                s['name'][:30], ports[:18], tags
+            ))
             if s['desc']:
-                print(f"             {s['desc']}")
-        print()
+                desc = s['desc'].strip().replace("\n", " ")
+                desc_lines = [desc[i:i+70] for i in range(0, len(desc), 70)]
+                for line in desc_lines[:2]:
+                    print(f"    \033[38;5;240m\u21aa {line.strip()}\033[0m")
+        print(f"\033[38;5;39m└" + "─" * 76 + "\033[0m\n")
         
     if not matching_templates and not matching_scripts:
         print(f"\033[38;5;240m[-] No matching templates or scripts found for {query!r}\033[0m\n")
@@ -900,6 +924,17 @@ def print_minimal_help() -> None:
 
 
 def main():
+    # Auto-tune system limits (ulimit -n) to prevent socket limit crashes under high concurrency
+    if sys.platform != "win32":
+        try:
+            import resource
+            soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+            if soft < hard:
+                # Attempt to raise to maximum hard limit
+                resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+        except Exception:
+            pass
+
     # no-arg invocation — short usage hint, not full --help wall
     if len(sys.argv) == 1:
         print_banner()

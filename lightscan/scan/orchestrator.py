@@ -94,15 +94,10 @@ class TargetContext:
 
 # ── Stage helpers ─────────────────────────────────────────────────────────────
 
-C   = "\033[38;5;196m"
-YEL = "\033[38;5;208m"
-GRN = "\033[38;5;82m"
-BLU = "\033[38;5;117m"
-DIM = "\033[38;5;240m"
-R   = "\033[0m"
-
 def _stage(n: int, name: str):
-    print(f"\n{C}[ORCH · Stage {n}]{R} {name}")
+    bar = f"\033[38;5;196m╪\033[0m"
+    print(f"\n {bar} \033[1;38;5;196m[STAGE {n}]\033[0m \033[1m{name.upper()}\033[0m")
+    print(f"   " + "\033[38;5;236m─\033[0m" * 60)
 
 
 async def _resolve(host: str) -> Optional[str]:
@@ -465,32 +460,34 @@ def build_compromise_map(ctx: TargetContext) -> dict:
 def print_compromise_map(m: dict):
     C   = "\033[38;5;196m"; YEL = "\033[38;5;208m"; GRN = "\033[38;5;82m"
     BLU = "\033[38;5;117m"; DIM = "\033[38;5;240m"; R   = "\033[0m"
-    print(f"\n{C}{'═'*65}{R}")
-    print(f"{C}  COMPROMISE MAP — {m['domain']}{R}")
-    print(f"{C}{'═'*65}{R}")
-    print(f"  Subdomains enumerated : {m['subdomains']}")
-    print(f"  Live hosts            : {m['live_hosts']}")
-    print(f"  Open ports total      : {m['open_ports_total']}")
-    print(f"  {C}Critical vulns        : {m['critical_vulns']}{R}")
-    print(f"  {YEL}High vulns            : {m['high_vulns']}{R}")
-    print(f"  Credentials found     : {GRN}{m['creds_found']}{R}")
+    print(f"\n{C}┌───────────────────────────────────────────────────────────────┐{R}")
+    print(f"{C}│                    COMPROMISE MAP — {m['domain']:<26} │{R}")
+    print(f"{C}├───────────────────────────────────────────────────────────────┤{R}")
+    print(f"{C}│{R}  Subdomains enumerated : {m['subdomains']:<37} {C}│{R}")
+    print(f"{C}│{R}  Live hosts            : {m['live_hosts']:<37} {C}│{R}")
+    print(f"{C}│{R}  Open ports total      : {m['open_ports_total']:<37} {C}│{R}")
+    print(f"{C}│{R}  Critical vulns        : {C}{m['critical_vulns']:<37}{R} {C}│{R}")
+    print(f"{C}│{R}  High vulns            : {YEL}{m['high_vulns']:<37}{R} {C}│{R}")
+    print(f"{C}│{R}  Credentials found     : {GRN}{m['creds_found']:<37}{R} {C}│{R}")
     if m["dc_candidates"]:
-        print(f"  {C}Domain Controllers    : {', '.join(m['dc_candidates'])}{R}")
+        dc_str = ', '.join(m['dc_candidates'])[:37]
+        print(f"{C}│{R}  Domain Controllers    : {C}{dc_str:<37}{R} {C}│{R}")
+    print(f"{C}└───────────────────────────────────────────────────────────────┘{R}")
     print()
     for path in m["attack_paths"]:
         if not path["vulns"]: continue
         dc  = f" {C}[DC]{R}" if path["dc"] else ""
         os_ = f" [{path['os']}]" if path["os"] != "unknown" else ""
-        print(f"  {C}HOST{R} {path['host']}{os_}{dc}")
-        print(f"       ports: {path['open_ports'][:8]}")
+        print(f"  \033[1;38;5;196m⚡ HOST:\033[0m \033[1m{path['host']}\033[0m{os_}{dc}")
+        print(f"       \033[38;5;242mports:\033[0m {path['open_ports'][:8]}")
         for v in path["vulns"][:4]:
             print(f"       {C}✗{R} {v['detail'][:70]}")
         for step in path.get("recommended_next", [])[:3]:
-            print(f"       {DIM}→ {step}{R}")
+            print(f"       {DIM}↳ {step}{R}")
         if path["creds"]:
             for c in path["creds"]:
-                print(f"       {GRN}✓ CREDS{R} {c['proto'].upper()} {c['user']}:{c['pass']}")
-    print(f"{C}{'═'*65}{R}\n")
+                print(f"       {GRN}✔ CREDS{R} {c['proto'].upper()} {c['user']}:{c['pass']}")
+    print()
 
 
 # ── Main orchestrator entry point ─────────────────────────────────────────────

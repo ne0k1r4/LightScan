@@ -64,6 +64,61 @@ def print_banner(no_quote: bool = False) -> None:
     width = _term_width()
     sep   = "\033[38;5;196m" + "\u2500" * width + "\033[0m"
 
+    lines = [
+        "\u2588\u2588\u2557     \u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557  \u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2557   \u2588\u2588\u2557",
+        "\u2588\u2588\u2551     \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d \u2588\u2588\u2551  \u2588\u2588\u2551\u255a\u2550\u2550\u2588\u2588\u2554\u2550\u2550\u255d\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d \u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2551",
+        "\u2588\u2588\u2551     \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551   \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551      \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551\u2588\u2588\u2554\u2588\u2588\u2557 \u2588\u2588\u2551",
+        "\u2588\u2588\u2551     \u2588\u2588\u2551\u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2551   \u2588\u2588\u2551   \u255a\u2550\u2550\u2550\u2550\u2588\u2588\u2551\u2588\u2588\u2551      \u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2551\u2588\u2588\u2551\u255a\u2588\u2588\u2557\u2588\u2588\u2551",
+        "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d\u2588\u2588\u2551  \u2588\u2588\u2551   \u2588\u2588\u2551   \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551  \u2588\u2588\u2551\u2588\u2588\u2551 \u255a\u2588\u2588\u2588\u2588\u2551",
+        "\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d\u255a\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u255d  \u255a\u2550\u255d   \u255a\u2550\u255d   \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u255d  \u255a\u2550\u255d\u255a\u2550\u255d  \u255a\u2550\u2550\u2550\u255d"
+    ]
+
+    is_tty = sys.stdout.isatty()
+
+    if is_tty and not no_quote:
+        # Cyberpunk glitchy decrypt animation
+        import time
+        glitch_chars = "01$#@%&?!=[]{}<>+/\\*^~X"
+        steps = 8
+        sys.stdout.write("\033[?25l")  # Hide cursor
+        sys.stdout.flush()
+        try:
+            for step in range(steps):
+                sys.stdout.write("\r")
+                if step > 0:
+                    sys.stdout.write(f"\033[{len(lines) + 1}A")
+                sys.stdout.write("\n")
+                for idx, line in enumerate(lines):
+                    # Higher step = higher probability of correct character
+                    real_ratio = step / (steps - 1)
+                    animated_line = []
+                    for char in line:
+                        if char.isspace():
+                            animated_line.append(char)
+                        elif random.random() < real_ratio:
+                            animated_line.append(char)
+                        else:
+                            animated_line.append(random.choice(glitch_chars))
+                    
+                    # Gradient color progression (grey -> deep red -> neon red)
+                    if step < 2:
+                        color = 236
+                    elif step < 4:
+                        color = 88
+                    elif step < 6:
+                        color = 124
+                    else:
+                        color = 196
+                    
+                    sys.stdout.write(f"\033[38;5;{color}m" + "".join(animated_line) + "\033[0m\n")
+                sys.stdout.flush()
+                time.sleep(0.04)
+            # Pull cursor back up to redraw the static banner cleanly
+            sys.stdout.write(f"\033[{len(lines) + 1}A")
+        finally:
+            sys.stdout.write("\033[?25h")  # Show cursor
+            sys.stdout.flush()
+
     print(_ART)
     print(
         f"  \033[38;5;240mv{VERSION}  \u00b7  by "

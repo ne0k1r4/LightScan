@@ -65,12 +65,34 @@ class PhantomEngine:
                 pass  # fall back to static
 
     def _progress(self, label=""):
+        if not sys.stdout.isatty():
+            return
         elapsed = time.time() - self._start
         pct = (self._done / self._total * 100) if self._total else 0
+        
+        # Smoothly rotating spinner
+        spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        spin_char = spinners[int(time.time() * 10) % len(spinners)]
+        
+        # Color gradient progress bar (width 12)
+        width = 12
+        filled = int(round(width * pct / 100))
+        bar_chars = []
+        for i in range(width):
+            if i < filled:
+                # Custom hue sweep (Reds to oranges to yellows)
+                shades = [88, 124, 160, 196, 196, 202, 202, 208, 208, 214, 220, 226]
+                c = shades[min(i, len(shades) - 1)]
+                bar_chars.append(f"\033[38;5;{c}m█\033[0m")
+            else:
+                bar_chars.append("\033[38;5;236m░\033[0m")
+        bar = "".join(bar_chars)
+        
         sys.stdout.write(
-            f"\r\033[38;5;196m[PHANTOM]\033[0m "
-            f"{self._done}/{self._total} ({pct:.1f}%)  "
-            f"elapsed={elapsed:.1f}s  {label:<35}"
+            f"\r\033[38;5;196m[{spin_char} PHANTOM]\033[0m "
+            f"[{bar}] {self._done}/{self._total} ({pct:.1f}%) "
+            f"\033[38;5;242melapsed={elapsed:.1f}s\033[0m  "
+            f"\033[38;5;244m{label:<35}\033[0m"
         )
         sys.stdout.flush()
 
@@ -125,11 +147,18 @@ class PhantomEngine:
         self._start   = time.time()
         self._target  = target
         await asyncio.gather(*[self._run_one(c, l) for c, l in tasks])
-        print()
+        
+        # Clear progress line cleanly upon completion
+        if sys.stdout.isatty():
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+        else:
+            print()
+            
         elapsed = time.time() - self._start
         if self._adaptive:
             print(f"\033[38;5;240m[~] adaptive: {self._adaptive.summary()}\033[0m")
-        print(f"\033[38;5;240m[+] Done: {len(self._results)} results · {len(self._errors)} errors · {elapsed:.2f}s\033[0m")
+        print(f"\033[38;5;82m[+] PHANTOM COMPLETE:\033[0m {len(self._results)} findings · {len(self._errors)} errors · {elapsed:.2f}s")
         return self._results
 
     def run_sync(self, tasks):
