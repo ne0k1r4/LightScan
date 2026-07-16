@@ -548,12 +548,19 @@ async def run_auto(
     print_compromise_map(comp_map)
 
     # Save JSON
-    out_path = Path(output_dir) / f"compromise_map_{domain.replace('.','_')}.json"
-    try:
-        out_path.write_text(json.dumps(comp_map, indent=2, default=str))
-        print(f"  {GRN}[+]{R} Compromise map saved → {out_path}")
-    except Exception as e:
-        print(f"  {DIM}[!] Could not save map: {e}{R}")
+    if output_dir == "-":
+        # stdout is reserved for Reporter's piped report — writing a second
+        # file here would hit Path('-')/... (FileNotFoundError) since '-'
+        # isn't a real directory. comp_map is still returned to the caller.
+        print(f"  {DIM}[i] --output - active — compromise map not written to disk, "
+              f"returned in-memory only{R}")
+    else:
+        out_path = Path(output_dir) / f"compromise_map_{domain.replace('.','_')}.json"
+        try:
+            out_path.write_text(json.dumps(comp_map, indent=2, default=str))
+            print(f"  {GRN}[+]{R} Compromise map saved → {out_path}")
+        except Exception as e:
+            print(f"  {DIM}[!] Could not save map: {e}{R}")
 
     elapsed = time.time() - t0
     total_c = sum(1 for r in ctx.all_results if r.severity == Severity.CRITICAL)
