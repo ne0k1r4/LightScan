@@ -231,7 +231,7 @@ async def stage_resolve(ctx: TargetContext, timeout: float):
 
 
 async def stage_portscan(ctx: TargetContext, timeout: float,
-                          ports: Optional[List[int]], intensity: int, stealth: bool):
+                          ports: Optional[List[int]], intensity: int, stealth: bool, mode: str = "deep"):
     """Stage 3-4: Active scan + service profiling on all resolved IPs."""
     _stage(3, f"Active scan + service profiling ({len(ctx.live_hosts)} hosts)")
 
@@ -243,6 +243,7 @@ async def stage_portscan(ctx: TargetContext, timeout: float,
         intensity=intensity,
         verbose=False,
         skip_discovery=True,  # already have IPs
+        mode=mode,
     )
     ctx.extend_results(results)
 
@@ -504,6 +505,7 @@ async def run_auto(
     skip_web:   bool            = False,
     skip_brute: bool            = False,
     output_dir: str             = ".",
+    mode:       str             = "deep",
 ) -> Tuple[List[ScanResult], dict]:
     """
     Fully autonomous red-team pipeline.
@@ -526,17 +528,19 @@ async def run_auto(
         print(f"\033[38;5;208m[!] No in-scope hosts resolved. Check domain / scope settings.\033[0m")
         return ctx.all_results, {}
 
-    await stage_portscan(ctx, timeout, ports, intensity, stealth)
-    await stage_vuln(ctx, timeout)
-    await stage_exploit_chain(ctx)
+    await stage_portscan(ctx, timeout, ports, intensity, stealth, mode=mode)
+    
+    if mode != "sweep":
+        await stage_vuln(ctx, timeout)
+        await stage_exploit_chain(ctx)
 
-    if not skip_brute:
-        await stage_cred_attack(ctx, timeout, users, passwords)
+        if not skip_brute:
+            await stage_cred_attack(ctx, timeout, users, passwords)
 
-    await stage_dc_hunt(ctx, timeout)
+        await stage_dc_hunt(ctx, timeout)
 
-    if not skip_web:
-        await stage_web(ctx, timeout, stealth)
+        if not skip_web:
+            await stage_web(ctx, timeout, stealth)
 
     # Stage 10 — Compromise map
     _stage(10, "Building compromise map")

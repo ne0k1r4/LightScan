@@ -78,6 +78,8 @@ def build_parser():
                     help="Stealth OPSEC: T1 timing, 1-3s jitter, reduced concurrency, CDN-aware")
     aa.add_argument("--skip-web",    action="store_true", help="--auto: skip web deep-scan stage")
     aa.add_argument("--skip-brute",  action="store_true", help="--auto: skip credential brute stage")
+    aa.add_argument("--mode",        choices=["sweep", "deep"], default="deep",
+                    help="Scan mode: sweep (fast recon/ports only) or deep (full audit) [default: deep]")
 
     # Modules
     m = p.add_argument_group("Modules")
@@ -412,6 +414,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             skip_web   = getattr(args, 'skip_web', False),
             skip_brute = getattr(args, 'skip_brute', False),
             output_dir = args.output,
+            mode       = getattr(args, 'mode', 'deep'),
         )
         all_results.extend(results)
         if not args.no_report and all_results:
@@ -449,6 +452,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             concurrency = args.concurrency,
             intensity   = intensity,
             verbose     = args.verbose,
+            mode        = getattr(args, 'mode', 'deep'),
         )
         all_results.extend(results)
         if not args.no_report and all_results:
@@ -881,7 +885,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
     print(f"{C}└───────────────────────────────────────────────────────────────┘{R}\n")
 
     if not args.no_report and all_results:
-        Reporter(args.output).save(all_results, meta, args.basename)
+        Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
     return all_results
 
 

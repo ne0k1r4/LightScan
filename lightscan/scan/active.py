@@ -479,6 +479,7 @@ async def active_scan(
     intensity:   int   = 3,
     verbose:     bool  = False,
     skip_discovery: bool = False,
+    mode:        str   = "deep",
 ) -> List[ScanResult]:
     """
     Full 4-phase active red-team pipeline.
@@ -531,6 +532,10 @@ async def active_scan(
     await asyncio.gather(*[_scan(h, p) for h in live_ips for p in spec])
     total_open = sum(len(v) for v in open_map.values())
     print(f"  {C}➥{R} {total_open} open port(s) on {len(open_map)} host(s)")
+
+    if mode == "sweep":
+        print(f"\n{C}⚡{R} \033[1m[SWEEP COMPLETED]\033[0m {len(results)} host/port finding(s)\n")
+        return results
 
     # Phase 3 ─ Service probing
     print(f"\n{C}⚡{R} \033[1m[PHASE 3] DEEP SERVICE PROBING\033[0m")
