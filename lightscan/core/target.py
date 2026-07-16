@@ -16,6 +16,14 @@ TOP_100 = sorted(set([
 ]))
 
 def parse_targets(spec: str) -> list:
+    if spec == "-":
+        import sys
+        targets = []
+        for line in sys.stdin:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                targets.extend(parse_targets(line))
+        return targets
     if spec.startswith("file:"):
         targets = []
         with open(spec[5:]) as f:

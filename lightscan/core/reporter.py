@@ -11,11 +11,40 @@ from lightscan.core.engine import ScanResult, Severity
 
 
 class Reporter:
+    stdout_override = None
+
     def __init__(self, output_dir: str = "."):
         self.output_dir = output_dir
 
     def save(self, results: list[ScanResult], meta: dict,
              basename: str = "lightscan_report", fmt: str = "json") -> str:
+        if self.output_dir == "-":
+            import sys, tempfile
+            ext = {"json": "json", "nmap-xml": "xml", "html": "html",
+                   "csv": "csv", "minimal": "txt"}.get(fmt, "json")
+            # Create secure temp file
+            fd, temp_path = tempfile.mkstemp(suffix=f".{ext}")
+            os.close(fd)
+            try:
+                dispatch = {
+                    "json":     self._write_json,
+                    "nmap-xml": self._write_nmap_xml,
+                    "html":     self._write_html,
+                    "csv":      self._write_csv,
+                    "minimal":  self._write_minimal,
+                }
+                dispatch.get(fmt, self._write_json)(temp_path, results, meta)
+                
+                # Write content to stdout stream
+                out_stream = self.stdout_override or sys.__stdout__
+                with open(temp_path, "r", encoding="utf-8", errors="replace") as f:
+                    out_stream.write(f.read())
+                    out_stream.flush()
+            finally:
+                try: os.unlink(temp_path)
+                except Exception: pass
+            return "-"
+
         os.makedirs(self.output_dir, exist_ok=True)
         ts  = int(time.time())
         ext = {"json": "json", "nmap-xml": "xml", "html": "html",

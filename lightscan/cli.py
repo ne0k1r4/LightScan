@@ -964,6 +964,26 @@ def main():
     p    = build_parser()
     args = p.parse_args()
 
+    # Stdin Auto-detect check: only trigger if stdin is not a tty and a scanning action is requested
+    target_actions = [
+        getattr(args, 'scan', False),
+        getattr(args, 'active', False),
+        getattr(args, 'web_scan', None),
+        getattr(args, 'brute', None),
+        getattr(args, 'auto', None),
+        getattr(args, 'dns', None),
+        getattr(args, 'os_probe', None),
+        getattr(args, 'traceroute', None),
+    ]
+    if not getattr(args, 'target', None) and not sys.stdin.isatty() and any(target_actions):
+        args.target = "-"
+
+    # Stdout redirection to stderr when output is requested on stdout via "-"
+    if getattr(args, 'output', None) == "-":
+        from lightscan.core.reporter import Reporter
+        Reporter.stdout_override = sys.stdout
+        sys.stdout = sys.stderr
+
     # asyncio.run() is fine on Linux/Mac; on Windows Python<3.12 the default
     # ProactorEventLoop breaks some socket operations — set SelectorEventLoop.
     if sys.platform == "win32":
