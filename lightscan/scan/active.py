@@ -219,6 +219,18 @@ async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
 
 # ── Phase 3: Vulnerability Validation ────────────────────────────────────────
 
+_PORT_VALIDATORS: dict[int, list[callable]] = {}
+
+def register_validator(ports: int | list[int]):
+    def decorator(func):
+        p_list = [ports] if isinstance(ports, int) else list(ports)
+        for p in p_list:
+            _PORT_VALIDATORS.setdefault(p, []).append(func)
+        return func
+    return decorator
+
+
+@register_validator(21)
 async def _check_ftp_anon(host, port, timeout) -> Optional[ScanResult]:
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -239,6 +251,7 @@ async def _check_ftp_anon(host, port, timeout) -> Optional[ScanResult]:
     return None
 
 
+@register_validator(6379)
 async def _check_redis_unauth(host, port, timeout) -> Optional[ScanResult]:
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -260,6 +273,7 @@ async def _check_redis_unauth(host, port, timeout) -> Optional[ScanResult]:
     return None
 
 
+@register_validator(27017)
 async def _check_mongo_unauth(host, port, timeout) -> Optional[ScanResult]:
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -278,6 +292,7 @@ async def _check_mongo_unauth(host, port, timeout) -> Optional[ScanResult]:
     return None
 
 
+@register_validator(445)
 async def _check_smb_v1(host, port, timeout) -> Optional[ScanResult]:
     _NEG = bytes([0x00,0x00,0x00,0x54,0xFF,0x53,0x4D,0x42,0x72,0x00,0x00,0x00,0x00,0x18,
                   0x53,0xC8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF,0xFE,
@@ -300,6 +315,7 @@ async def _check_smb_v1(host, port, timeout) -> Optional[ScanResult]:
     return None
 
 
+@register_validator([389, 636])
 async def _check_ldap_anon(host, port, timeout) -> Optional[ScanResult]:
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -317,6 +333,7 @@ async def _check_ldap_anon(host, port, timeout) -> Optional[ScanResult]:
     return None
 
 
+@register_validator(23)
 async def _check_telnet(host, port, timeout) -> Optional[ScanResult]:
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -376,24 +393,18 @@ async def _check_http_exposures(host, port, timeout) -> List[ScanResult]:
 
 # ── Validator dispatch ────────────────────────────────────────────────────────
 
-_PORT_VALIDATORS = {
-    21:    _check_ftp_anon,
-    23:    _check_telnet,
-    389:   _check_ldap_anon,
-    445:   _check_smb_v1,
-    636:   _check_ldap_anon,
-    6379:  _check_redis_unauth,
-    27017: _check_mongo_unauth,
-}
 _HTTP_PORTS = {80, 443, 8000, 8080, 8443, 8888, 3000, 5000, 9090}
 
 
 async def validate_port(host: str, port: int, timeout: float) -> List[ScanResult]:
     out = []
-    fn  = _PORT_VALIDATORS.get(port)
-    if fn:
-        r = await fn(host, port, timeout)
-        if r: out.append(r)
+    funcs  = _PORT_VALIDATORS.get(port, [])
+    for fn in funcs:
+        try:
+            r = await fn(host, port, timeout)
+            if r: out.append(r)
+        except Exception:
+            pass
     if port in _HTTP_PORTS:
         out.extend(await _check_http_exposures(host, port, timeout))
     return out
