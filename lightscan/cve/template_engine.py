@@ -58,18 +58,30 @@ SEV_MAP = {
 # ── Template data model ───────────────────────────────────────────────────────
 
 @dataclass
-class TemplateStep:
-    type:        str                    # send | match | extract
-    data:        str          = ""
-    encoding:    str          = "raw"   # raw | hex | base64
-    contains:    str          = ""
-    not_contains:str          = ""
-    regex:       str          = ""
+class Matcher:
+    type:        str          = "word"  # word | regex | status
+    words:       list         = field(default_factory=list)
+    regex:       list         = field(default_factory=list)
     status:      list         = field(default_factory=list)
+    condition:   str          = "or"    # and | or
     part:        str          = "body"  # body | headers | all
-    name:        str          = ""      # for extract steps
-    group:       int          = 0
-    depends_on:  str          = ""
+    negative:    bool         = False
+
+@dataclass
+class TemplateStep:
+    type:               str                    # send | match | extract
+    data:               str          = ""
+    encoding:           str          = "raw"   # raw | hex | base64
+    contains:           str          = ""
+    not_contains:       str          = ""
+    regex:              str          = ""
+    status:             list         = field(default_factory=list)
+    part:               str          = "body"  # body | headers | all
+    name:               str          = ""      # for extract steps
+    group:              int          = 0
+    depends_on:         str          = ""
+    matchers:           list[Matcher]= field(default_factory=list)
+    matchers_condition: str          = "and"
 
 @dataclass
 class Template:
@@ -90,18 +102,33 @@ class Template:
     def from_dict(cls, d: dict) -> "Template":
         steps = []
         for s in d.get("steps", []):
+            matchers_data = s.get("matchers", [])
+            matchers = []
+            for m in matchers_data:
+                matchers.append(Matcher(
+                    type      = m.get("type", "word"),
+                    words     = m.get("words", []),
+                    regex     = m.get("regex", []),
+                    status    = m.get("status", []),
+                    condition = m.get("condition", "or"),
+                    part      = m.get("part", "body"),
+                    negative  = m.get("negative", False),
+                ))
+            m_cond = s.get("matchers-condition", s.get("matchers_condition", "and"))
             steps.append(TemplateStep(
-                type         = s.get("type","send"),
-                data         = s.get("data",""),
-                encoding     = s.get("encoding","raw"),
-                contains     = s.get("contains",""),
-                not_contains = s.get("not_contains",""),
-                regex        = s.get("regex",""),
-                status       = s.get("status",[]),
-                part         = s.get("part","body"),
-                name         = s.get("name",""),
-                group        = s.get("group",0),
-                depends_on   = s.get("depends_on",""),
+                type               = s.get("type","send"),
+                data               = s.get("data",""),
+                encoding           = s.get("encoding","raw"),
+                contains           = s.get("contains",""),
+                not_contains       = s.get("not_contains",""),
+                regex              = s.get("regex",""),
+                status             = s.get("status",[]),
+                part               = s.get("part","body"),
+                name               = s.get("name",""),
+                group              = s.get("group",0),
+                depends_on         = s.get("depends_on",""),
+                matchers           = matchers,
+                matchers_condition = m_cond,
             ))
         return cls(
             id          = d["id"],
@@ -178,11 +205,11 @@ class TemplateRunner:
 
                 elif step.type == "match":
                     text = recv_buf.decode("utf-8", errors="replace")
-                    ok = self._check_match(step, text, None)
+                    ok = self._check_match(step, text, None, "")
                     match_results[step_key] = ok
                     if ok:
                         matched = True
-                    elif step.contains or step.regex:
+                    elif step.contains or step.regex or step.matchers:
                         # A required match failed — stop
                         break
 
@@ -233,13 +260,9 @@ class TemplateRunner:
                 last_status, last_body, last_headers = await loop.run_in_executor(None, _fetch)
 
             elif step.type == "match":
-                part = step.part
-                if   part == "headers": text = last_headers
-                elif part == "body":    text = last_body
-                else:                   text = last_headers + last_body
-                ok = self._check_match(step, text, last_status)
+                ok = self._check_match(step, last_body, last_status, last_headers)
                 if ok: matched = True
-                elif step.contains or step.regex or step.status:
+                elif step.contains or step.regex or step.status or step.matchers:
                     break
 
             elif step.type == "extract":
@@ -263,20 +286,63 @@ class TemplateRunner:
         # raw — handle \r\n \x00 escapes
         return data.encode("utf-8").decode("unicode_escape").encode("latin-1")
 
-    def _check_match(self, step: TemplateStep, text: str, status) -> bool:
-        if step.status and status not in step.status:
-            return False
-        if step.contains and step.contains.lower() not in text.lower():
-            return False
-        if step.not_contains and step.not_contains.lower() in text.lower():
-            return False
-        if step.regex:
-            try:
-                if not re.search(step.regex, text, re.IGNORECASE):
-                    return False
-            except re.error:
+    def _check_match(self, step: TemplateStep, body: str, status, headers: str = "") -> bool:
+        if not step.matchers:
+            part = step.part
+            if   part == "headers": text = headers
+            elif part == "body":    text = body
+            else:                   text = (headers + body) if headers else body
+            if step.status and status not in step.status:
                 return False
-        return True
+            if step.contains and step.contains.lower() not in text.lower():
+                return False
+            if step.not_contains and step.not_contains.lower() in text.lower():
+                return False
+            if step.regex:
+                try:
+                    if not re.search(step.regex, text, re.IGNORECASE):
+                        return False
+                except re.error:
+                    return False
+            return True
+
+        results = []
+        for m in step.matchers:
+            part = m.part
+            if part == "headers":
+                part_text = headers
+            elif part == "body":
+                part_text = body
+            else:
+                part_text = (headers + "\n" + body) if headers else body
+            
+            m_ok = False
+            if m.type == "status":
+                m_ok = status in m.status if status is not None else False
+            elif m.type == "word":
+                if m.condition == "and":
+                    m_ok = all(w.lower() in part_text.lower() for w in m.words)
+                else:
+                    m_ok = any(w.lower() in part_text.lower() for w in m.words)
+            elif m.type == "regex":
+                matched_regexes = []
+                for r_pat in m.regex:
+                    try:
+                        matched_regexes.append(bool(re.search(r_pat, part_text, re.IGNORECASE)))
+                    except re.error:
+                        matched_regexes.append(False)
+                if m.condition == "and":
+                    m_ok = all(matched_regexes)
+                else:
+                    m_ok = any(matched_regexes)
+            
+            if m.negative:
+                m_ok = not m_ok
+            results.append(m_ok)
+
+        if step.matchers_condition == "or":
+            return any(results)
+        return all(results)
 
     def _extract(self, step: TemplateStep, text: str) -> str:
         if step.regex:
