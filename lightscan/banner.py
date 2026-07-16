@@ -120,21 +120,6 @@ def print_banner(no_quote: bool = False) -> None:
             sys.stdout.flush()
 
     print(_ART)
-    print(
-        f"  \033[38;5;240mv{VERSION}  \u00b7  by "
-        f"\033[38;5;196m{AUTHOR}\033[38;5;240m ({ALIAS})"
-        f"  \u00b7  Async Network Recon & Attack Framework\033[0m"
-    )
-
-    # runtime info — shown dim so it doesn't compete with the banner
-    # this line has saved me from "why is raw scan broken" at least 10 times
-    py   = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    root_str = (
-        "\033[38;5;196mroot\033[38;5;240m"
-        if _is_root() else
-        "\033[38;5;208mno-root\033[38;5;240m (raw/packet scans will fail)\033[0m"
-    )
-    print(f"  \033[38;5;240mpython {py}  \u00b7  {root_str}  \u00b7  pid {os.getpid()}\033[0m")
 
     if not no_quote:
         print(f"\n  \033[38;5;238m{random.choice(_QUOTES)}\033[0m")

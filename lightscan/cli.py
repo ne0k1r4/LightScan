@@ -886,7 +886,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
 
 
 def print_minimal_help() -> None:
-    """Print an animated, compact terminal dashboard help guide."""
+    """Print an animated, ultra-short terminal help guide."""
     import time
     import sys
     
@@ -898,36 +898,27 @@ def print_minimal_help() -> None:
     RESET = "\033[0m"
     
     help_lines = [
-        f"{RED}┌───\033[0m {BOLD}LIGHTSCAN CORE COMMANDS\033[0m {RED}" + "─" * 49 + f"\033[0m",
-        f"  {ORANGE}--auto <domain>{RESET}           Autonomous red-team audit flow: recon → exploit → pivot map",
-        f"  {ORANGE}--scan -t <target>{RESET}        Basic port discovery scan (default top100 TCP ports)",
-        f"  {ORANGE}--active -t <target>{RESET}      Full active scan: service probe → vuln check → pivot map",
-        f"  {ORANGE}--web-scan <url>{RESET}          Vulnerability audit for web directories, SQLi, XSS, CORS, etc.",
-        f"  {ORANGE}--brute <proto> -t <ip>{RESET}    High-speed credential spray & brute-force (ssh, ftp, mysql...)",
+        f"{RED}┌───\033[0m {BOLD}LIGHTSCAN HELP\033[0m {RED}" + "─" * 58 + f"\033[0m",
+        f"  Usage: lightscan -t <target> [options]",
+        f"         lightscan --auto <domain>",
+        "",
+        f"  Core Commands:",
+        f"    {ORANGE}--auto <domain>{RESET}      Autonomous audit (recon → exploit → map)",
+        f"    {ORANGE}--scan -t <target>{RESET}   Basic TCP port discovery scan (top100)",
+        f"    {ORANGE}--active -t <target>{RESET} Full active scan (probe → vuln check → pivot)",
+        f"    {ORANGE}--web-scan <url>{RESET}     Web vulnerability audit directory/SQLi/CORS",
+        f"    {ORANGE}--brute <proto>{RESET}      Credential brute-force (ssh, ftp, mysql...)",
+        "",
+        f"  Common Options:",
+        f"    {ORANGE}-p <ports>{RESET}          Ports (e.g. 22,80,443 | 1-1024 | top100)",
+        f"    {ORANGE}--cve{RESET}               Run legacy/template vulnerability checks",
+        f"    {ORANGE}--stealth{RESET}           IDS evasion timing template + jitter",
+        f"    {ORANGE}--format <fmt>{RESET}       Output: json, html, csv, xml, minimal",
+        "",
+        f"  Example:",
+        f"    {YEL}lightscan --auto target.com{RESET}",
+        f"    {YEL}lightscan --active -t 192.168.1.1 --cve --format html{RESET}",
         f"{RED}└" + "─" * 76 + f"\033[0m",
-        "",
-        f"{RED}┌───\033[0m {BOLD}ESSENTIAL CONTROLS\033[0m {RED}" + "─" * 54 + f"\033[0m",
-        f"  {ORANGE}-p, --ports <ports>{RESET}       Specific ports (e.g. 80,443) or presets (e.g. top100)",
-        f"  {ORANGE}--cve{RESET}                   Validate common vulnerabilities (EternalBlue, Heartbleed...)",
-        f"  {ORANGE}--templates{RESET}             Run YAML template vulnerability checks only",
-        f"  {ORANGE}--stealth{RESET}               IDS evasion timing template (T1 timing + jitter)",
-        f"  {ORANGE}--proxy-file <file>{RESET}     Route all traffic through list of SOCKS5 proxies",
-        f"  {ORANGE}-o, --output <dir>{RESET}       Save results to custom output directory (default: .)",
-        f"  {ORANGE}--format <fmt>{RESET}           Select output format: json, html, csv, nmap-xml, minimal",
-        f"{RED}└" + "─" * 76 + f"\033[0m",
-        "",
-        f"{RED}┌───\033[0m {BOLD}PRACTICAL EXAMPLES\033[0m {RED}" + "─" * 54 + f"\033[0m",
-        f"  {DIM}# Full autonomous scan on a target domain{RESET}",
-        f"  {YEL}lightscan --auto target.com{RESET}",
-        "",
-        f"  {DIM}# Active network sweep + vulnerability validation + HTML report{RESET}",
-        f"  {YEL}lightscan --active -t 192.168.1.0/24 --cve --format html{RESET}",
-        "",
-        f"  {DIM}# Targeted SSH brute force with password list mutation{RESET}",
-        f"  {YEL}lightscan --brute ssh -t 10.0.0.50 -U root -W path/to/words.txt --mutate{RESET}",
-        f"{RED}└" + "─" * 76 + f"\033[0m",
-        "",
-        f"  \033[38;5;39m💡 Tip:\033[0m Use \033[1;38;5;196mlightscan -ha\033[0m or \033[1;38;5;196mlightscan --help-all\033[0m to list all 50+ flags.",
         ""
     ]
     
@@ -935,46 +926,7 @@ def print_minimal_help() -> None:
     for line in help_lines:
         print(line)
         if is_tty:
-            time.sleep(0.012)  # Fast cascading render
-
-
-def print_full_help() -> None:
-    """Print the complete verbose list of all CLI flags and parameters."""
-    p = build_parser()
-    DIM   = "\033[38;5;240m"
-    RED   = "\033[38;5;196m"
-    RESET = "\033[0m"
-
-    print(f"\033[38;5;196m┌───\033[0m \033[1mUSAGE COMMANDS\033[0m \033[38;5;196m" + "─" * 58 + "\033[0m")
-    print(f"  \033[38;5;196mlightscan\033[0m -t <target> [options]")
-    print(f"  \033[38;5;196mlightscan\033[0m --auto <domain>")
-    print(f"\033[38;5;196m└" + "─" * 74 + "\033[0m\n")
-
-    # Print each argument group with coloured header
-    skip_groups = {"positional arguments", "options"}
-    for group in p._action_groups:
-        if group.title in skip_groups:
-            continue
-        if not group._group_actions:
-            continue
-        title = group.title.upper()
-        rem = max(2, 74 - 5 - len(title))
-        print(f"\033[38;5;196m┌───\033[0m \033[1m{title}\033[0m \033[38;5;196m" + "─" * rem + "\033[0m")
-        for action in group._group_actions:
-            if not action.option_strings:
-                continue
-            flags = ", ".join(action.option_strings)
-            metavar = ""
-            if action.metavar:
-                metavar = f" {action.metavar}"
-            elif action.type and action.type != bool:
-                metavar = f" <{action.dest.upper()}>"
-            default = ""
-            if action.default not in (None, False, True, "==SUPPRESS=="):
-                default = f" {DIM}[default: {action.default}]{RESET}"
-            helpstr = action.help or ""
-            print(f"  \033[38;5;196m%-24s\033[0m %s%s" % (flags + metavar, helpstr, default))
-        print(f"\033[38;5;196m└" + "─" * 74 + "\033[0m\n")
+            time.sleep(0.012)
 
 
 def main():
@@ -994,19 +946,11 @@ def main():
         print_banner()
         print("  Usage: lightscan -t <target> [options]")
         print("         lightscan --auto <domain>")
-        print(f"\n  \033[38;5;196mlightscan -h\033[0m  for full help\n")
+        print(f"\n  \033[38;5;196mlightscan -h\033[0m  for help\n")
         sys.exit(0)
 
-    # intercept full help
-    if "-ha" in sys.argv or "--help-all" in sys.argv:
-        no_banner = "--no-banner" in sys.argv
-        if not no_banner:
-            print_banner(no_quote=True)
-        print_full_help()
-        sys.exit(0)
-
-    # intercept -h/--help before argparse so we control the format
-    if "-h" in sys.argv or "--help" in sys.argv:
+    # intercept help commands
+    if any(h in sys.argv for h in ("-h", "--help", "-ha", "--help-all")):
         no_banner = "--no-banner" in sys.argv
         if not no_banner:
             print_banner(no_quote=True)
