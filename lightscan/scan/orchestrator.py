@@ -40,6 +40,17 @@ from lightscan.core.engine import ScanResult, Severity
 from lightscan.core.target import parse_ports
 from lightscan.scan.active import active_scan, discover_hosts, validate_port, pivot_suggestions
 
+# every stage_* function below prints status with these. used to be
+# redefined locally in a couple places (run_auto, print_compromise_map)
+# and just missing everywhere else, so anything stage_dns/stage_vuln/etc
+# tried to print crashed with NameError the second it found anything.
+C   = "\033[38;5;196m"   # red    — headers / critical
+YEL = "\033[38;5;208m"   # amber  — warnings / medium
+GRN = "\033[38;5;82m"    # green  — success
+BLU = "\033[38;5;117m"   # blue   — info
+DIM = "\033[38;5;240m"   # gray   — muted / secondary text
+R   = "\033[0m"          # reset
+
 
 # ── Target context (shared memory across all stages) ─────────────────────────
 
@@ -459,8 +470,6 @@ def build_compromise_map(ctx: TargetContext) -> dict:
 
 
 def print_compromise_map(m: dict):
-    C   = "\033[38;5;196m"; YEL = "\033[38;5;208m"; GRN = "\033[38;5;82m"
-    BLU = "\033[38;5;117m"; DIM = "\033[38;5;240m"; R   = "\033[0m"
     print(f"\n{C}┌───────────────────────────────────────────────────────────────┐{R}")
     print(f"{C}│                    COMPROMISE MAP — {m['domain']:<26} │{R}")
     print(f"{C}├───────────────────────────────────────────────────────────────┤{R}")
