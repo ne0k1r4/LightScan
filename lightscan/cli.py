@@ -777,13 +777,14 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
     run_cve       = args.cve
     run_templates = getattr(args, 'templates', False)
     if (run_cve or run_templates) and args.target:
-        from lightscan.cve.bridge import run_all_checks
+        from lightscan.cve.bridge import run_all_checks, versions_from_results
         hosts = parse_targets(args.target) if not open_ports else list(open_ports.keys())
         extra_dirs = [args.template_dir] if getattr(args, 'template_dir', None) else None
         t_tags     = getattr(args, 'template_tags', None)
         t_ids      = getattr(args, 'template_ids', None)
         cb         = args.log4shell_callback or ""
         use_legacy = run_cve  # legacy checks only with --cve, not --templates alone
+        versions   = versions_from_results(all_results)  # from --active's deep_probe, if it ran
         print(f"\033[38;5;196m[{'CVE+TPL' if run_cve else 'TEMPLATES'}]\033[0m {len(hosts)} host(s)")
         for host in hosts:
             r = await run_all_checks(
@@ -793,6 +794,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 template_ids=t_ids,
                 use_legacy=use_legacy,
                 log4shell_callback=cb,
+                versions=versions,
                 timeout=args.timeout,
             )
             all_results.extend(r)
