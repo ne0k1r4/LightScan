@@ -96,6 +96,7 @@ class Template:
     description: str          = ""
     remediation: str          = ""
     reference:   str          = ""
+    version:     str          = ""     # optional constraint, e.g. "<6.2.7" or ">=2.0,<3.5"
     raw:         dict         = field(default_factory=dict)
 
     @classmethod
@@ -142,6 +143,7 @@ class Template:
             description = d.get("description",""),
             remediation = d.get("remediation",""),
             reference   = d.get("reference",""),
+            version     = str(d.get("version","")),
             raw         = d,
         )
 
@@ -380,6 +382,50 @@ class TemplateRunner:
 
 # ── Template loader ───────────────────────────────────────────────────────────
 
+# version constraint stuff for skipping templates that can't apply to the
+# detected version. not real semver (redis/mongo/whatever don't follow it
+# anyway) — just dotted number groups, compared as tuples.
+def _ver_tuple(v: str) -> tuple:
+    v = v.split("-")[0].split("+")[0]  # drop -rc1 / +build suffixes
+    parts = re.findall(r"\d+", v)
+    return tuple(int(p) for p in parts)
+
+def _pad(a: tuple, b: tuple) -> tuple:
+    n = max(len(a), len(b))
+    return a + (0,) * (n - len(a)), b + (0,) * (n - len(b))
+
+_OPS = ("<=", ">=", "==", "!=", "<", ">")
+
+def version_ok(detected: str, constraint: str) -> bool:
+    """
+    does `detected` satisfy `constraint`? constraint is comma-separated AND
+    clauses like ">=2.0,<3.5". no operator on a clause means exact match.
+    if we can't parse either side just let it through — a template running
+    when it shouldn't is annoying, one skipped when it should've run is worse.
+    """
+    if not constraint or not detected:
+        return True
+    dv = _ver_tuple(detected)
+    if not dv:
+        return True
+    for clause in constraint.split(","):
+        clause = clause.strip()
+        if not clause:
+            continue
+        op = next((o for o in _OPS if clause.startswith(o)), "==")
+        cv = _ver_tuple(clause[len(op):].strip() if clause.startswith(op) else clause)
+        if not cv:
+            continue
+        a, b = _pad(dv, cv)
+        if   op == "<=" and not a <= b: return False
+        elif op == ">=" and not a >= b: return False
+        elif op == "==" and not a == b: return False
+        elif op == "!=" and not a != b: return False
+        elif op == "<"  and not a <  b: return False
+        elif op == ">"  and not a >  b: return False
+    return True
+
+
 class TemplateLibrary:
     """
     Loads all YAML templates from one or more directories.
@@ -429,8 +475,11 @@ class TemplateLibrary:
                 out.append(t)
         return out
 
-    def for_ports(self, open_ports: list[int]) -> list[Template]:
-        return [t for t in self._templates if t.port in open_ports]
+    def for_ports(self, open_ports: list[int], versions: dict[int, str] | None = None) -> list[Template]:
+        out = [t for t in self._templates if t.port in open_ports]
+        if versions:
+            out = [t for t in out if version_ok(versions.get(t.port, ""), t.version)]
+        return out
 
     def __len__(self): return len(self._templates)
     def __iter__(self): return iter(self._templates)
@@ -445,16 +494,21 @@ class TemplateLibrary:
 
 async def run_templates(templates: list[Template], host: str,
                         open_ports: list[int] | None = None,
+                        versions: dict[int, str] | None = None,
                         timeout=8.0, concurrency=32) -> list[ScanResult]:
     """
     Run a list of templates against a host.
-    Skips templates whose port is not in open_ports (if provided).
+    Skips templates whose port is not in open_ports (if provided), and
+    skips ones whose version: constraint doesn't match a known version
+    for that port (if versions provided).
     """
     runner = TemplateRunner(timeout)
     sem    = asyncio.Semaphore(concurrency)
 
     async def _one(tpl: Template) -> ScanResult | None:
         if open_ports and tpl.port not in open_ports:
+            return None
+        if versions and not version_ok(versions.get(tpl.port, ""), tpl.version):
             return None
         async with sem:
             return await runner.run(tpl, host, tpl.port)
