@@ -14,12 +14,27 @@ from lightscan.cve.template_engine import TemplateLibrary, run_templates
 from lightscan.core.engine import ScanResult
 
 
+def versions_from_results(results: list[ScanResult]) -> dict[int, str]:
+    """pulls {port: version} out of active.py's Phase 3 'active:service'
+    findings, so the cve stage can skip templates that don't apply to
+    whatever's actually running. no entry for a port just means we don't
+    know the version — templates for that port still run as normal."""
+    out = {}
+    for r in results:
+        if r.module == "active:service":
+            ver = r.data.get("version", "")
+            if ver:
+                out[r.port] = ver
+    return out
+
+
 async def run_all_checks(host: str, open_ports: list[int],
                          template_dirs: list[str] | None = None,
                          template_tags: list[str] | None = None,
                          template_ids:  list[str] | None = None,
                          use_legacy: bool = True,
                          log4shell_callback: str = "",
+                         versions: dict[int, str] | None = None,
                          timeout: float = 8.0,
                          concurrency: int = 32) -> list[ScanResult]:
     """
@@ -33,6 +48,8 @@ async def run_all_checks(host: str, open_ports: list[int],
         template_ids:       run specific template IDs only
         use_legacy:         also run hardcoded CVE checks
         log4shell_callback: OAST callback URL for Log4Shell OOB detection
+        versions:           {port: version} from deep_probe, filters out
+                            templates whose version: constraint doesn't match
         timeout / concurrency: passed to runner
 
     Returns:
@@ -53,9 +70,10 @@ async def run_all_checks(host: str, open_ports: list[int],
 
     tpls = lib.filter(tags=template_tags, ids=template_ids)
     if not tpls and not template_tags and not template_ids:
-        tpls = lib.for_ports(open_ports)
+        tpls = lib.for_ports(open_ports, versions=versions)
 
-    tpl_results = await run_templates(tpls, host, open_ports, timeout, concurrency)
+    tpl_results = await run_templates(tpls, host, open_ports, versions=versions,
+                                       timeout=timeout, concurrency=concurrency)
     for r in tpl_results:
         if _dedup(r): results.append(r)
 
@@ -74,6 +92,7 @@ async def run_templates_only(host: str, open_ports: list[int],
                              extra_dirs: list[str] | None = None,
                              tags: list[str] | None = None,
                              ids:  list[str] | None = None,
+                             versions: dict[int, str] | None = None,
                              timeout=8.0) -> list[ScanResult]:
     """Thin wrapper — template engine only, no legacy checks."""
     return await run_all_checks(
@@ -81,6 +100,7 @@ async def run_templates_only(host: str, open_ports: list[int],
         template_dirs=extra_dirs,
         template_tags=tags,
         template_ids=ids,
+        versions=versions,
         use_legacy=False,
         timeout=timeout,
     )
