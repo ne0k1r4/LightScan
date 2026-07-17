@@ -19,7 +19,11 @@ venv/
 # Generated reports
 lightscan_report.*
 *_report.html
-*_report.json
+lightscan_report_*.json
+lightscan_report_*.html
+lightscan_report_*.xml
+lightscan_report_*.csv
+lightscan_report_*.txt
 *_report.md
 
 # IDE
@@ -31,6 +35,4 @@ lightscan_report.*
 # Dev scripts
 apply_*.py
 
-*.scan.json
-*.scan.json
 *.scan.json
