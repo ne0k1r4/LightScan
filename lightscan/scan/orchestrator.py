@@ -294,9 +294,11 @@ async def stage_vuln(ctx: TargetContext, timeout: float):
         return
 
     try:
-        from lightscan.cve.bridge import run_all_checks
+        from lightscan.cve.bridge import run_all_checks, versions_from_results
+        versions = versions_from_results(ctx.all_results)
         for host, plist in ctx.open_ports.items():
-            results = await run_all_checks(host, plist, use_legacy=True, timeout=timeout)
+            results = await run_all_checks(host, plist, use_legacy=True,
+                                            versions=versions, timeout=timeout)
             for r in results:
                 if r.status not in ("not_vuln","not_detected","error","timeout","no_response"):
                     ctx.vulns.append(r)
