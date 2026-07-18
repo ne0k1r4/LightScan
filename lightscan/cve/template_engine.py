@@ -97,6 +97,7 @@ class Template:
     remediation: str          = ""
     reference:   str          = ""
     version:     str          = ""     # optional constraint, e.g. "<6.2.7" or ">=2.0,<3.5"
+    pivot:       list         = field(default_factory=list)   # commands for actual next steps on a hit
     raw:         dict         = field(default_factory=dict)
 
     @classmethod
@@ -144,6 +145,7 @@ class Template:
             remediation = d.get("remediation",""),
             reference   = d.get("reference",""),
             version     = str(d.get("version","")),
+            pivot       = d.get("pivot", []),
             raw         = d,
         )
 
@@ -360,6 +362,14 @@ class TemplateRunner:
         detail = tpl.name
         if tpl.cve:     detail += f" [{tpl.cve}]"
         if extracted:   detail += " | " + " ".join(f"{k}={v}" for k,v in extracted.items())
+
+        pivot_cmds = []
+        for cmd in tpl.pivot:
+            try:
+                pivot_cmds.append(cmd.format(host=host, port=port, **extracted))
+            except (KeyError, IndexError):
+                pivot_cmds.append(cmd)  # bad placeholder in the template - don't drop the hint over it
+
         return ScanResult(
             module   = f"template:{tpl.id}",
             target   = host,
@@ -376,6 +386,7 @@ class TemplateRunner:
                 "remediation": tpl.remediation,
                 "reference":   tpl.reference,
                 "raw_sample":  raw_bytes[:100].hex(),
+                "next":        pivot_cmds,
             }
         )
 
