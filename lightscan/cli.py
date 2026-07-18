@@ -21,7 +21,7 @@ import time
 # doesn't crash the CLI before it even prints the banner or --help.
 from lightscan.banner import print_banner
 from lightscan.core.engine import PhantomEngine, ScanResult, Severity
-from lightscan.core.target import parse_targets, parse_ports
+from lightscan.core.target import parse_targets, parse_ports, resolve
 from lightscan.core.checkpoint import Checkpoint
 from lightscan.core.reporter import Reporter
 from lightscan.scan.evasion import parse_timing  # used in multiple branches
@@ -145,6 +145,8 @@ def build_parser():
     en = p.add_argument_group("Engine")
     en.add_argument("--concurrency", type=int,   default=None,  help="Scan concurrency (default: auto-tuned from ulimit, usually 256)")
     en.add_argument("--timeout",     type=float, default=3.0,  help="Connection timeout (default:3.0)")
+    en.add_argument("--exclude-cdn", "-ec", action="store_true", default=False,
+                     help="Known Cloudflare/Fastly IPs get scanned for 80,443 only, not the full port list")
 
     # Evasion
     ev = p.add_argument_group("Evasion")
@@ -444,16 +446,34 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         if not hosts:
             print("\033[38;5;208m[!] No in-scope targets to scan.\033[0m")
             return all_results
+        cdn_hosts = []
+        if getattr(args, 'exclude_cdn', False):
+            hosts, cdn_hosts = _split_cdn_hosts(hosts)
+            if not hosts and not cdn_hosts:
+                print("\033[38;5;208m[!] No targets left after CDN split.\033[0m")
+                return all_results
         ports = parse_ports(args.ports) if args.ports != "top100" else None
-        results = await active_scan(
-            targets     = hosts,
-            ports       = ports,
-            timeout     = args.timeout,
-            concurrency = args.concurrency,
-            intensity   = intensity,
-            verbose     = args.verbose,
-            mode        = getattr(args, 'mode', 'deep'),
-        )
+        results = []
+        if hosts:
+            results += await active_scan(
+                targets     = hosts,
+                ports       = ports,
+                timeout     = args.timeout,
+                concurrency = args.concurrency,
+                intensity   = intensity,
+                verbose     = args.verbose,
+                mode        = getattr(args, 'mode', 'deep'),
+            )
+        if cdn_hosts:
+            results += await active_scan(
+                targets     = cdn_hosts,
+                ports       = [80, 443],
+                timeout     = args.timeout,
+                concurrency = args.concurrency,
+                intensity   = intensity,
+                verbose     = args.verbose,
+                mode        = getattr(args, 'mode', 'deep'),
+            )
         all_results.extend(results)
         if not args.no_report and all_results:
             Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
@@ -733,7 +753,11 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
     # ── Port Scan
     if args.scan and args.target:
         hosts=parse_targets(args.target); ports=parse_ports(args.ports)
-        print(f"\033[38;5;196m[SCAN]\033[0m Scanning {len(hosts)} host(s) × {len(ports)} port(s) | concurrency={args.concurrency}")
+        cdn_hosts = []
+        if getattr(args, 'exclude_cdn', False):
+            hosts, cdn_hosts = _split_cdn_hosts(hosts)
+        cdn_note = f" ({len(cdn_hosts)} CDN host(s) restricted to 80,443)" if cdn_hosts else ""
+        print(f"\033[38;5;196m[SCAN]\033[0m Scanning {len(hosts)+len(cdn_hosts)} host(s) × {len(ports)} port(s){cdn_note} | concurrency={args.concurrency}")
         engine=PhantomEngine(
             concurrency=args.concurrency,
             timeout=args.timeout,
@@ -743,6 +767,8 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         )
         from lightscan.scan.portscan import build_scan_tasks
         tasks=build_scan_tasks(hosts,ports,args.timeout,args.udp)
+        if cdn_hosts:
+            tasks += build_scan_tasks(cdn_hosts,[80,443],args.timeout,args.udp)
         scan_r=await engine.run(tasks)
         all_results.extend(scan_r)
         for r in scan_r:
@@ -972,6 +998,29 @@ def _tune_concurrency(requested: int | None) -> int:
               f"try --concurrency {min(soft - _FD_SAFETY_MARGIN, 4096)} for a faster scan.\033[0m", file=sys.stderr)
 
     return _DEFAULT_CONCURRENCY
+
+
+def _split_cdn_hosts(hosts: list[str]) -> tuple[list[str], list[str]]:
+    """
+    naabu does this before deciding on a full port sweep - resolve each
+    host, check it against known cloudflare/fastly ranges, and split into
+    (normal, cdn) so the caller can scan cdn ones with a restricted port
+    list instead of hammering someone else's edge network for no reason.
+    only called when --exclude-cdn is actually set, so this resolve step
+    doesn't add overhead to the common case.
+    """
+    from lightscan.scan.cdn import is_cdn_ip
+    normal, cdn = [], []
+    for h in hosts:
+        ip = resolve(h) or h  # resolve() returns None on failure, fall back to raw string
+        matched, provider = is_cdn_ip(ip)
+        if matched:
+            cdn.append(h)
+            print(f"\033[38;5;240m[i] {h} ({ip}) is behind {provider} - "
+                  f"restricting to 80,443 instead of the full port list\033[0m")
+        else:
+            normal.append(h)
+    return normal, cdn
 
 
 def main():
