@@ -143,7 +143,7 @@ def build_parser():
 
     # Engine
     en = p.add_argument_group("Engine")
-    en.add_argument("--concurrency", type=int,   default=256,  help="Scan concurrency (default:256)")
+    en.add_argument("--concurrency", type=int,   default=None,  help="Scan concurrency (default: auto-tuned from ulimit, usually 256)")
     en.add_argument("--timeout",     type=float, default=3.0,  help="Connection timeout (default:3.0)")
 
     # Evasion
@@ -935,6 +935,45 @@ def print_minimal_help() -> None:
             time.sleep(0.012)
 
 
+_DEFAULT_CONCURRENCY = 256
+_FD_SAFETY_MARGIN    = 100  # stdout/stderr/log files/etc eat fds too, not just scan sockets
+
+def _tune_concurrency(requested: int | None) -> int:
+    """
+    rustscan does this by checking ulimit and sizing its batch to fit under
+    it instead of handing out a fixed number and hoping. same idea here -
+    the ulimit raise above is a best-effort attempt, this checks what we
+    actually ended up with and reacts to it either way.
+    """
+    if sys.platform == "win32":
+        return requested if requested is not None else _DEFAULT_CONCURRENCY
+    try:
+        import resource
+        soft, _hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    except Exception:
+        return requested if requested is not None else _DEFAULT_CONCURRENCY
+
+    if requested is not None:
+        if requested + _FD_SAFETY_MARGIN > soft:
+            print(f"\033[38;5;208m[!] --concurrency {requested} is close to or above your open-file "
+                  f"limit ({soft}) - expect connection errors mid-scan. raise it first with "
+                  f"'ulimit -n {requested + _FD_SAFETY_MARGIN}', or lower --concurrency.\033[0m", file=sys.stderr)
+        return requested
+
+    if soft - _FD_SAFETY_MARGIN < _DEFAULT_CONCURRENCY:
+        tuned = max((soft // 2) if soft < _DEFAULT_CONCURRENCY else soft - _FD_SAFETY_MARGIN, 8)
+        print(f"\033[38;5;208m[!] open-file limit is {soft}, too low for the usual default (256) - "
+              f"scaling concurrency down to {tuned} to avoid mid-scan socket errors. "
+              f"'ulimit -n {_DEFAULT_CONCURRENCY + _FD_SAFETY_MARGIN}' gets full speed back.\033[0m", file=sys.stderr)
+        return tuned
+
+    if soft > (_DEFAULT_CONCURRENCY + _FD_SAFETY_MARGIN) * 4:
+        print(f"\033[38;5;240m[i] open-file limit is {soft} - plenty of headroom, "
+              f"try --concurrency {min(soft - _FD_SAFETY_MARGIN, 4096)} for a faster scan.\033[0m", file=sys.stderr)
+
+    return _DEFAULT_CONCURRENCY
+
+
 def main():
     # Auto-tune system limits (ulimit -n) to prevent socket limit crashes under high concurrency
     if sys.platform != "win32":
@@ -965,6 +1004,7 @@ def main():
 
     p    = build_parser()
     args = p.parse_args()
+    args.concurrency = _tune_concurrency(args.concurrency)
 
     # Stdin Auto-detect check: only trigger if stdin is not a tty and a scanning action is requested
     target_actions = [
