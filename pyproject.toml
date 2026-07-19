@@ -58,7 +58,7 @@ where = ["."]
 include = ["lightscan*"]
 
 [tool.setuptools.package-data]
-lightscan = ["templates/**/*.yaml", "data/*.json"]
+lightscan = ["templates/**/*.yaml", "data/*.json", "data/nmap-service-probes"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
