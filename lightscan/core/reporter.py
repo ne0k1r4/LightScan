@@ -1,6 +1,6 @@
 # core/reporter.py — multi-format report output
 # Light (Neok1ra)
-#
+
 # formats: json (default), nmap-xml, html, csv, minimal
 # added nmap-xml because every tool expects it and i was tired of converting
 from __future__ import annotations
@@ -8,7 +8,6 @@ import csv, json, os, time
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from lightscan.core.engine import ScanResult, Severity
-
 
 class Reporter:
     stdout_override = None

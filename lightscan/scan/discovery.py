@@ -1,16 +1,16 @@
 # scan/discovery.py — host discovery before port scan
 # Light (ne0k1r4)
-#
+
 # two modes:
-#   ARP sweep  — local subnet only, L2, doesn't cross routers
-#   ICMP sweep — works across subnets, needs root/CAP_NET_RAW
-#
+# ARP sweep  — local subnet only, L2, doesn't cross routers
+# ICMP sweep — works across subnets, needs root/CAP_NET_RAW
+
 # why bother? on a /24 with 200 dead hosts, port scanning all of them
 # burns 200*port_count timeout slots. discovery prunes the list first.
 # on my lab /24: cuts scan time from ~8 min → ~45 sec.
-#
+
 # fallback chain: ICMP (root) → TCP connect (no root) → assume alive
-#
+
 # ARP is authoritative on LAN — if host exists it MUST respond to ARP
 # (can't filter it, it's L2). ICMP can be firewalled. on local nets,
 # always prefer ARP. ICMP for remote targets.
@@ -31,8 +31,7 @@ try:
 except ImportError:
     HAS_SCAPY = False
 
-
-# ── ICMP checksum (RFC 1071) ──────────────────────────────────────────────────
+# ICMP checksum (RFC 1071)
 
 def _checksum(data: bytes) -> int:
     """one's complement checksum — standard for ICMP/IP headers."""
@@ -43,7 +42,6 @@ def _checksum(data: bytes) -> int:
     s += s >> 16
     return ~s & 0xFFFF
 
-
 def _build_icmp_echo(icmp_id: int, seq: int = 1) -> bytes:
     """build a valid ICMP echo request packet."""
     # type=8 (echo), code=0, checksum=0 (placeholder), id, seq
@@ -53,8 +51,7 @@ def _build_icmp_echo(icmp_id: int, seq: int = 1) -> bytes:
     # rebuild with real checksum
     return struct.pack("!BBHHH", 8, 0, chk, icmp_id, seq) + payload
 
-
-# ── per-host probe functions ──────────────────────────────────────────────────
+# per-host probe functions
 
 async def icmp_ping(host: str, timeout: float = 1.0) -> bool:
     """
@@ -100,7 +97,6 @@ async def icmp_ping(host: str, timeout: float = 1.0) -> bool:
         pass
     return False
 
-
 async def _tcp_probe(host: str, timeout: float) -> bool:
     """
     TCP connect probe for non-root discovery.
@@ -123,8 +119,7 @@ async def _tcp_probe(host: str, timeout: float) -> bool:
             continue       # port closed/filtered — try next
     return False
 
-
-# ── ARP sweep (LAN only, requires scapy) ─────────────────────────────────────
+# ARP sweep (LAN only, requires scapy)
 
 def arp_sweep(network: str, timeout: float = 2.0) -> list[str]:
     """
@@ -151,8 +146,7 @@ def arp_sweep(network: str, timeout: float = 2.0) -> list[str]:
     except Exception:
         return []
 
-
-# ── main discovery entry point ────────────────────────────────────────────────
+# main discovery entry point
 
 async def discover_hosts(
     targets: list[str],
@@ -203,7 +197,6 @@ async def discover_hosts(
 
     print(f"[DISCOVER] {len(live)}/{len(targets)} hosts responded")
     return sorted(live)
-
 
 def expand_targets(target: str) -> list[str]:
     """

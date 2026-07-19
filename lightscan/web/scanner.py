@@ -54,7 +54,7 @@ except ImportError:
 
 from lightscan.core.engine import ScanResult, Severity
 
-# ── Default wordlists ─────────────────────────────────────────────────────────
+# Default wordlists
 
 DIR_WORDLIST = [
     # Admin panels
@@ -130,8 +130,7 @@ JS_SECRET_PATTERNS = [
     (r'AIza[0-9A-Za-z\-_]{35}',                                        "GOOGLE_API_KEY"),
 ]
 
-
-# ── Core WebScanner class ─────────────────────────────────────────────────────
+# Core WebScanner class
 
 class WebScanner:
     """
@@ -147,7 +146,7 @@ class WebScanner:
         self.threads  = threads
         self._results_lock = threading.Lock()
 
-        # ── Session setup (requests preferred, urllib fallback)
+        # Session setup (requests preferred, urllib fallback)
         if _REQUESTS:
             import requests as req
             self.session = req.Session()
@@ -217,7 +216,7 @@ class WebScanner:
             "ssl_tls":        {},   # cert expiry, weak protocols, cipher strength
         }
 
-    # ── HTTP primitives ───────────────────────────────────────────────────────
+    # HTTP primitives
 
     def _get(self, path: str, headers: dict | None = None,
              allow_redirects: bool = True, **kwargs):
@@ -292,8 +291,7 @@ class WebScanner:
             return BeautifulSoup(text, "html.parser")
         return None
 
-    # ── 1. Directory Brute Force ──────────────────────────────────────────────
-
+    # 1. Directory Brute Force
 
     def dir_brute(self, wordlist: list | None = None,
                   wordlist_file: str | None = None) -> list[dict]:
@@ -312,7 +310,7 @@ class WebScanner:
         if wordlist is None:
             wordlist = DIR_WORDLIST
 
-        # ── Pre-flight: confirm host is reachable before spawning threads ────
+        # Pre-flight: confirm host is reachable before spawning threads
         print(f"\033[38;5;240m[dir] pre-flight check → {self.base_url}\033[0m",
               flush=True)
         preflight_ok = False
@@ -424,7 +422,6 @@ class WebScanner:
         self.results["directories"] = found
         return found
 
-
     def fingerprint_tech(self) -> dict:
         """
         Fingerprint technologies, extract versions, detect WAF,
@@ -438,7 +435,7 @@ class WebScanner:
         headers = self._headers(resp)
         text    = self._text(resp)
 
-        # ── Header checks ────────────────────────────────────────────────────
+        # Header checks
         if "Server" in headers:
             tech["server"] = headers["Server"]
         if "X-Powered-By" in headers:
@@ -454,7 +451,7 @@ class WebScanner:
         if "laravel_session" in cookie_str: tech["backend"] = "PHP/Laravel"
         if "django"      in cookie_str.lower(): tech["backend"] = "Python/Django"
 
-        # ── HTML analysis and version extraction ─────────────────────────────
+        # HTML analysis and version extraction
         soup = self._parse_html(text)
         if soup:
             gen = soup.find("meta", attrs={"name": "generator"})
@@ -483,12 +480,12 @@ class WebScanner:
                 if "lodash"     in src: tech["js_lodash"]   = "detected"
                 if "axios"      in src: tech["js_axios"]    = "detected"
 
-        # ── Server version extraction ─────────────────────────────────────────
+        # Server version extraction
         for header_name in ("Server", "X-Powered-By", "Via", "X-AspNet-Version"):
             if header_name in headers:
                 tech[f"header_{header_name.lower().replace('-','_')}"] = headers[header_name]
 
-        # ── WAF detection ─────────────────────────────────────────────────────
+        # WAF detection
         waf_probe_resp = self._get("/?<script>alert(1)</script>")
         waf_text    = self._text(waf_probe_resp).lower()
         waf_headers = self._headers(waf_probe_resp)
@@ -509,7 +506,7 @@ class WebScanner:
         tech["waf"] = waf_detected or "None detected"
         self.results["waf"] = waf_detected
 
-        # ── Security headers audit ────────────────────────────────────────────
+        # Security headers audit
         missing_sec = {}
         for hdr, msg in SEC_HEADERS.items():
             if hdr not in headers:
@@ -521,7 +518,7 @@ class WebScanner:
         self.results["tech"] = tech
         return tech
 
-    # ── 3. SQLi (error-based) ─────────────────────────────────────────────────
+    # 3. SQLi (error-based)
 
     def sqli_test(self) -> list[dict]:
         """Test for error-based SQL injection on GET parameters."""
@@ -555,7 +552,7 @@ class WebScanner:
         self.results["sqli"] = vulnerable
         return vulnerable
 
-    # ── 4. XSS (reflected) ───────────────────────────────────────────────────
+    # 4. XSS (reflected)
 
     def xss_test(self, payloads: list | None = None) -> list[dict]:
         """
@@ -626,7 +623,7 @@ class WebScanner:
         self.results["xss"] = vulnerable
         return vulnerable
 
-    # ── 4b. SQLi POST (form-based) ───────────────────────────────────────────
+    # 4b. SQLi POST (form-based)
 
     def sqli_post_test(self) -> list[dict]:
         """
@@ -699,7 +696,7 @@ class WebScanner:
         self.results["sqli_post"] = vulnerable
         return vulnerable
 
-    # ── 5b. CMS Detection ────────────────────────────────────────────────────
+    # 5b. CMS Detection
 
     def detect_cms(self) -> dict:
         """
@@ -715,7 +712,7 @@ class WebScanner:
         soup = self._parse_html(text)
         cms: dict = {}
 
-        # ── WordPress ────────────────────────────────────────────────────────
+        # WordPress
         if not cms and soup:
             gen = soup.find("meta", attrs={"name": "generator"})
             if gen and "wordpress" in (gen.get("content") or "").lower():
@@ -741,7 +738,7 @@ class WebScanner:
                 m = re.search(r'"version"\s*:\s*"([\d.]+)"', self._text(wj))
                 if m: cms["version"] = m.group(1)
 
-        # ── Joomla ───────────────────────────────────────────────────────────
+        # Joomla
         if not cms:
             adm = self._get("/administrator/")
             if self._status(adm) == 200:
@@ -753,7 +750,7 @@ class WebScanner:
                                   self._text(mf), re.I)
                     if m: cms["version"] = m.group(1)
 
-        # ── Drupal ───────────────────────────────────────────────────────────
+        # Drupal
         if not cms and soup:
             dm = soup.find("meta", attrs={"name": "Generator"})
             if dm and "drupal" in (dm.get("content") or "").lower():
@@ -764,7 +761,7 @@ class WebScanner:
         if not cms and "drupal" in text.lower() and "sites/default/files" in text:
             cms["name"] = "Drupal"
 
-        # ── Magento ───────────────────────────────────────────────────────────
+        # Magento
         if not cms:
             mg = self._get("/magento_version")
             if self._status(mg) == 200:
@@ -774,7 +771,7 @@ class WebScanner:
             elif "Mage.Cookies" in text or "MAGE_" in text:
                 cms["name"] = "Magento"
 
-        # ── OpenCart ─────────────────────────────────────────────────────────
+        # OpenCart
         if not cms and ("catalog/view/theme" in text or
                         "route=common/home" in text):
             cms["name"] = "OpenCart"
@@ -783,7 +780,7 @@ class WebScanner:
                 m = re.search(r"([\d.]+\.[\d.]+)", self._text(ch))
                 if m: cms["version"] = m.group(1)
 
-        # ── PrestaShop ────────────────────────────────────────────────────────
+        # PrestaShop
         if not cms and ("prestashop" in text.lower() or
                         "/modules/ps_" in text):
             cms["name"] = "PrestaShop"
@@ -792,7 +789,7 @@ class WebScanner:
                 m = re.search(r"PrestaShop\s+([\d.]+)", self._text(cl), re.I)
                 if m: cms["version"] = m.group(1)
 
-        # ── TYPO3 ─────────────────────────────────────────────────────────────
+        # TYPO3
         if not cms and ("typo3" in text.lower() or
                         "/typo3conf/" in text):
             cms["name"] = "TYPO3"
@@ -801,7 +798,7 @@ class WebScanner:
                 m = re.search(r"([\d]+\.\d+\.\d+)", self._text(cl))
                 if m: cms["version"] = m.group(1)
 
-        # ── Laravel ───────────────────────────────────────────────────────────
+        # Laravel
         if not cms:
             hdrs = self._headers(resp)
             cookie = hdrs.get("Set-Cookie", "")
@@ -813,14 +810,14 @@ class WebScanner:
                     m = re.search(r"## v?([\d.]+)", self._text(ch))
                     if m: cms["version"] = m.group(1)
 
-        # ── Django ────────────────────────────────────────────────────────────
+        # Django
         if not cms:
             hdrs = self._headers(resp)
             if "django" in hdrs.get("X-Powered-By","").lower() or \
                "csrfmiddlewaretoken" in text:
                 cms["name"] = "Django"
 
-        # ── Flask ─────────────────────────────────────────────────────────────
+        # Flask
         if not cms:
             hdrs = self._headers(resp)
             server = hdrs.get("Server", "")
@@ -829,7 +826,7 @@ class WebScanner:
                 m = re.search(r"Werkzeug/([\d.]+)", server, re.I)
                 if m: cms["version"] = m.group(1)
 
-        # ── Ghost ─────────────────────────────────────────────────────────────
+        # Ghost
         if not cms and soup:
             gen = soup.find("meta", attrs={"name": "generator"})
             if gen and "ghost" in (gen.get("content") or "").lower():
@@ -847,11 +844,9 @@ class WebScanner:
         self.results["cms"] = cms
         return cms
 
-    # ══════════════════════════════════════════════════════════════════════════
     # ADVANCED CHECKS
-    # ══════════════════════════════════════════════════════════════════════════
 
-    # ── Blind SQLi (Boolean + Time-based) ────────────────────────────────────
+    # Blind SQLi (Boolean + Time-based)
 
     def sqli_blind_test(self) -> list[dict]:
         """
@@ -930,7 +925,7 @@ class WebScanner:
         self.results["sqli_blind"] = vulnerable
         return vulnerable
 
-    # ── UNION-based SQLi ─────────────────────────────────────────────────────
+    # UNION-based SQLi
 
     def sqli_union_test(self) -> list[dict]:
         """
@@ -984,7 +979,7 @@ class WebScanner:
         self.results["sqli_union"] = vulnerable
         return vulnerable
 
-    # ── SSTI ─────────────────────────────────────────────────────────────────
+    # SSTI
 
     def ssti_test(self) -> list[dict]:
         """
@@ -1044,7 +1039,7 @@ class WebScanner:
         self.results["ssti"] = vulnerable
         return vulnerable
 
-    # ── LFI / Path Traversal ─────────────────────────────────────────────────
+    # LFI / Path Traversal
 
     def lfi_test(self) -> list[dict]:
         """
@@ -1113,7 +1108,7 @@ class WebScanner:
         self.results["lfi"] = vulnerable
         return vulnerable
 
-    # ── SSRF ─────────────────────────────────────────────────────────────────
+    # SSRF
 
     def ssrf_test(self) -> list[dict]:
         """
@@ -1187,7 +1182,7 @@ class WebScanner:
         self.results["ssrf"] = vulnerable
         return vulnerable
 
-    # ── XXE ──────────────────────────────────────────────────────────────────
+    # XXE
 
     def xxe_test(self) -> list[dict]:
         """
@@ -1263,7 +1258,7 @@ class WebScanner:
         self.results["xxe"] = vulnerable
         return vulnerable
 
-    # ── Advanced JWT ─────────────────────────────────────────────────────────
+    # Advanced JWT
 
     def jwt_advanced_test(self) -> list[dict]:
         """
@@ -1355,7 +1350,7 @@ class WebScanner:
         self.results["jwt_advanced"] = findings
         return findings
 
-    # ── GraphQL ───────────────────────────────────────────────────────────────
+    # GraphQL
 
     def graphql_test(self) -> dict:
         """
@@ -1432,7 +1427,7 @@ class WebScanner:
         self.results["graphql"] = result
         return result
 
-    # ── HTTP Method Enumeration ───────────────────────────────────────────────
+    # HTTP Method Enumeration
 
     def http_methods_test(self) -> dict:
         """
@@ -1495,7 +1490,7 @@ class WebScanner:
         self.results["http_methods"] = results
         return results
 
-    # ── HTTP Request Smuggling Probe ──────────────────────────────────────────
+    # HTTP Request Smuggling Probe
 
     def smuggling_probe(self) -> dict:
         """
@@ -1559,7 +1554,7 @@ class WebScanner:
         self.results["smuggling"] = result
         return result
 
-    # ── Host Header Injection ─────────────────────────────────────────────────
+    # Host Header Injection
 
     def host_header_injection_test(self) -> list[dict]:
         """
@@ -1605,7 +1600,7 @@ class WebScanner:
         self.results["host_header"] = findings
         return findings
 
-    # ── Rate Limit Detection ──────────────────────────────────────────────────
+    # Rate Limit Detection
 
     def rate_limit_test(self) -> dict:
         """
@@ -1655,7 +1650,7 @@ class WebScanner:
         self.results["rate_limit"] = result
         return result
 
-    # ── Cache Poisoning Probe ─────────────────────────────────────────────────
+    # Cache Poisoning Probe
 
     def cache_poison_test(self) -> list[dict]:
         """
@@ -1697,7 +1692,7 @@ class WebScanner:
         self.results["cache_poison"] = findings
         return findings
 
-    # ── API Endpoint Discovery ────────────────────────────────────────────────
+    # API Endpoint Discovery
 
     def api_discovery_test(self) -> list[dict]:
         """
@@ -1760,7 +1755,7 @@ class WebScanner:
         self.results["api_endpoints"] = found
         return found
 
-    # ── WordPress Plugin / Theme Enumeration ──────────────────────────────────
+    # WordPress Plugin / Theme Enumeration
 
     def cms_plugin_enum(self) -> list[dict]:
         """
@@ -1821,7 +1816,7 @@ class WebScanner:
         self.results["cms_plugins"] = found
         return found
 
-    # ── Parameter Pollution ───────────────────────────────────────────────────
+    # Parameter Pollution
 
     def param_pollution_test(self) -> list[dict]:
         """
@@ -1858,7 +1853,7 @@ class WebScanner:
         self.results["param_pollution"] = vulnerable
         return vulnerable
 
-    # ── Subdomain Discovery (passive) ─────────────────────────────────────────
+    # Subdomain Discovery (passive)
 
     def subdomain_passive_test(self) -> list[str]:
         """
@@ -1908,7 +1903,7 @@ class WebScanner:
         self.results["subdomains"] = result
         return result
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # Helpers
 
     def _collect_form_targets(self) -> list[dict]:
         """Returns [{url, method, fields}] for forms found on home + dir pages."""
@@ -1932,11 +1927,9 @@ class WebScanner:
                     targets.append({"url":url,"method":method,"fields":fields})
         return targets
 
-    # ══════════════════════════════════════════════════════════════════════════
     # ROUND 3 — ADVANCED CHECKS
-    # ══════════════════════════════════════════════════════════════════════════
 
-    # ── SSL/TLS Analysis ─────────────────────────────────────────────────────
+    # SSL/TLS Analysis
 
     def ssl_tls_test(self) -> dict:
         """
@@ -1966,7 +1959,7 @@ class WebScanner:
             self.results["ssl_tls"] = result
             return result
 
-        # ── Certificate info ───────────────────────────────────────────────────
+        # Certificate info
         try:
             ctx = _ssl.create_default_context()
             ctx.check_hostname = False
@@ -2029,7 +2022,7 @@ class WebScanner:
         except Exception as e:
             result["cert"]["error"] = str(e)
 
-        # ── Weak protocol probes ───────────────────────────────────────────────
+        # Weak protocol probes
         PROTOS = {
             "SSLv2":  getattr(_ssl, "PROTOCOL_SSLv2",  None),
             "SSLv3":  getattr(_ssl, "PROTOCOL_SSLv3",  None),
@@ -2051,7 +2044,7 @@ class WebScanner:
                               f"Weak protocol accepted: {proto_name}")
             except Exception: pass
 
-        # ── HSTS check ────────────────────────────────────────────────────────
+        # HSTS check
         try:
             r    = self._get("/")
             hdrs = self._headers(r)
@@ -2082,7 +2075,7 @@ class WebScanner:
         self.results["ssl_tls"] = result
         return result
 
-    # ── Stored XSS ───────────────────────────────────────────────────────────
+    # Stored XSS
 
     def xss_stored_test(self) -> list[dict]:
         """
@@ -2140,7 +2133,7 @@ class WebScanner:
         self.results["xss_stored"] = vulnerable
         return vulnerable
 
-    # ── DOM XSS (static JS analysis) ─────────────────────────────────────────
+    # DOM XSS (static JS analysis)
 
     def xss_dom_test(self) -> list[dict]:
         """
@@ -2208,7 +2201,7 @@ class WebScanner:
         self.results["xss_dom"] = findings
         return findings
 
-    # ── CSRF Detection ────────────────────────────────────────────────────────
+    # CSRF Detection
 
     def csrf_test(self) -> list[dict]:
         """
@@ -2245,7 +2238,7 @@ class WebScanner:
                     print(f"  \033[38;5;196m[CSRF]\033[0m "
                           f"No CSRF token in form @ {t['url']}")
 
-        # ── Content-type confusion: POST JSON endpoint accepting form data ──
+        # Content-type confusion: POST JSON endpoint accepting form data
         for ep in ["/api/user","/api/account","/api/profile",
                    "/api/password","/api/settings","/api/email"]:
             data = {"action":"test","value":"lightscan-csrf-probe"}
@@ -2276,7 +2269,7 @@ class WebScanner:
                               f"Content-type confusion @ {ep} ({sc})")
             except Exception: continue
 
-        # ── SameSite cookie audit ─────────────────────────────────────────────
+        # SameSite cookie audit
         resp = self._get("/")
         if resp:
             cookies_header = self._headers(resp).get("Set-Cookie","")
@@ -2295,7 +2288,7 @@ class WebScanner:
         self.results["csrf"] = findings
         return findings
 
-    # ── Clickjacking ─────────────────────────────────────────────────────────
+    # Clickjacking
 
     def clickjacking_test(self) -> dict:
         """
@@ -2340,7 +2333,7 @@ class WebScanner:
         self.results["clickjacking"] = result
         return result
 
-    # ── CRLF Injection / HTTP Response Splitting ──────────────────────────────
+    # CRLF Injection / HTTP Response Splitting
 
     def crlf_test(self) -> list[dict]:
         """
@@ -2397,7 +2390,7 @@ class WebScanner:
         self.results["crlf"] = found
         return found
 
-    # ── IDOR (Insecure Direct Object Reference) ───────────────────────────────
+    # IDOR (Insecure Direct Object Reference)
 
     def idor_test(self) -> list[dict]:
         """
@@ -2436,7 +2429,7 @@ class WebScanner:
                         self.base_url+"/", href.lstrip("/")))
 
         for url in list(candidate_urls)[:30]:  # cap at 30
-            # ── Numeric ID replacement
+            # Numeric ID replacement
             for m in ID_PATTERN.finditer(url):
                 orig_id = int(m.group(1))
                 for probe_id in (orig_id+1, orig_id-1, orig_id+100, 1, 0):
@@ -2465,7 +2458,7 @@ class WebScanner:
                             break
                     except Exception: continue
 
-            # ── UUID replacement
+            # UUID replacement
             for m in UUID_PATTERN.finditer(url):
                 test_url = url[:m.start()] + NULL_UUID + url[m.end():]
                 ident    = f"idor-uuid:{test_url}"
@@ -2489,7 +2482,7 @@ class WebScanner:
         self.results["idor"] = findings
         return findings
 
-    # ── File Upload Bypass ────────────────────────────────────────────────────
+    # File Upload Bypass
 
     def file_upload_test(self) -> list[dict]:
         """
@@ -2583,7 +2576,7 @@ class WebScanner:
         self.results["file_upload"] = findings
         return findings
 
-    # ── Deserialization Probes ────────────────────────────────────────────────
+    # Deserialization Probes
 
     def deserialization_test(self) -> list[dict]:
         """
@@ -2597,12 +2590,12 @@ class WebScanner:
         findings: list[dict] = []
         seen: set = set()
 
-        # ── Java: magic bytes 0xACED0005 + simple SLEEP gadget indicator ─────
+        # Java: magic bytes 0xACED0005 + simple SLEEP gadget indicator
         # We send the header + zeroes (not a real ysoserial payload — just probes)
         JAVA_MAGIC   = b"\xac\xed\x00\x05"  # Java serialization magic
         JAVA_PROBE   = JAVA_MAGIC + b"\x73\x72" + b"\x00" * 50  # fake ObjectStreamClass
 
-        # ── PHP serialized string probe ───────────────────────────────────────
+        # PHP serialized string probe
         PHP_PROBES = [
             b'O:8:"stdClass":0:{}',                    # harmless stdClass
             b'a:1:{s:4:"test";s:9:"lightscan";}',      # array
@@ -2669,7 +2662,7 @@ class WebScanner:
                                 break
                 except Exception: continue
 
-        # ── Cookie-based PHP deserialization ─────────────────────────────────
+        # Cookie-based PHP deserialization
         resp = self._get("/")
         if resp and self._use_requests:
             for cookie in resp.cookies:
@@ -2688,7 +2681,7 @@ class WebScanner:
         self.results["deserialization"] = findings
         return findings
 
-    # ── Prototype Pollution ───────────────────────────────────────────────────
+    # Prototype Pollution
 
     def prototype_pollution_test(self) -> list[dict]:
         """
@@ -2761,7 +2754,7 @@ class WebScanner:
         self.results["prototype_poll"] = findings
         return findings
 
-    # ── Cookie Security Flags ─────────────────────────────────────────────────
+    # Cookie Security Flags
 
     def cookie_security_test(self) -> list[dict]:
         """
@@ -2825,7 +2818,7 @@ class WebScanner:
         self.results["cookie_flags"] = findings
         return findings
 
-    # ── Error Disclosure / Information Leakage ────────────────────────────────
+    # Error Disclosure / Information Leakage
 
     def error_disclosure_test(self) -> list[dict]:
         """
@@ -2910,7 +2903,7 @@ class WebScanner:
         self.results["error_disclosure"] = findings
         return findings
 
-    # ── WebSocket Detection ───────────────────────────────────────────────────
+    # WebSocket Detection
 
     def websocket_test(self) -> list[dict]:
         """
@@ -3022,7 +3015,7 @@ class WebScanner:
         self.results["websocket"] = findings
         return findings
 
-    # ── OAuth Misconfiguration ────────────────────────────────────────────────
+    # OAuth Misconfiguration
 
     def oauth_test(self) -> dict:
         """
@@ -3085,7 +3078,7 @@ class WebScanner:
             base_auth = (self.base_url + auth_ep
                          if auth_ep.startswith("/") else auth_ep)
 
-            # ── 1. Missing state param
+            # 1. Missing state param
             r = self._get(auth_ep + "?response_type=code&client_id=test"
                           "&redirect_uri=https://evil.com")
             body = self._text(r)
@@ -3095,7 +3088,7 @@ class WebScanner:
                 result["findings"].append("missing-state-param-csrf")
                 print(f"  \033[38;5;196m[OAUTH]\033[0m Missing state param (CSRF risk)")
 
-            # ── 2. redirect_uri bypass attempts
+            # 2. redirect_uri bypass attempts
             REDIRECT_BYPASSES = [
                 "https://evil.com",
                 "https://evil.com/callback?x=",   # param injection
@@ -3112,7 +3105,7 @@ class WebScanner:
                     print(f"  \033[38;5;196m[OAUTH]\033[0m "
                           f"redirect_uri bypass: {bad_uri[:40]}")
 
-            # ── 3. PKCE downgrade (no code_challenge required)
+            # 3. PKCE downgrade (no code_challenge required)
             r3 = self._get(auth_ep +
                 "?response_type=code&client_id=test"
                 "&redirect_uri=http://localhost&state=randomstate")
@@ -3165,7 +3158,7 @@ class WebScanner:
         self.results["open_redirect"] = vulnerable
         return vulnerable
 
-    # ── 6. CORS Misconfiguration ──────────────────────────────────────────────
+    # 6. CORS Misconfiguration
 
     def cors_test(self) -> dict:
         """
@@ -3202,7 +3195,7 @@ class WebScanner:
         self.results["cors"] = findings
         return findings
 
-    # ── 7. Default Credentials ────────────────────────────────────────────────
+    # 7. Default Credentials
 
     def default_creds_test(self) -> list[dict]:
         """
@@ -3264,14 +3257,14 @@ class WebScanner:
         self.results["default_creds"] = found
         return found
 
-    # ── 8. JWT None Algorithm ─────────────────────────────────────────────────
+    # 8. JWT None Algorithm
 
     def jwt_none_test(self) -> dict:
         """
         Test for JWT 'none' algorithm vulnerability on discovered tokens.
         Probes discovered tokens against privileged endpoints with signature-less headers.
         """
-        # ── Token discovery ───────────────────────────────────────────────────
+        # Token discovery
         token = self._discover_jwt()
         if not token:
             result = {"vulnerable": False, "reason": "No JWT found"}
@@ -3284,7 +3277,7 @@ class WebScanner:
             self.results["jwt_none"] = result
             return result
 
-        # ── Build forged token ─────────────────────────────────────────────
+        # Build forged token
         header_b64 = base64.urlsafe_b64encode(
             json.dumps({"alg": "none", "typ": "JWT"}).encode()
         ).decode().rstrip("=")
@@ -3299,7 +3292,7 @@ class WebScanner:
             ).decode().rstrip("=") + f".{payload_b64}.",
         ]
 
-        # ── Probe privileged endpoints ────────────────────────────────────────
+        # Probe privileged endpoints
         privileged_paths = [
             "/admin", "/api/admin", "/api/v1/admin",
             "/api/user/me", "/dashboard", "/profile",
@@ -3349,7 +3342,7 @@ class WebScanner:
 
         return None
 
-    # ── 9. Sensitive Files ────────────────────────────────────────────────────
+    # 9. Sensitive Files
 
     def sensitive_files_test(self) -> list[dict]:
         """Probe a curated list of sensitive paths — .git, .env, backups, etc."""
@@ -3364,7 +3357,7 @@ class WebScanner:
         self.results["sensitive_files"] = found
         return found
 
-    # ── 10. JS Secret Scanning ────────────────────────────────────────────────
+    # 10. JS Secret Scanning
 
     def js_secret_scan(self) -> list[dict]:
         """Scan inline scripts and linked .js files for hardcoded secrets."""
@@ -3404,7 +3397,7 @@ class WebScanner:
         self.results["js_secrets"] = secrets
         return secrets
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # Helpers
 
     def _collect_param_urls(self) -> set[str]:
         """
@@ -3446,7 +3439,7 @@ class WebScanner:
 
         return urls
 
-    # ── run_all ──────────────────────────────────────────────────────────────
+    # run_all
 
     def run_all(self, wordlist_file: str | None = None) -> dict:
         """
@@ -3817,8 +3810,7 @@ class WebScanner:
 
         return out
 
-
-# ── Async wrapper for PhantomEngine integration ───────────────────────────────
+# Async wrapper for PhantomEngine integration
 
 async def web_scan_async(url: str, wordlist_file: str | None = None,
                          timeout: float = 8.0, threads: int = 10,

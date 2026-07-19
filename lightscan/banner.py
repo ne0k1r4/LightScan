@@ -37,13 +37,11 @@ _QUOTES = [
     '"There is no such thing as an impenetrable network. Only undiscovered entry points."',
 ]
 
-
 def _term_width() -> int:
     try:
         return min(shutil.get_terminal_size(fallback=(80, 24)).columns, 90)
     except Exception:
         return 72
-
 
 def _is_root() -> bool:
     try:
@@ -54,7 +52,6 @@ def _is_root() -> bool:
             return ctypes.windll.shell32.IsUserAnAdmin() != 0
         except Exception:
             return False
-
 
 def print_banner(no_quote: bool = False) -> None:
     """Print the startup banner with runtime context.

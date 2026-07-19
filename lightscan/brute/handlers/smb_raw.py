@@ -60,7 +60,7 @@ class RawSMBHandler:
         self.server_challenge: bytes = b""
         self.uid = 0
 
-    # ── Transport ──────────────────────────────────────────────────────────────
+    # Transport
 
     def connect(self) -> bool:
         try:
@@ -97,7 +97,7 @@ class RawSMBHandler:
             buf += chunk
         return buf
 
-    # ── SMB Header ────────────────────────────────────────────────────────────
+    # SMB Header
 
     def _smb_header(self, cmd: int, flags=0x18, flags2=0xC001, uid=0) -> bytes:
         self._mid += 1
@@ -121,7 +121,7 @@ class RawSMBHandler:
         if len(raw) < 13: return -1
         return struct.unpack("<I", raw[9:13])[0]
 
-    # ── Step 1: Negotiate ─────────────────────────────────────────────────────
+    # Step 1: Negotiate
 
     def negotiate(self) -> bool:
         dialects = b"".join(self.DIALECTS)
@@ -163,7 +163,7 @@ class RawSMBHandler:
         log.debug(f"got server challenge: {self.server_challenge.hex()}")
         return True
 
-    # ── Step 2: NTLMv2 ────────────────────────────────────────────────────────
+    # Step 2: NTLMv2
 
     @staticmethod
     def _ntlm_hash(password: str) -> bytes:
@@ -217,7 +217,7 @@ class RawSMBHandler:
         nt_proof   = hmac.new(v2_hash, hmac_input, hashlib.md5).digest()
         return nt_proof + blob
 
-    # ── Step 3: Session Setup ─────────────────────────────────────────────────
+    # Step 3: Session Setup
 
     def session_setup(self, username: str, password: str, domain: str = "") -> tuple[bool, str]:
         """
@@ -286,7 +286,7 @@ class RawSMBHandler:
             return False, f"auth_failed:0x{status:08X}"
         return False, f"status:0x{status:08X}"
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    # Public API
 
     def authenticate(self, username: str, password: str, domain: str = "") -> tuple[bool, str]:
         """Full auth flow: connect → negotiate → session setup. Returns (bool, msg)"""
@@ -303,8 +303,7 @@ class RawSMBHandler:
         finally:
             self.close()
 
-
-# ── Async LightScan handler factory ──────────────────────────────────────────
+# Async LightScan handler factory
 
 def make_smb_raw_handler(host: str, port: int = 445, timeout: float = 8.0,
                          domain: str = "", **kw):

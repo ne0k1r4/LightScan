@@ -1,6 +1,5 @@
 """
 LightScan v2.0 PHANTOM — True Half-Open SYN Scanner | Developer: Light
-───────────────────────────────────────────────────────────────────────
 nmap -sS equivalent via AF_PACKET.  All 7 engine upgrades applied.
 
 Half-open mechanics
@@ -60,8 +59,7 @@ IP_PROTO_TCP  = 6
 IP_PROTO_ICMP = 1
 RST_PKT_LEN   = 40   # IP(20) + TCP(20), no options — must be explicit for AF_PACKET
 
-
-# ── Interface helpers (fixed auto-selection) ──────────────────────────────────
+# Interface helpers (fixed auto-selection)
 
 def _iface_is_up(iface: str) -> bool:
     """Return True if the interface operstate is up or unknown."""
@@ -70,7 +68,6 @@ def _iface_is_up(iface: str) -> bool:
         return state in ("up", "unknown")
     except Exception:
         return True   # can't read → assume OK
-
 
 def _get_default_iface() -> str:
     """
@@ -109,7 +106,6 @@ def _get_default_iface() -> str:
 
     return "eth0"
 
-
 def _iface_for_src_ip(src_ip: str) -> str:
     """
     Find the interface that owns src_ip by scanning /proc/net/if_inet6 and
@@ -147,7 +143,6 @@ def _iface_for_src_ip(src_ip: str) -> str:
         pass
     return _get_default_iface()
 
-
 def _get_iface_mac(iface: str) -> bytes:
     try:
         with open(f"/sys/class/net/{iface}/address") as f:
@@ -155,7 +150,6 @@ def _get_iface_mac(iface: str) -> bytes:
         return bytes(int(x, 16) for x in mac.split(":"))
     except Exception:
         return b"\x00" * 6
-
 
 def _get_gateway_mac(iface: str, gateway_ip: str) -> bytes:
     try:
@@ -168,8 +162,7 @@ def _get_gateway_mac(iface: str, gateway_ip: str) -> bytes:
         pass
     return b"\xff" * 6
 
-
-# ── Kernel RST suppression [true half-open] ───────────────────────────────────
+# Kernel RST suppression [true half-open]
 
 @contextlib.contextmanager
 def _suppress_kernel_rst(sport_lo: int, sport_hi: int):
@@ -195,8 +188,7 @@ def _suppress_kernel_rst(sport_lo: int, sport_hi: int):
         if installed:
             subprocess.run(rem, capture_output=True)
 
-
-# ── Packet builders ───────────────────────────────────────────────────────────
+# Packet builders
 
 def _build_rst(src_ip: str, dst_ip: str, sport: int, dport: int, seq: int) -> bytes:
     """
@@ -222,8 +214,7 @@ def _build_rst(src_ip: str, dst_ip: str, sport: int, dport: int, seq: int) -> by
     iph = struct.pack("!BBHHHBBH4s4s", 0x45, 0, RST_PKT_LEN, ip_id, 0, 64, 6, _checksum(iph), ip_s, ip_d)
     return iph + tcp
 
-
-# ── AF_PACKET frame parser [full ICMP table + TCP flag parser] ────────────────
+# AF_PACKET frame parser [full ICMP table + TCP flag parser]
 
 def _parse_af_packet(
     data:     bytes,
@@ -258,7 +249,7 @@ def _parse_af_packet(
         proto = ip[9]
         ihl   = (ip[0] & 0x0F) * 4
 
-        # ── TCP ───────────────────────────────────────────────────────────────
+        # TCP
         if proto == IP_PROTO_TCP:
             tcp = ip[ihl:]
             if len(tcp) < 14:
@@ -286,7 +277,7 @@ def _parse_af_packet(
             rst_seq = ack_field if state == 'open' else 0
             return (target_port, state, rst_seq, meta)
 
-        # ── ICMP ──────────────────────────────────────────────────────────────
+        # ICMP
         elif proto == IP_PROTO_ICMP:
             icmp = ip[ihl:]
             if len(icmp) < 8:
@@ -339,8 +330,7 @@ def _parse_af_packet(
     except Exception:
         return None
 
-
-# ── Half-open SYN scanner ─────────────────────────────────────────────────────
+# Half-open SYN scanner
 
 class PacketScanner:
     """
@@ -717,8 +707,7 @@ class PacketScanner:
 
         return results
 
-
-# ── Async wrapper ─────────────────────────────────────────────────────────────
+# Async wrapper
 
 async def async_packet_scan(
     target:      str,

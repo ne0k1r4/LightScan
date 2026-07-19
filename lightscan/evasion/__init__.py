@@ -112,8 +112,7 @@ class ProxyChain:
                     })
         return ProxyChain(proxies)
 
-
-# ─── JA3/JA4 TLS Fingerprint Spoofing ─────────────────────────────────────────
+# JA3/JA4 TLS Fingerprint Spoofing
 
 CHROME_CIPHERS = (
     "ECDHE-ECDSA-AES128-GCM-SHA256:"
@@ -195,4 +194,3 @@ def get_evasion_client_profile() -> tuple[str, ssl.SSLContext]:
     """Returns a random User-Agent and a matching spoofed SSLContext."""
     ua, browser = random.choice(UA_PROFILES)
     return ua, get_spoofed_ssl_context(browser)
-

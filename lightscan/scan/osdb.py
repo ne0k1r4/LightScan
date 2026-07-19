@@ -1,6 +1,5 @@
 """
 LightScan v2.0 PHANTOM — OS Fingerprint Engine v2 | Developer: Light
-─────────────────────────────────────────────────────────────────────
 Proper nmap-style OS fingerprinting using:
   - TCP ISN (Initial Sequence Number) analysis
   - IP TTL analysis
@@ -27,8 +26,7 @@ from typing import Dict, List, Optional, Tuple
 
 from lightscan.core.engine import ScanResult, Severity
 
-
-# ── Fingerprint signature database ───────────────────────────────────────────
+# Fingerprint signature database
 @dataclass
 class OSSig:
     name:       str
@@ -44,10 +42,9 @@ class OSSig:
     ts:         bool          # Timestamps option
     weight:     int           # confidence weight (higher = more specific)
 
-
 # Real OS signatures from nmap-os-db analysis
 OS_DB: List[OSSig] = [
-    # ── Linux ────────────────────────────────────────────────────────────────
+    # Linux
     OSSig("Linux 6.x (Ubuntu 22.04+)",    "Linux",   64,  (50,64),  65535, [65535,64240,29200], 1, 1460, 7,  True,  True,  100),
     OSSig("Linux 5.x (Ubuntu 20.04)",     "Linux",   64,  (50,64),  64240, [64240,65535,29200], 1, 1460, 7,  True,  True,  100),
     OSSig("Linux 4.x",                    "Linux",   64,  (50,64),  29200, [29200,65535,64240], 1, 1460, 7,  True,  True,   95),
@@ -57,7 +54,7 @@ OS_DB: List[OSSig] = [
     OSSig("Linux (Android 10+)",          "Linux",   64,  (50,64),  65535, [65535,64240],        1, 1460, 7,  True,  True,   90),
     OSSig("Linux (Android 8-9)",          "Linux",   64,  (50,64),  65535, [65535,87380],        1, 1460, 6,  True,  True,   85),
 
-    # ── Windows ──────────────────────────────────────────────────────────────
+    # Windows
     OSSig("Windows 11 (22H2+)",           "Windows", 128, (110,128), 65535, [65535,64240],       1, 1460, 8,  True,  True,  100),
     OSSig("Windows 10 (1903+)",           "Windows", 128, (110,128), 65535, [65535,64240,8192],  1, 1460, 8,  True,  True,  100),
     OSSig("Windows 10 (1507-1809)",       "Windows", 128, (110,128), 65535, [65535,8192],        1, 1460, 8,  True,  True,   95),
@@ -72,7 +69,7 @@ OS_DB: List[OSSig] = [
     OSSig("Windows XP SP1/SP2",           "Windows", 128, (110,128), 65535, [65535,16384],       0, 1460, -1, False, False,  65),
     OSSig("Windows 2000",                 "Windows", 128, (110,128), 16616, [16616,65535],       0, 1460, -1, False, False,  60),
 
-    # ── macOS / Darwin ───────────────────────────────────────────────────────
+    # macOS / Darwin
     OSSig("macOS 14 Sonoma",              "macOS",   64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,  100),
     OSSig("macOS 13 Ventura",             "macOS",   64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,  100),
     OSSig("macOS 12 Monterey",            "macOS",   64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   98),
@@ -83,36 +80,36 @@ OS_DB: List[OSSig] = [
     OSSig("iOS 17 (iPhone)",              "iOS",     64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   95),
     OSSig("iOS 16 (iPhone)",              "iOS",     64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   90),
 
-    # ── FreeBSD ───────────────────────────────────────────────────────────────
+    # FreeBSD
     OSSig("FreeBSD 14.x",                 "FreeBSD", 64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   95),
     OSSig("FreeBSD 13.x",                 "FreeBSD", 64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   93),
     OSSig("FreeBSD 12.x",                 "FreeBSD", 64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   90),
     OSSig("FreeBSD 11.x",                 "FreeBSD", 64,  (50,64),  65535, [65535,32768],       1, 1460, 6,  True,  True,   85),
     OSSig("FreeBSD 10.x",                 "FreeBSD", 64,  (50,64),  65535, [65535,32768],       1, 1460, 6,  True,  True,   80),
 
-    # ── OpenBSD ───────────────────────────────────────────────────────────────
+    # OpenBSD
     OSSig("OpenBSD 7.x",                  "OpenBSD", 255, (230,255), 16384, [16384,32768],      1, 1452, -1, True,  True,   95),
     OSSig("OpenBSD 6.x",                  "OpenBSD", 255, (230,255), 16384, [16384],            1, 1452, -1, True,  True,   90),
     OSSig("OpenBSD 5.x",                  "OpenBSD", 255, (230,255), 16384, [16384,32768],      1, 1460, -1, True,  True,   85),
 
-    # ── NetBSD ────────────────────────────────────────────────────────────────
+    # NetBSD
     OSSig("NetBSD 10.x",                  "NetBSD",  64,  (50,64),  65535, [65535,32768],       1, 1460, 3,  True,  True,   90),
     OSSig("NetBSD 9.x",                   "NetBSD",  64,  (50,64),  65535, [65535,32768],       1, 1460, 3,  True,  True,   85),
 
-    # ── Solaris / illumos ─────────────────────────────────────────────────────
+    # Solaris / illumos
     OSSig("Oracle Solaris 11.4",          "Solaris", 255, (230,255), 49152, [49152,65535],      1, 1460, 4,  True,  True,   90),
     OSSig("Oracle Solaris 10",            "Solaris", 255, (230,255), 49152, [49152],            1, 1460, -1, True,  False,  80),
     OSSig("illumos / OmniOS",             "Solaris", 255, (230,255), 49152, [49152,65535],      1, 1460, 4,  True,  True,   85),
 
-    # ── HP-UX ─────────────────────────────────────────────────────────────────
+    # HP-UX
     OSSig("HP-UX 11.31",                  "HP-UX",  255, (230,255), 32768, [32768,65535],      0, 1460, -1, False, False,  75),
     OSSig("HP-UX 11.11",                  "HP-UX",  255, (230,255), 32768, [32768],            0, 1460, -1, False, False,  70),
 
-    # ── AIX ───────────────────────────────────────────────────────────────────
+    # AIX
     OSSig("IBM AIX 7.x",                  "AIX",    255, (230,255), 65535, [65535,32767],      1, 1460, -1, True,  False,  80),
     OSSig("IBM AIX 6.x",                  "AIX",    255, (230,255), 65535, [65535],            1, 1460, -1, False, False,  75),
 
-    # ── Network devices ───────────────────────────────────────────────────────
+    # Network devices
     OSSig("Cisco IOS 15.x+",              "Cisco",  255, (230,255), 4128,  [4128,8192,16384],  1, 1460, -1, False, False,  90),
     OSSig("Cisco IOS 12.x",               "Cisco",  255, (230,255), 4096,  [4096,4128],        0, 1460, -1, False, False,  85),
     OSSig("Cisco IOS-XE",                 "Cisco",  255, (230,255), 16384, [16384,65535],      1, 1460, -1, True,  False,  88),
@@ -123,23 +120,22 @@ OS_DB: List[OSSig] = [
     OSSig("MikroTik RouterOS",            "MikroTik",64,(50,64),   65535, [65535,16384],       1, 1460, 5,  True,  True,   80),
     OSSig("pfSense / OPNsense",           "FreeBSD", 64,(50,64),   65535, [65535],             1, 1460, 6,  True,  True,   80),
 
-    # ── Embedded / IoT ────────────────────────────────────────────────────────
+    # Embedded / IoT
     OSSig("Embedded Linux (BusyBox)",     "Linux",   64,  (50,64),   5840, [5840,5792,2920],   0, 536,  -1, False, False,  70),
     OSSig("VxWorks 6.x",                  "VxWorks",255, (230,255), 8192,  [8192,4096,2048],   0, 536,  -1, False, False,  75),
     OSSig("QNX 7.x",                      "QNX",    255, (230,255), 65535, [65535,16384],      1, 1460, -1, True,  False,  75),
 
-    # ── Containers / VMs ──────────────────────────────────────────────────────
+    # Containers / VMs
     OSSig("Linux (Docker/container)",     "Linux",   64,  (50,64),  65535, [65535,64240],       1, 1500, 7,  True,  True,   80),
     OSSig("Linux (WSL2)",                 "Linux",   128, (110,128), 65535, [65535,64240],       1, 1460, 8,  True,  True,   75),
 
-    # ── Printers / special ────────────────────────────────────────────────────
+    # Printers / special
     OSSig("HP JetDirect (printer)",       "HP",     255, (230,255),  4096, [4096,8192],         0, 1460, -1, False, False,  70),
     OSSig("Canon printer",                "Canon",  255, (230,255),  8192, [8192,4096],         0, 1460, -1, False, False,  65),
     OSSig("VMware ESXi",                  "VMware",  64,  (50,64),  65535, [65535,64240],       1, 1460, 7,  True,  True,   90),
 ]
 
-
-# ── Observed fingerprint from a live probe ────────────────────────────────────
+# Observed fingerprint from a live probe
 @dataclass
 class LiveFingerprint:
     ttl:      int   = 0
@@ -150,7 +146,6 @@ class LiveFingerprint:
     sack:     bool  = False
     ts:       bool  = False
     syn_ack:  bool  = False
-
 
 def _parse_tcp_options(opts_bytes: bytes) -> Dict[str, int]:
     """Parse TCP options from raw bytes."""
@@ -179,7 +174,6 @@ def _parse_tcp_options(opts_bytes: bytes) -> Dict[str, int]:
             opts["ts"] = 1
         i += length
     return opts
-
 
 def fingerprint_from_synack(packet: bytes, ipv6: bool = False) -> Optional[LiveFingerprint]:
     """
@@ -225,7 +219,6 @@ def fingerprint_from_synack(packet: bytes, ipv6: bool = False) -> Optional[LiveF
         return fp
     except Exception:
         return None
-
 
 def _score_signature(fp: LiveFingerprint, sig: OSSig) -> int:
     """Score how well a live fingerprint matches a signature. Higher = better."""
@@ -278,14 +271,12 @@ def _score_signature(fp: LiveFingerprint, sig: OSSig) -> int:
 
     return max(0, score)
 
-
 def _confidence_label(score: int, max_score: int) -> str:
     ratio = score / max_score if max_score > 0 else 0
     if ratio >= 0.85: return "HIGH"
     if ratio >= 0.65: return "MEDIUM"
     if ratio >= 0.45: return "LOW"
     return "VERY LOW"
-
 
 def identify_os(fp: LiveFingerprint, top_n: int = 3) -> List[Dict]:
     """
@@ -313,7 +304,6 @@ def identify_os(fp: LiveFingerprint, top_n: int = 3) -> List[Dict]:
         })
     return results
 
-
 def build_os_result(target: str, port: int, matches: List[Dict]) -> List[ScanResult]:
     """Build ScanResult list from OS match results."""
     results = []
@@ -330,8 +320,7 @@ def build_os_result(target: str, port: int, matches: List[Dict]) -> List[ScanRes
         ))
     return results
 
-
-# ── Active probing ────────────────────────────────────────────────────────────
+# Active probing
 
 async def probe_os(target: str, port: int = 0,
                    timeout: float = 3.0) -> List[ScanResult]:
@@ -371,7 +360,6 @@ async def probe_os(target: str, port: int = 0,
         return await _probe_root(target, dst_ip, port, timeout, ipv6)
     else:
         return await _probe_noroot(target, dst_ip, port, timeout)
-
 
 async def _probe_root(target: str, dst_ip: str, port: int,
                       timeout: float, ipv6: bool) -> List[ScanResult]:
@@ -429,7 +417,6 @@ async def _probe_root(target: str, dst_ip: str, port: int,
         return []
     matches = identify_os(fp, top_n=3)
     return build_os_result(target, port, matches)
-
 
 async def _probe_noroot(target: str, dst_ip: str, port: int,
                         timeout: float) -> List[ScanResult]:

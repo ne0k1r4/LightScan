@@ -25,7 +25,7 @@ from typing import List, Optional
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.scan.portscan import SERVICE_MAP, CRIT_PORTS, HIGH_PORTS
 
-# ── Common UDP probes ─────────────────────────────────────────────────────────
+# Common UDP probes
 UDP_PROBES: dict[int, bytes] = {
     53:   b"\x00\x00\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"  # DNS query
           b"\x07version\x04bind\x00\x00\x10\x00\x03",
@@ -50,15 +50,13 @@ UDP_PROBES: dict[int, bytes] = {
 }
 _DEFAULT_PROBE = b"\x00" * 8  # generic empty probe
 
-
-# ── ICMP type/code constants ──────────────────────────────────────────────────
+# ICMP type/code constants
 ICMP_DEST_UNREACH       = 3
 ICMP_PORT_UNREACH       = 3   # code 3 → port closed
 ICMP_ADMIN_PROHIBITED   = 13  # code 13 → filtered by firewall
 ICMP_NET_UNREACH        = 0
 ICMP_HOST_UNREACH       = 1
 ICMP_PROTO_UNREACH      = 2
-
 
 def _icmp_state(icmp_code: int) -> str:
     """Map ICMP Destination Unreachable code to port state string."""
@@ -68,8 +66,7 @@ def _icmp_state(icmp_code: int) -> str:
         return "filtered"
     return "filtered"  # any other unreachable = filtered
 
-
-# ── Root-mode scanner (raw ICMP sniffer) ─────────────────────────────────────
+# Root-mode scanner (raw ICMP sniffer)
 
 class UDPScanner:
     """
@@ -310,8 +307,7 @@ class UDPScanner:
             "open_filtered": sorted(self._open_filtered),
         }
 
-
-# ── Result builder ────────────────────────────────────────────────────────────
+# Result builder
 
 def udp_scan(target: str, ports: List[int], timeout: float = 2.0,
              threads: int = 50, verbose: bool = False, retries: int = 2) -> List[ScanResult]:
@@ -356,7 +352,6 @@ def udp_scan(target: str, ports: List[int], timeout: float = 2.0,
         ))
 
     return results
-
 
 async def async_udp_scan(target: str, ports: List[int], timeout: float = 2.0,
                          threads: int = 50, verbose: bool = False) -> List[ScanResult]:

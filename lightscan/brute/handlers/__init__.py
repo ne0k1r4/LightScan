@@ -14,15 +14,13 @@ import asyncio, ftplib, smtplib, socket, struct, time, base64, hashlib, re
 import urllib.request, urllib.parse, urllib.error
 from typing import Callable
 
-
 def _wrap(fn) -> Callable:
     async def wrapper(user, passwd):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, fn, user, passwd)
     return wrapper
 
-
-# ─── SSH ─────────────────────────────────────────────────────────────────────
+# SSH
 def make_ssh_handler(host, port=22, timeout=8.0, **kw):
     try:
         import paramiko
@@ -63,8 +61,7 @@ def make_ssh_handler(host, port=22, timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install paramiko  (SSH brute needs it)\033[0m")
         return fallback
 
-
-# ─── FTP ─────────────────────────────────────────────────────────────────────
+# FTP
 def make_ftp_handler(host, port=21, timeout=8.0, **kw):
     def _try(user, passwd):
         try:
@@ -79,8 +76,7 @@ def make_ftp_handler(host, port=21, timeout=8.0, **kw):
             return False, str(e)
     return _wrap(_try)
 
-
-# ─── SMTP ────────────────────────────────────────────────────────────────────
+# SMTP
 def make_smtp_handler(host, port=587, timeout=8.0, **kw):
     def _try(user, passwd):
         try:
@@ -101,8 +97,7 @@ def make_smtp_handler(host, port=587, timeout=8.0, **kw):
             return False, str(e)
     return _wrap(_try)
 
-
-# ─── HTTP ────────────────────────────────────────────────────────────────────
+# HTTP
 def make_http_handler(host, port=80, url="", user_field="username",
                       pass_field="password", success_text="", failure_text="",
                       basic_auth=False, timeout=10.0, **kw):
@@ -114,7 +109,7 @@ def make_http_handler(host, port=80, url="", user_field="username",
         "Accept": "text/html,application/xhtml+xml,*/*",
     }
 
-    # ── CSRF token fetcher ────────────────────────────────────────────────────
+    # CSRF token fetcher
     def _fetch_csrf(session_cookie: str = "") -> tuple[dict, str]:
         """
         GET the login page, extract any hidden form fields (CSRF tokens),
@@ -228,8 +223,7 @@ def make_http_handler(host, port=80, url="", user_field="username",
         return await asyncio.get_running_loop().run_in_executor(None, _try)
     return handler
 
-
-# ─── MySQL ───────────────────────────────────────────────────────────────────
+# MySQL
 def make_mysql_handler(host, port=3306, timeout=8.0, **kw):
     try:
         import pymysql
@@ -282,8 +276,7 @@ def make_mysql_handler(host, port=3306, timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install pymysql  (raw fallback active)\033[0m")
         return mysql_raw
 
-
-# ─── PostgreSQL ──────────────────────────────────────────────────────────────
+# PostgreSQL
 def make_postgres_handler(host, port=5432, timeout=8.0, **kw):
     try:
         import psycopg2
@@ -318,8 +311,7 @@ def make_postgres_handler(host, port=5432, timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install psycopg2-binary  (raw PG fallback active)\033[0m")
         return pg_raw
 
-
-# ─── MSSQL ───────────────────────────────────────────────────────────────────
+# MSSQL
 def make_mssql_handler(host, port=1433, timeout=8.0, **kw):
     try:
         import pymssql
@@ -352,8 +344,7 @@ def make_mssql_handler(host, port=1433, timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install pymssql  (TDS probe only)\033[0m")
         return tds_probe
 
-
-# ─── Telnet ──────────────────────────────────────────────────────────────────
+# Telnet
 def make_telnet_handler(host, port=23, timeout=8.0, **kw):
     async def handler(user, passwd):
         try:
@@ -397,8 +388,7 @@ def make_telnet_handler(host, port=23, timeout=8.0, **kw):
             return False, str(e)
     return handler
 
-
-# ─── VNC ─────────────────────────────────────────────────────────────────────
+# VNC
 def make_vnc_handler(host, port=5900, timeout=8.0, **kw):
     async def handler(user, passwd):
         try:
@@ -443,8 +433,7 @@ def make_vnc_handler(host, port=5900, timeout=8.0, **kw):
             return False, str(e)
     return handler
 
-
-# ─── SMB (Raw NTLMv2 — no impacket needed) ───────────────────────────────────
+# SMB (Raw NTLMv2 — no impacket needed)
 def make_smb_handler(host, port=445, timeout=8.0, domain='', **kw):
     """Raw NTLMv2 SMB brute — impacket optional fallback"""
     from lightscan.brute.handlers.smb_raw import make_smb_raw_handler
@@ -469,15 +458,13 @@ def make_smb_handler(host, port=445, timeout=8.0, domain='', **kw):
         return ok, msg
     return handler
 
-
-# ─── RDP (Raw CredSSP/NLA — no impacket needed) ───────────────────────────────
+# RDP (Raw CredSSP/NLA — no impacket needed)
 def make_rdp_handler(host, port=3389, timeout=10.0, domain='', **kw):
     """Full RDP brute: X.224 negotiate → TLS → CredSSP NTLMv2 (raw)"""
     from lightscan.brute.handlers.rdp_raw import make_rdp_handler as _raw
     return _raw(host, port, timeout, domain)
 
-
-# ─── LDAP ────────────────────────────────────────────────────────────────────
+# LDAP
 def make_ldap_handler(host, port=389, base_dn="", timeout=8.0, **kw):
     try:
         import ldap3
@@ -521,8 +508,7 @@ def make_ldap_handler(host, port=389, base_dn="", timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install ldap3  (raw LDAP fallback active)\033[0m")
         return ldap_raw
 
-
-# ─── Registry ────────────────────────────────────────────────────────────────
+# Registry
 PROTOCOLS: dict = {
     "ssh":      (make_ssh_handler,      22),
     "ftp":      (make_ftp_handler,      21),

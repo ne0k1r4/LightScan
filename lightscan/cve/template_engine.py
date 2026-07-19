@@ -35,7 +35,6 @@ Template fields: id, name, severity, cve, tags, port, protocol, steps
 reference:   https://nvd.nist.gov/vuln/detail/CVE-2022-0543
 description: Redis accessible without authentication
 remediation: Add requirepass in redis.conf
-─────────────────────────────────────────────────────────────────
 """
 from __future__ import annotations
 import asyncio, base64, json, re, socket, struct, time, urllib.request, urllib.error
@@ -54,8 +53,7 @@ SEV_MAP = {
     "info":     Severity.INFO,
 }
 
-
-# ── Template data model ───────────────────────────────────────────────────────
+# Template data model
 
 @dataclass
 class Matcher:
@@ -154,8 +152,7 @@ class Template:
         with open(path) as f:
             return cls.from_dict(yaml.safe_load(f))
 
-
-# ── Runner ────────────────────────────────────────────────────────────────────
+# Runner
 
 class TemplateRunner:
     """
@@ -178,7 +175,7 @@ class TemplateRunner:
         except Exception as e:
             return None
 
-    # ── TCP runner ────────────────────────────────────────────────────────────
+    # TCP runner
 
     async def _run_tcp(self, tpl: Template, host: str, port: int) -> ScanResult | None:
         try:
@@ -231,7 +228,7 @@ class TemplateRunner:
 
         return self._make_result(tpl, host, port, extracted, recv_buf)
 
-    # ── HTTP runner ───────────────────────────────────────────────────────────
+    # HTTP runner
 
     async def _run_http(self, tpl: Template, host: str, port: int) -> ScanResult | None:
         scheme = "https" if tpl.protocol == "https" or port in (443,8443) else "http"
@@ -280,7 +277,7 @@ class TemplateRunner:
         return self._make_result(tpl, host, port, extracted,
                                  last_body.encode()[:200])
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # Helpers
 
     def _decode_payload(self, data: str, encoding: str) -> bytes:
         if encoding == "hex":
@@ -390,8 +387,7 @@ class TemplateRunner:
             }
         )
 
-
-# ── Template loader ───────────────────────────────────────────────────────────
+# Template loader
 
 # version constraint stuff for skipping templates that can't apply to the
 # detected version. not real semver (redis/mongo/whatever don't follow it
@@ -435,7 +431,6 @@ def version_ok(detected: str, constraint: str) -> bool:
         elif op == "<"  and not a <  b: return False
         elif op == ">"  and not a >  b: return False
     return True
-
 
 class TemplateLibrary:
     """
@@ -500,8 +495,7 @@ class TemplateLibrary:
         c = Counter(t.severity.value for t in self._templates)
         return f"{len(self)} templates | " + " ".join(f"{v} {k}" for k,v in c.items())
 
-
-# ── Async batch runner ────────────────────────────────────────────────────────
+# Async batch runner
 
 async def run_templates(templates: list[Template], host: str,
                         open_ports: list[int] | None = None,

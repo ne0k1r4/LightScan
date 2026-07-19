@@ -1,6 +1,5 @@
 """
 LightScan v2.0 PHANTOM — Raw Async Port Scanner | Developer: Light
-─────────────────────────────────────────────────────────────────────
 epoll-based async TCP SYN scanner using pure stdlib raw sockets.
 No scapy. No threads. Runs at ~nmap speed in Python.
 
@@ -33,7 +32,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.scan.portscan import SERVICE_MAP, CRIT_PORTS, HIGH_PORTS, PROBES
 
-# ── Timing templates (nmap-compatible) ───────────────────────────────────────
+# Timing templates (nmap-compatible)
 @dataclass
 class TimingTemplate:
     name:           str
@@ -54,7 +53,7 @@ TIMING = {
     5: TimingTemplate("Insane",    1000.0,10000.0,   0.001,  0.5, 1,   0.0, 1000),
 }
 
-# ── IP/TCP packet helpers ─────────────────────────────────────────────────────
+# IP/TCP packet helpers
 
 def _checksum(data: bytes) -> int:
     if len(data) % 2:
@@ -63,7 +62,6 @@ def _checksum(data: bytes) -> int:
     s = (s >> 16) + (s & 0xFFFF)
     s += s >> 16
     return ~s & 0xFFFF
-
 
 def _build_ipv4_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     seq: int = 0, ttl: int = 64, fragment: bool = False,
@@ -103,7 +101,6 @@ def _build_ipv4_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
 
     return ip_hdr + tcp_hdr
 
-
 def _build_ipv4_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     ack_seq: int, ttl: int = 64) -> bytes:
     """Build a raw IPv4 TCP RST packet."""
@@ -139,7 +136,6 @@ def _build_ipv4_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
 
     return ip_hdr + tcp_hdr
 
-
 def _build_ipv6_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     seq: int = 0) -> bytes:
     """Build a raw IPv6 TCP SYN packet (for use with SOCK_RAW AF_INET6)."""
@@ -161,7 +157,6 @@ def _build_ipv6_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
 
     return tcp_hdr  # IPv6 kernel prepends IP header automatically
 
-
 def _build_ipv6_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     ack_seq: int) -> bytes:
     """Build a raw IPv6 TCP RST packet (for use with SOCK_RAW AF_INET6)."""
@@ -182,8 +177,6 @@ def _build_ipv6_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
 
     return tcp_hdr
 
-
-
 def _get_src_ip(dst: str, ipv6: bool = False) -> str:
     af = socket.AF_INET6 if ipv6 else socket.AF_INET
     with socket.socket(af, socket.SOCK_DGRAM) as s:
@@ -192,7 +185,6 @@ def _get_src_ip(dst: str, ipv6: bool = False) -> str:
             return s.getsockname()[0]
         except Exception:
             return "::1" if ipv6 else "127.0.0.1"
-
 
 def _parse_tcp_response(data: bytes, expected_dst_ip: str,
                         port_map: Dict[int, int],
@@ -235,15 +227,13 @@ def _parse_tcp_response(data: bytes, expected_dst_ip: str,
     except Exception:
         return None
 
-
-# ── Evasion: Decoy packets ────────────────────────────────────────────────────
+# Evasion: Decoy packets
 
 def _random_ip() -> str:
     while True:
         ip = ipaddress.IPv4Address(random.randint(0x01000001, 0xFEFFFFFE))
         if ip.is_global and not ip.is_multicast:
             return str(ip)
-
 
 def _send_decoys(send_sock, dst_ip: str, dst_port: int, src_port: int,
                  decoys: List[str], ttl: int):
@@ -256,8 +246,7 @@ def _send_decoys(send_sock, dst_ip: str, dst_port: int, src_port: int,
         except Exception:
             pass
 
-
-# ── Core scanner ──────────────────────────────────────────────────────────────
+# Core scanner
 
 class RawAsyncScanner:
     """
@@ -342,7 +331,6 @@ class RawAsyncScanner:
                 send_sock.sendto(pkt, (dst_ip, 0))
         except Exception:
             pass
-
 
     def scan(self) -> List[ScanResult]:
         """Run the raw scanner synchronously (call from thread or run directly)."""
@@ -589,7 +577,6 @@ class RawAsyncScanner:
                 {"service": svc, "method": "RAW-SYN"}
             ))
         return results
-
 
 async def async_raw_scan(
     target: str, ports: List[int],

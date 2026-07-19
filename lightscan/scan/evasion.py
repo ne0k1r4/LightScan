@@ -1,6 +1,5 @@
 """
 LightScan v2.0 PHANTOM — Timing & Evasion Engine | Developer: Light
-─────────────────────────────────────────────────────────────────────
 nmap-compatible timing templates + IDS evasion techniques:
 
 Timing (T0-T5):
@@ -27,7 +26,6 @@ import random
 import time
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
-
 
 @dataclass
 class EvasionConfig:
@@ -66,7 +64,6 @@ class EvasionConfig:
             return random.choice([64, 128, 255])
         return self.ttl
 
-
 class RateLimiter:
     """
     Token-bucket rate limiter for packet sending.
@@ -103,7 +100,6 @@ class RateLimiter:
                 return
             sleep_time = (1.0 - self._tokens) / self._rate
             time.sleep(sleep_time)
-
 
 class ScanScheduler:
     """
@@ -150,7 +146,6 @@ class ScanScheduler:
             random.shuffle(result)
         return result
 
-
 def parse_timing(spec: str) -> int:
     """Parse timing spec: 'T4', '4', 'aggressive' → int 0-5."""
     spec = spec.strip().upper()
@@ -169,7 +164,6 @@ def parse_timing(spec: str) -> int:
         return max(0, min(5, v))
     except ValueError:
         return 4  # default T4
-
 
 def build_evasion(
     timing:          int   = 4,
@@ -196,8 +190,7 @@ def build_evasion(
         min_rate=min_rate, max_rate=max_rate,
     )
 
-
-# ── CLI helpers ───────────────────────────────────────────────────────────────
+# CLI helpers
 
 def timing_summary(t: int) -> str:
     from lightscan.scan.rawscan import TIMING
@@ -205,7 +198,6 @@ def timing_summary(t: int) -> str:
     return (f"T{t} {tmpl.name}: timeout={tmpl.timeout}s "
             f"rate={tmpl.min_rate:.0f}-{tmpl.max_rate:.0f}pps "
             f"parallelism={tmpl.parallelism} retries={tmpl.retries}")
-
 
 def print_timing_table():
     from lightscan.scan.rawscan import TIMING

@@ -26,7 +26,6 @@ from lightscan.core.checkpoint import Checkpoint
 from lightscan.core.reporter import Reporter
 from lightscan.scan.evasion import parse_timing  # used in multiple branches
 
-
 def build_parser():
     p = argparse.ArgumentParser(
         prog="lightscan",
@@ -168,7 +167,6 @@ def build_parser():
     out.add_argument("--no-banner",       action="store_true", help="Suppress banner (useful with --format json or scripted use)")
     return p
 
-
 def parse_userlist(spec):
     if not spec:
         return ["admin","root","administrator","user","test","guest","service","operator"]
@@ -189,9 +187,8 @@ def parse_passwdlist(spec, users=None, target_info=None, mutate=False):
         return list(dict.fromkeys(expanded))
     return base
 
-
 async def async_main(args):
-    # ── flag conflict validation ─────────────────────────────────────────────
+    # flag conflict validation
     # catch obvious mistakes before we get deep into the scan and fail weirdly
     scan_modes = [
         args.scan,
@@ -237,7 +234,6 @@ async def async_main(args):
         print(f"\033[38;5;208m[!] Invalid timing: {timing_raw!r} — use T0..T5\033[0m")
         sys.exit(1)
 
-    # ─────────────────────────────────────────────────────────────────────────
     if not getattr(args, 'no_banner', False):
         print_banner()
     t_start=time.time(); all_results=[]; open_ports={}
@@ -320,7 +316,6 @@ async def run_search(query: str):
     if not matching_templates and not matching_scripts:
         print(f"\033[38;5;240m[-] No matching templates or scripts found for {query!r}\033[0m\n")
 
-
 def run_update_templates(repo_spec: str):
     import urllib.request
     import zipfile
@@ -383,19 +378,18 @@ def run_update_templates(repo_spec: str):
     except Exception as e:
         print(f"\033[38;5;196m[!] Error updating templates: {e}\033[0m")
 
-
 async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
-    # ── Search option
+    # Search option
     if getattr(args, 'search', None):
         await run_search(args.search)
         return all_results
 
-    # ── Update templates option
+    # Update templates option
     if getattr(args, 'update_templates', None):
         run_update_templates(args.update_templates)
         return all_results
 
-    # ── Autonomous mode (--auto domain.com) ──────────────────────────────────
+    # Autonomous mode (--auto domain.com)
     if getattr(args, 'auto', None):
         from lightscan.scan.orchestrator import run_auto
         scope     = getattr(args, 'scope', None) or []
@@ -423,7 +417,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
         return all_results
 
-    # ── Active red-team scan (--active -t target) ─────────────────────────────
+    # Active red-team scan (--active -t target)
     if getattr(args, 'active', False) and args.target:
         from lightscan.scan.active import active_scan
         hosts     = parse_targets(args.target)
@@ -479,7 +473,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
         return all_results
 
-    # ── Diff
+    # Diff
     if args.diff:
         from lightscan.scan.diff import diff_scans
         old_f,new_f=args.diff
@@ -487,14 +481,14 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         print(f"\033[38;5;196m[DIFF]\033[0m {summary}")
         all_results.extend(results)
 
-    # ── DNS
+    # DNS
     if args.dns:
         from lightscan.scan.dns import full_dns_enum
         r=await full_dns_enum(args.dns,axfr=not args.no_axfr,
             brute=not args.no_brute_dns,use_crtsh=not args.no_crtsh)
         all_results.extend(r)
 
-    # ── Active OS Fingerprinting (T2-T7 multi-probe)
+    # Active OS Fingerprinting (T2-T7 multi-probe)
     if getattr(args, 'os_probe', False) and args.target:
         from lightscan.scan.os_detect import os_probe_async
         hosts = parse_targets(args.target)
@@ -509,12 +503,12 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 print(f"  \033[38;5;196m[OS]\033[0m {r.target} → {r.detail}")
             all_results.extend(os_results)
 
-    # ── Passive OS detection standalone (--os-passive without --syn)
+    # Passive OS detection standalone (--os-passive without --syn)
     if getattr(args, 'os_passive', False) and not (args.syn or getattr(args,'syn_c',False)) and args.target:
         print(f"\033[38;5;240m[!] --os-passive works best with --syn (reads SYN-ACK packets)\033[0m")
         print(f"\033[38;5;240m    Without --syn, TTL-only estimation will be LOW confidence\033[0m")
 
-    # ── Web Application Scan
+    # Web Application Scan
     if getattr(args, 'web_scan', None):
         from lightscan.web.scanner import web_scan_async
         print(f"\033[38;5;196m[WEB-SCAN]\033[0m {args.web_scan}")
@@ -535,7 +529,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         )
         print(f"  \033[38;5;196m[WEB-SCAN DONE]\033[0m {len(web_results)} findings — {summary}")
 
-        # ── Grouped terminal summary ──────────────────────────────────────
+        # Grouped terminal summary
         from lightscan.core.reporter import _group_results
         raw_dicts = [r.to_dict() for r in web_results]
         grouped   = _group_results(raw_dicts)
@@ -552,8 +546,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             for url in r.get("urls",[])[:5]:
                 print(f"      \033[38;5;240m↳ {url}\033[0m")
 
-
-    # ── RDP Probe
+    # RDP Probe
     if getattr(args, 'rdp_probe', None):
         from lightscan.brute.handlers.rdp_raw import make_rdp_probe, RawRDPHandler
         print(f"\033[38;5;196m[RDP-PROBE]\033[0m {args.rdp_probe}")
@@ -566,14 +559,14 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             f"RDP proto={info.get('protocol','?')} NLA={info.get('nla_required','?')}",
             info))
 
-    # ── Traceroute
+    # Traceroute
     if args.traceroute:
         from lightscan.scan.traceroute import tcp_traceroute
         tr=await tcp_traceroute(args.traceroute,timeout=args.timeout)
         for hop in tr: print(f"  {hop.detail}")
         all_results.extend(tr)
 
-    # ── SYN Scan (half-open, raw socket)
+    # SYN Scan (half-open, raw socket)
     if (args.syn or getattr(args, 'syn_c', False)) and args.target:
         from lightscan.scan.syn import syn_scan_auto
         hosts = parse_targets(args.target); ports = parse_ports(args.ports)
@@ -589,7 +582,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                     print(f"  \033[38;5;196mOPEN\033[0m  {res.target}:{res.port:<6} {res.detail}")
         all_results.extend(syn_results)
 
-    # ── UDP Scan (dedicated module with ICMP classification)
+    # UDP Scan (dedicated module with ICMP classification)
     if args.udp and args.target:
         from lightscan.scan.udp import udp_scan
         udp_ports_default = [53, 67, 68, 69, 111, 123, 137, 161, 162,
@@ -607,7 +600,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                   f"{res.target}:{res.port:<6} {res.detail}")
         all_results.extend(udp_results)
 
-    # ── Raw async SYN scan (epoll, nmap speed)
+    # Raw async SYN scan (epoll, nmap speed)
     if getattr(args, 'raw', False) and args.target:
         from lightscan.scan.rawscan import async_raw_scan
         hosts  = parse_targets(args.target)
@@ -630,7 +623,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                     open_ports.setdefault(res.target, []).append(res.port)
                     print(f"  \033[38;5;196mOPEN\033[0m  {res.target}:{res.port:<6} {res.detail}")
 
-    # ── IPv6 scan
+    # IPv6 scan
     if getattr(args, 'ipv6', False) and args.target and not getattr(args, 'raw', False):
         from lightscan.scan.ipv6scan import scan_ipv6, dual_stack_scan
         hosts = parse_targets(args.target)
@@ -648,7 +641,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                     open_ports.setdefault(res.target, []).append(res.port)
                     print(f"  \033[38;5;196mOPEN\033[0m  {res.target}:{res.port:<6} {res.detail}")
 
-    # ── OS fingerprint v2
+    # OS fingerprint v2
     if getattr(args, 'os_v2', False) and args.target:
         from lightscan.scan.osdb import probe_os
         hosts = parse_targets(args.target)
@@ -660,8 +653,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             for res in r:
                 print(f"  \033[38;5;196m[OS]\033[0m {res.target} → {res.detail}")
 
-
-    # ── AF_PACKET / stealth scan
+    # AF_PACKET / stealth scan
     _do_packet = getattr(args, 'packet_scan', False) or getattr(args, 'stealth_scan', False)
     if _do_packet and args.target:
         from lightscan.scan.packetscan import async_packet_scan
@@ -684,7 +676,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 elif res.status == "firewall":
                     print(f"  \033[38;5;208mFIREWALL\033[0m {res.target}:{res.port:<6} {res.detail}")
 
-    # ── Script engine
+    # Script engine
     if getattr(args, 'list_scripts', False):
         from lightscan.scan.scripts import ScriptRegistry, install_builtin_scripts
         script_base = install_builtin_scripts()
@@ -723,7 +715,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 timeout=args.timeout, verbose=args.verbose)
             all_results.extend(r)
 
-    # ── Service version detection (-sV)
+    # Service version detection (-sV)
     if getattr(args, 'sv', False) and args.target:
         from lightscan.scan.sversion import detect_services
         hosts = parse_targets(args.target)
@@ -736,7 +728,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             for res in r:
                 print(f"  \033[38;5;196m[{res.port}]\033[0m {res.detail}")
 
-    # ── Passive fingerprinting
+    # Passive fingerprinting
     if getattr(args, 'passive', False) and args.target:
         from lightscan.scan.passive import passive_fingerprint
         hosts = parse_targets(args.target)
@@ -749,8 +741,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             for res in r:
                 print(f"  \033[38;5;196m[{res.module}]\033[0m {res.detail}")
 
-
-    # ── Port Scan
+    # Port Scan
     if args.scan and args.target:
         hosts=parse_targets(args.target); ports=parse_ports(args.ports)
         cdn_hosts = []
@@ -776,7 +767,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 open_ports.setdefault(r.target,[]).append(r.port)
                 print(f"  \033[38;5;196mOPEN  {r.target}:{r.port:<6} {r.detail}\033[0m")
 
-    # ── List templates
+    # List templates
     if getattr(args, 'list_templates', False):
         from lightscan.cve.template_engine import TemplateLibrary
         from pathlib import Path
@@ -799,7 +790,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             print(f"  {tmpl.severity.value:<8} {tmpl.id:<35}{cve:<22} [{tags}]  port={tmpl.port}")
         return all_results
 
-    # ── CVE + Templates
+    # CVE + Templates
     run_cve       = args.cve
     run_templates = getattr(args, 'templates', False)
     if (run_cve or run_templates) and args.target:
@@ -830,14 +821,14 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                     print(f"  \033[38;5;196m[{res.severity.value}]\033[0m "
                           f"{res.module} @ {res.target}:{res.port} — {res.detail[:80]}")
 
-    # ── OAuth
+    # OAuth
     if args.oauth:
         cid=args.oauth_client or "00000000-0000-0000-0000-000000000000"
         red=args.oauth_redirect or "https://localhost/callback"
         scanner=OAuthScanner(args.oauth,cid,red,args.timeout)
         all_results.extend(await scanner.scan_all())
 
-    # ── Brute
+    # Brute
     if args.brute and args.target:
         from lightscan.brute.engine import BruteEngine, CredentialSpray
         from lightscan.brute.handlers import get_handler, PROTOCOLS
@@ -874,7 +865,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 r=await brute.run(handler,users,passwords,host,actual_port,proto,args.stop_first)
             all_results.extend(r)
 
-    # ── Summary
+    # Summary
     elapsed=time.time()-t_start; meta["duration"]=elapsed
     crit=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="CRITICAL")
     high=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="HIGH")
@@ -915,7 +906,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
     if not args.no_report and all_results:
         Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
     return all_results
-
 
 def print_minimal_help() -> None:
     """Print an animated, ultra-short terminal help guide."""
@@ -960,7 +950,6 @@ def print_minimal_help() -> None:
         if is_tty:
             time.sleep(0.012)
 
-
 _DEFAULT_CONCURRENCY = 256
 _FD_SAFETY_MARGIN    = 100  # stdout/stderr/log files/etc eat fds too, not just scan sockets
 
@@ -999,7 +988,6 @@ def _tune_concurrency(requested: int | None) -> int:
 
     return _DEFAULT_CONCURRENCY
 
-
 def _split_cdn_hosts(hosts: list[str]) -> tuple[list[str], list[str]]:
     """
     naabu does this before deciding on a full port sweep - resolve each
@@ -1021,7 +1009,6 @@ def _split_cdn_hosts(hosts: list[str]) -> tuple[list[str], list[str]]:
         else:
             normal.append(h)
     return normal, cdn
-
 
 def main():
     # Auto-tune system limits (ulimit -n) to prevent socket limit crashes under high concurrency
@@ -1088,6 +1075,5 @@ def main():
         print(f"\n\033[38;5;208m[!] Permission denied: {e}")
         print("    Raw/packet scans require root. Try sudo or use --scan.\033[0m")
         sys.exit(1)
-
 
 if __name__=="__main__": main()

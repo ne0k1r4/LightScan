@@ -17,7 +17,7 @@ LOCKOUT_SIGS = [
 ]
 RATE_SIGS = ["rate limit","too many requests","throttl","429","503","slow down","blocked temporarily"]
 
-# ── HTTP brute success/failure heuristics ─────────────────────────────────────
+# HTTP brute success/failure heuristics
 # Used when handlers don't return a definitive success bool.
 HTTP_FAILURE_SIGS = [
     "invalid password","wrong password","incorrect password","bad credentials",
@@ -32,7 +32,6 @@ HTTP_SUCCESS_SIGS = [
 ]
 HTTP_SUCCESS_CODES = {200, 201, 202, 301, 302, 303, 307}
 HTTP_FAILURE_CODES = {401, 403, 429, 500}
-
 
 def infer_http_success(response: str, status_code: int = 0) -> bool | None:
     """

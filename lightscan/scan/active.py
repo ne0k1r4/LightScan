@@ -1,6 +1,5 @@
 """
 Active Red-Team Engine
-──────────────────────
 This is the hands-on part of the scanner — it doesn't just observe,
 it actually pokes things and figures out if they're exploitable.
 
@@ -30,8 +29,7 @@ from typing import Dict, List, Optional
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.scan.portscan import SERVICE_MAP, CRIT_PORTS, HIGH_PORTS, tcp_scan
 
-
-# ── Intensity port lists ──────────────────────────────────────────────────────
+# Intensity port lists
 INTENSITY_PORTS: Dict[int, object] = {
     1: [21,22,23,25,80,443,445,3389,8080],
     2: [21,22,23,25,53,80,110,139,143,443,445,1433,3306,3389,5432,8080,8443],
@@ -41,15 +39,13 @@ INTENSITY_PORTS: Dict[int, object] = {
     5: "all",
 }
 
-
-# ── Phase 1: Host Discovery ───────────────────────────────────────────────────
+# Phase 1: Host Discovery
 
 def _icmp_checksum(data: bytes) -> int:
     if len(data) % 2: data += b"\x00"
     s = sum((data[i] << 8) + data[i+1] for i in range(0, len(data), 2))
     s = (s >> 16) + (s & 0xFFFF); s += s >> 16
     return ~s & 0xFFFF
-
 
 async def _icmp_ping(host: str, timeout: float = 1.5) -> Optional[tuple]:
     """Returns (method, rtt_ms, ttl, hostname) or None."""
@@ -95,8 +91,6 @@ async def _icmp_ping(host: str, timeout: float = 1.5) -> Optional[tuple]:
             try: sock.close()
             except Exception: pass
 
-
-
 async def _tcp_ping(host: str, port: int = 80, timeout: float = 1.5) -> Optional[tuple]:
     t0 = time.monotonic()
     try:
@@ -110,7 +104,6 @@ async def _tcp_ping(host: str, port: int = 80, timeout: float = 1.5) -> Optional
         return ("tcp-connect", rtt, 0, hn)
     except Exception:
         return None
-
 
 async def _arp_check(host: str) -> Optional[tuple]:
     """Read /proc/net/arp for LAN hosts — zero packets sent."""
@@ -132,7 +125,6 @@ async def _arp_check(host: str) -> Optional[tuple]:
     except Exception: pass
     return None
 
-
 async def discover_hosts(targets: List[str], timeout: float = 1.5,
                          concurrency: int = 256) -> List[tuple]:
     """Returns list of (ip, method, rtt_ms, ttl, hostname) for live hosts."""
@@ -151,8 +143,7 @@ async def discover_hosts(targets: List[str], timeout: float = 1.5,
     await asyncio.gather(*[_probe(t) for t in targets])
     return live
 
-
-# ── Phase 2: Deep Service Probing ─────────────────────────────────────────────
+# Phase 2: Deep Service Probing
 
 _PROTO_PROBES: Dict[int, bytes] = {
     21:    b"",                                         # FTP banner on connect
@@ -182,7 +173,6 @@ _PROTO_PROBES: Dict[int, bytes] = {
                   0x6d,0x64,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,0x13,0x00,0x00,
                   0x00,0x10,0x69,0x73,0x4d,0x61,0x73,0x74,0x65,0x72,0x00,0x01,0x00,0x00,0x00,0x00]),
 }
-
 
 async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
     """Returns {service, banner, version, product, os, devtype, info} via protocol-specific probing."""
@@ -239,8 +229,7 @@ async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
     return {"service": service, "banner": banner, "version": ver,
             "product": product, "os": os_hint, "devtype": devtype, "info": info}
 
-
-# ── Phase 3: Vulnerability Validation ────────────────────────────────────────
+# Phase 3: Vulnerability Validation
 
 _PORT_VALIDATORS: dict[int, list[callable]] = {}
 
@@ -251,7 +240,6 @@ def register_validator(ports: int | list[int]):
             _PORT_VALIDATORS.setdefault(p, []).append(func)
         return func
     return decorator
-
 
 @register_validator(21)
 async def _check_ftp_anon(host, port, timeout) -> Optional[ScanResult]:
@@ -272,7 +260,6 @@ async def _check_ftp_anon(host, port, timeout) -> Optional[ScanResult]:
         except Exception: pass
     except Exception: pass
     return None
-
 
 @register_validator(6379)
 async def _check_redis_unauth(host, port, timeout) -> Optional[ScanResult]:
@@ -295,7 +282,6 @@ async def _check_redis_unauth(host, port, timeout) -> Optional[ScanResult]:
     except Exception: pass
     return None
 
-
 @register_validator(27017)
 async def _check_mongo_unauth(host, port, timeout) -> Optional[ScanResult]:
     try:
@@ -313,7 +299,6 @@ async def _check_mongo_unauth(host, port, timeout) -> Optional[ScanResult]:
                 {"attack":"mongo-unauth","next":["db.adminCommand({listDatabases:1})","db.users.find()"]})
     except Exception: pass
     return None
-
 
 @register_validator(445)
 async def _check_smb_v1(host, port, timeout) -> Optional[ScanResult]:
@@ -337,7 +322,6 @@ async def _check_smb_v1(host, port, timeout) -> Optional[ScanResult]:
     except Exception: pass
     return None
 
-
 @register_validator([389, 636])
 async def _check_ldap_anon(host, port, timeout) -> Optional[ScanResult]:
     try:
@@ -355,7 +339,6 @@ async def _check_ldap_anon(host, port, timeout) -> Optional[ScanResult]:
     except Exception: pass
     return None
 
-
 @register_validator(23)
 async def _check_telnet(host, port, timeout) -> Optional[ScanResult]:
     try:
@@ -369,7 +352,6 @@ async def _check_telnet(host, port, timeout) -> Optional[ScanResult]:
                  "next":["--brute telnet -U admin,root -W common","MITM credential capture"]})
     except Exception: pass
     return None
-
 
 async def _check_http_exposures(host, port, timeout) -> List[ScanResult]:
     results   = []
@@ -413,11 +395,9 @@ async def _check_http_exposures(host, port, timeout) -> List[ScanResult]:
     await asyncio.gather(*[_check(*p) for p in PATHS])
     return results
 
-
-# ── Validator dispatch ────────────────────────────────────────────────────────
+# Validator dispatch
 
 _HTTP_PORTS = {80, 443, 8000, 8080, 8443, 8888, 3000, 5000, 9090}
-
 
 async def validate_port(host: str, port: int, timeout: float) -> List[ScanResult]:
     out = []
@@ -432,8 +412,7 @@ async def validate_port(host: str, port: int, timeout: float) -> List[ScanResult
         out.extend(await _check_http_exposures(host, port, timeout))
     return out
 
-
-# ── Phase 4: Pivot suggestions ────────────────────────────────────────────────
+# Phase 4: Pivot suggestions
 
 def pivot_suggestions(host: str, open_ports: List[int],
                       vulns: List[ScanResult]) -> List[ScanResult]:
@@ -511,8 +490,7 @@ def pivot_suggestions(host: str, open_ports: List[int],
 
     return out
 
-
-# ── Main active pipeline ──────────────────────────────────────────────────────
+# Main active pipeline
 
 async def active_scan(
     targets:     List[str],

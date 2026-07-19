@@ -239,11 +239,9 @@ async def full_dns_enum(domain, ns="8.8.8.8", axfr=True, brute=True, use_crtsh=T
     print(f"\033[38;5;196m[DNS]\033[0m {domain}: {len(results)} records found")
     return results
 
-
-# ── CT log + email security extensions (Jun 13) ──────────────────────────────
+# CT log + email security extensions (Jun 13)
 import json
 import urllib.request
-
 
 def _crtsh_lookup(domain: str, timeout: float = 10.0) -> list[str]:
     """certificate transparency log lookup via crt.sh — passive subdomain discovery.
@@ -267,7 +265,6 @@ def _crtsh_lookup(domain: str, timeout: float = 10.0) -> list[str]:
     except Exception as e:
         return []  # timeout, json error, rate limit — all recoverable
 
-
 async def ct_log_enum(domain: str, timeout: float = 10.0) -> list[str]:
     loop = asyncio.get_running_loop()
     try:
@@ -277,13 +274,11 @@ async def ct_log_enum(domain: str, timeout: float = 10.0) -> list[str]:
     except Exception as e:
         return []  # timeout, json error, rate limit — all recoverable
 
-
 DKIM_SELECTORS = [
     "default", "google", "k1", "k2", "mail", "email", "dkim",
     "selector1", "selector2", "s1", "s2", "mandrill", "sendgrid",
     "mailchimp", "postmark", "smtp", "key1", "key2", "mimecast",
 ]
-
 
 async def check_dkim(domain: str, selectors: list | None = None,
                      timeout: float = 3.0) -> list[str]:
@@ -303,7 +298,6 @@ async def check_dkim(domain: str, selectors: list | None = None,
 
     await asyncio.gather(*[_probe(s) for s in sels])
     return found
-
 
 async def full_dns_enum_v2(domain: str, axfr: bool = True, ct_logs: bool = True,
                             check_email: bool = True, timeout: float = 5.0) -> list:

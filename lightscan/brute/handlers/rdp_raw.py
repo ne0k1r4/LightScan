@@ -32,7 +32,7 @@ import logging
 
 log = logging.getLogger("lightscan.rdp_raw")
 
-# ─── RDP / TPKT Constants ─────────────────────────────────────────────────────
+# RDP / TPKT Constants
 TPKT_VERSION        = 0x03
 TPDU_CR             = 0xE0   # Connection Request
 TPDU_CC             = 0xD0   # Connection Confirm
@@ -78,8 +78,7 @@ FAILURE_REASONS = {
     0x00000006: "SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER",
 }
 
-
-# ─── TPKT / X.224 framing helpers ────────────────────────────────────────────
+# TPKT / X.224 framing helpers
 
 def _tpkt(payload: bytes) -> bytes:
     """Wrap payload in TPKT header (RFC 1006) — version=3, reserved=0, length=big-endian"""
@@ -117,8 +116,7 @@ def _recv_exact(sock, n: int) -> bytes:
         buf += chunk
     return buf
 
-
-# ─── SPNEGO / NTLM helpers ───────────────────────────────────────────────────
+# SPNEGO / NTLM helpers
 
 def _ntlm_negotiate_blob() -> bytes:
     """Minimal NTLMSSP_NEGOTIATE (type 1) message"""
@@ -231,8 +229,7 @@ def _spnego_auth_wrap(ntlm_auth: bytes) -> bytes:
     inner   = bytes([0xa0, 3, 0x0a, 1, 1]) + _asn1(0xa2, token)
     return _asn1(0xa1, inner)
 
-
-# ─── CredSSP / TSRequest framing (MS-CSSP) ───────────────────────────────────
+# CredSSP / TSRequest framing (MS-CSSP)
 
 def _ts_request(spnego_token: bytes, version: int = 6) -> bytes:
     """
@@ -261,8 +258,7 @@ def _ts_request(spnego_token: bytes, version: int = 6) -> bytes:
     ts_body     = ver_bytes + nego_tokens
     return _asn1(0x30, ts_body)
 
-
-# ─── Main RDP Handler ─────────────────────────────────────────────────────────
+# Main RDP Handler
 
 class RawRDPHandler:
     """
@@ -279,7 +275,7 @@ class RawRDPHandler:
         self.negotiated_protocol: int | None = None
         self.server_cert = None
 
-    # ── Transport ──────────────────────────────────────────────────────────────
+    # Transport
 
     def connect(self) -> bool:
         try:
@@ -305,7 +301,7 @@ class RawRDPHandler:
     def _recv_tpkt(self) -> bytes | None:
         return _recv_tpkt(self._active_sock())
 
-    # ── Step 1: X.224 + RDP Negotiation ───────────────────────────────────────
+    # Step 1: X.224 + RDP Negotiation
 
     def negotiate(self, preferred: int = PROTOCOL_HYBRID) -> bool:
         """
@@ -344,7 +340,7 @@ class RawRDPHandler:
 
         return False
 
-    # ── Step 2: TLS upgrade ────────────────────────────────────────────────────
+    # Step 2: TLS upgrade
 
     def setup_tls(self) -> bool:
         """Upgrade raw socket to TLS (SSL/HYBRID/HYBRID_EX all go over TLS)"""
@@ -360,7 +356,7 @@ class RawRDPHandler:
         except Exception as e:
             log.debug(f"TLS failed: {e}"); return False
 
-    # ── Step 3: CredSSP / NLA (PROTOCOL_HYBRID) ───────────────────────────────
+    # Step 3: CredSSP / NLA (PROTOCOL_HYBRID)
 
     def credssp_auth(self, username: str, password: str, domain: str = "") -> tuple[bool, str]:
         """
@@ -370,7 +366,7 @@ class RawRDPHandler:
               TSRequest(SPNEGO/NTLM authenticate)
         Returns (success, status_string)
         """
-        # ── Round 1: send NTLM Negotiate ──────────────────────────────────────
+        # Round 1: send NTLM Negotiate
         ntlm_neg  = _ntlm_negotiate_blob()
         spnego1   = _spnego_wrap(ntlm_neg)
         ts1       = _ts_request(spnego1, version=6)
@@ -379,7 +375,7 @@ class RawRDPHandler:
         except Exception as e:
             return False, f"send_neg_failed:{e}"
 
-        # ── Round 2: receive server SPNEGO / NTLM challenge ───────────────────
+        # Round 2: receive server SPNEGO / NTLM challenge
         try:
             raw = self.ssl_sock.recv(65535)
         except Exception as e:
@@ -397,7 +393,7 @@ class RawRDPHandler:
         if not server_challenge:
             return False, "invalid_challenge"
 
-        # ── Round 3: send NTLM Authenticate ───────────────────────────────────
+        # Round 3: send NTLM Authenticate
         ntlm_auth = _ntlmv2_auth_blob(username, password, domain, server_challenge)
         spnego3   = _spnego_auth_wrap(ntlm_auth)
         ts3       = _ts_request(spnego3, version=6)
@@ -406,7 +402,7 @@ class RawRDPHandler:
         except Exception as e:
             return False, f"send_auth_failed:{e}"
 
-        # ── Round 4: read server response (access granted / denied) ───────────
+        # Round 4: read server response (access granted / denied)
         try:
             resp = self.ssl_sock.recv(65535)
         except ssl.SSLError:
@@ -437,7 +433,7 @@ class RawRDPHandler:
 
         return False, f"auth_failed_unknown len={len(resp)}"
 
-    # ── Full Authentication Flow ───────────────────────────────────────────────
+    # Full Authentication Flow
 
     def authenticate(self, username: str = "", password: str = "",
                      domain: str = "") -> tuple[bool, str]:
@@ -536,8 +532,7 @@ class RawRDPHandler:
         finally:
             self.close()
 
-
-# ─── Async LightScan handler factory ─────────────────────────────────────────
+# Async LightScan handler factory
 
 def make_rdp_handler(host: str, port: int = 3389, timeout: float = 10.0,
                      domain: str = "", **kw):

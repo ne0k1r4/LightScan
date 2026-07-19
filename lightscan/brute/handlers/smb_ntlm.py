@@ -26,7 +26,7 @@ import time
 
 log = logging.getLogger("lightscan.smb")
 
-# ─── SMB constants ────────────────────────────────────────────────────────────
+# SMB constants
 _SMB_NEG_CMD     = 0x72
 _SMB_SESS_CMD    = 0x73
 _NTLMSSP_NEG     = 0x01
@@ -44,8 +44,7 @@ _DIALECTS = (
     b'\x02SMB 2.002\x00'
 )
 
-
-# ─── Core SMB class (from Doc 3, refactored) ──────────────────────────────────
+# Core SMB class (from Doc 3, refactored)
 class RawSMBAuth:
     def __init__(self, host: str, port: int = 445, timeout: float = 8.0):
         self.host    = host
@@ -56,7 +55,7 @@ class RawSMBAuth:
         self.uid = 0
         self._mid = 0
 
-    # ── Transport ─────────────────────────────────────────────────────────────
+    # Transport
     def connect(self) -> bool:
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -92,7 +91,7 @@ class RawSMBAuth:
         except (socket.timeout, OSError):
             return None
 
-    # ── SMB header builder ────────────────────────────────────────────────────
+    # SMB header builder
     def _smb_header(self, cmd: int, flags: int = 0x18, flags2: int = 0xC801,
                     tid: int = 0, uid: int = 0) -> bytes:
         self._mid += 1
@@ -107,7 +106,7 @@ class RawSMBAuth:
             + struct.pack('<H', self._mid)
         )
 
-    # ── Step 1: Negotiate ──────────────────────────────────────────────────────
+    # Step 1: Negotiate
     def negotiate(self) -> bool:
         body  = struct.pack('<B', 0)                       # word count
         body += struct.pack('<H', len(_DIALECTS))          # byte count
@@ -131,7 +130,7 @@ class RawSMBAuth:
 
         return True
 
-    # ── Step 1b: Parse NTLMSSP challenge ─────────────────────────────────────
+    # Step 1b: Parse NTLMSSP challenge
     def _parse_ntlm_challenge(self, blob: bytes):
         if len(blob) < 32: return
         msg_type = struct.unpack('<I', blob[8:12])[0]
@@ -139,7 +138,7 @@ class RawSMBAuth:
             self.server_challenge = blob[24:32]
             log.debug(f"NTLM challenge: {self.server_challenge.hex()}")
 
-    # ── Step 2: NTLMv2 response calculation ───────────────────────────────────
+    # Step 2: NTLMv2 response calculation
     @staticmethod
     def _md4(data: bytes) -> bytes:
         try:
@@ -189,7 +188,7 @@ class RawSMBAuth:
         ntv2_response = self._hmac_md5(ntv2_hash, server_challenge + blob) + blob
         return ntv2_response
 
-    # ── Step 3: Session Setup with NTLM auth ─────────────────────────────────
+    # Step 3: Session Setup with NTLM auth
     def session_setup(self, username: str, password: str, domain: str = '') -> str:
         """
         Returns: 'success' | 'failure' | 'locked' | 'error:<msg>'
@@ -213,7 +212,7 @@ class RawSMBAuth:
         lm_bytes     = b'\x00' * 24   # LMv2 placeholder
 
         # Fixed header = 8 (sig+type) + 8 (LM) + 8 (NTLM) + 8 (domain) +
-        #                8 (user) + 8 (ws) + 8 (sesskey) + 4 (flags) + 8 (ver) = 72
+        # 8 (user) + 8 (ws) + 8 (sesskey) + 4 (flags) + 8 (ver) = 72
         base = 72
         lm_hdr,   base = sec_buf(lm_bytes,     base)
         ntlm_hdr, base = sec_buf(ntlm_resp,    base)
@@ -270,7 +269,7 @@ class RawSMBAuth:
         if ntstatus == 0xC000006E:   return 'locked'           # STATUS_ACCOUNT_RESTRICTION
         return f'error:ntstatus=0x{ntstatus:08x}'
 
-    # ── Full auth flow ────────────────────────────────────────────────────────
+    # Full auth flow
     def authenticate(self, username: str, password: str, domain: str = '') -> tuple[bool, str]:
         """Returns (success, message)"""
         if not self.connect():
@@ -327,15 +326,14 @@ class RawSMBAuth:
         finally:
             self.close()
 
-
-# ─── LightScan async handler factory ─────────────────────────────────────────
+# LightScan async handler factory
 def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
                           domain: str = '', **kw):
     """
     Returns an async (user, passwd) → (bool, str) handler for BruteEngine.
     Tries impacket first (most reliable), then falls back to RawSMBAuth.
     """
-    # ── Prefer impacket ───────────────────────────────────────────────────────
+    # Prefer impacket
     try:
         from impacket.smbconnection import SMBConnection
 
@@ -359,7 +357,7 @@ def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
     except ImportError:
         pass
 
-    # ── Fall back to RawSMBAuth (Doc 3) ───────────────────────────────────────
+    # Fall back to RawSMBAuth (Doc 3)
     async def raw_handler(user: str, passwd: str) -> tuple[bool, str]:
         def _try():
             auth = RawSMBAuth(host, port, timeout)
@@ -369,8 +367,7 @@ def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
 
     return raw_handler
 
-
-# ── null session + anonymous pre-check (Jun 13) ──────────────────────────────
+# null session + anonymous pre-check (Jun 13)
 # added after i ran a credential brute against a target with anonymous access
 # and wasted 500 attempts. check this first, always.
 async def check_null_session(host: str, port: int = 445,
@@ -407,7 +404,6 @@ async def check_null_session(host: str, port: int = 445,
                 try: conn.close()
                 except Exception: pass
     return result
-
 
 async def smb_precheck(host: str, port: int = 445, timeout: float = 5.0) -> list[str]:
     """run null/anonymous checks — call BEFORE brute force"""

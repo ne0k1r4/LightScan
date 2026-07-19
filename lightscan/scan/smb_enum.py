@@ -13,7 +13,6 @@ try:
 except ImportError:
     HAS_IMPACKET = False
 
-
 @dataclass
 class SMBInfo:
     host:          str
@@ -27,12 +26,10 @@ class SMBInfo:
     rpc_endpoints: list = field(default_factory=list)
     errors:        list = field(default_factory=list)
 
-
 _DIALECTS = {
     0x0202: "SMB 2.0.2", 0x0210: "SMB 2.1",
     0x0300: "SMB 3.0",   0x0302: "SMB 3.0.2", 0x0311: "SMB 3.1.1",
 }
-
 
 def smb_enumerate(host: str, timeout: float = 5.0) -> SMBInfo:
     info = SMBInfo(host=host)
@@ -83,7 +80,6 @@ def smb_enumerate(host: str, timeout: float = 5.0) -> SMBInfo:
     except Exception: pass
 
     return info
-
 
 async def smb_enum_async(host: str, timeout: float = 5.0) -> list[ScanResult]:
     loop = asyncio.get_running_loop()

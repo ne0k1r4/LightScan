@@ -1,6 +1,6 @@
 # scan/snmp.py — SNMP v1/v2c enumeration (pure stdlib, no pysnmp)
 # Light (Neok1ra)
-#
+
 # hand-rolled BER/ASN.1 encoding. learned more about SNMP wire format
 # doing this than i ever wanted to know.
 # tested against NET-SNMP, Cisco IOS, Windows SNMP service.
@@ -9,16 +9,13 @@ import asyncio, random, socket, struct
 from dataclasses import dataclass, field
 from lightscan.core.engine import ScanResult, Severity
 
-
 def _checksum_dummy(): pass  # placeholder so file isn't just defs
-
 
 def _tlv(tag: int, value: bytes) -> bytes:
     n = len(value)
     if n < 0x80:   return bytes([tag, n]) + value
     if n < 0x100:  return bytes([tag, 0x81, n]) + value
     return bytes([tag, 0x82, (n>>8)&0xff, n&0xff]) + value
-
 
 def _encode_oid(oid: str) -> bytes:
     parts = [int(x) for x in oid.split(".")]
@@ -32,7 +29,6 @@ def _encode_oid(oid: str) -> bytes:
         out += bytes(reversed(enc))
     return out
 
-
 def _build_get(community: str, oid: str) -> bytes:
     rid      = random.randint(1, 0x7fffffff)
     varbind  = _tlv(0x30, _tlv(0x06, _encode_oid(oid)) + _tlv(0x05, b""))
@@ -41,7 +37,6 @@ def _build_get(community: str, oid: str) -> bytes:
         _tlv(0x02, b"\x00") + _tlv(0x30, varbind))
     return _tlv(0x30, _tlv(0x02, b"\x00") + _tlv(0x04, community.encode()) + pdu)
 
-
 def _build_getnext(community: str, oid: str) -> bytes:
     rid     = random.randint(1, 0x7fffffff)
     varbind = _tlv(0x30, _tlv(0x06, _encode_oid(oid)) + _tlv(0x05, b""))
@@ -49,7 +44,6 @@ def _build_getnext(community: str, oid: str) -> bytes:
         _tlv(0x02, rid.to_bytes(4, "big")) + _tlv(0x02, b"\x00") +
         _tlv(0x02, b"\x00") + _tlv(0x30, varbind))
     return _tlv(0x30, _tlv(0x02, b"\x00") + _tlv(0x04, community.encode()) + pdu)
-
 
 def _parse(data: bytes) -> tuple[str, str]:
     """crude BER parser — handles octet string, integer, IP address"""
@@ -89,7 +83,6 @@ def _parse(data: bytes) -> tuple[str, str]:
     except Exception:
         return "", ""
 
-
 async def _udp_send(host: str, port: int, pkt: bytes, timeout: float) -> bytes:
     loop = asyncio.get_running_loop()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -104,7 +97,6 @@ async def _udp_send(host: str, port: int, pkt: bytes, timeout: float) -> bytes:
     finally:
         sock.close()
 
-
 SYSTEM_OIDS = {
     "sysDescr":   "1.3.6.1.2.1.1.1.0",
     "sysContact": "1.3.6.1.2.1.1.4.0",
@@ -117,12 +109,10 @@ WALK_OIDS = {
 }
 COMMUNITIES = ["public", "private", "community", "admin", "snmp", "manager"]
 
-
 async def snmp_get(host: str, oid: str, community: str = "public",
                    port: int = 161, timeout: float = 2.0) -> tuple[str, str]:
     data = await _udp_send(host, port, _build_get(community, oid), timeout)
     return _parse(data)
-
 
 async def snmp_walk(host: str, base_oid: str, community: str = "public",
                     port: int = 161, timeout: float = 2.0,
@@ -138,7 +128,6 @@ async def snmp_walk(host: str, base_oid: str, community: str = "public",
         parts[-1] = str(int(parts[-1]) + 1)
         oid       = ".".join(parts)
     return results
-
 
 async def snmp_enumerate(host: str, port: int = 161,
                          communities: list | None = None,

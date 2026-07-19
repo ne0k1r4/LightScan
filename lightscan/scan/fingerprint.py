@@ -1,13 +1,13 @@
 # fingerprint.py — parses the real nmap-service-probes file and matches
 # response bytes against it.
-#
+
 # deep_probe() used to have 9 hardcoded regexes (openssh, apache, nginx,
 # iis, vsftpd, mysql, redis, mongo, plus a generic \d+\.\d+\.\d+ fallback).
 # this is nmap's actual database - ~1200 probes' worth of match/softmatch
 # signatures, product names, versions, os hints, device types. same file
 # nmap -sV runs on, pulled straight from nmap/nmap on github, not rebuilt
 # from scratch or guessed at.
-#
+
 # doesn't try to replicate nmap's full probe-then-match staging (only try
 # probe X's matches if you actually sent probe X's exact payload).
 # deep_probe() sends its own smaller probe set, not nmap's exact strings,
@@ -28,7 +28,6 @@ from pathlib import Path
 
 _DB_PATH = Path(__file__).parent.parent / "data" / "nmap-service-probes"
 
-
 _ESCAPES = {"0": 0x00, "r": 0x0D, "n": 0x0A, "t": 0x09, "\\": 0x5C, "a": 0x07,
             "f": 0x0C, "v": 0x0B}
 
@@ -38,7 +37,6 @@ _ESCAPES = {"0": 0x00, "r": 0x0D, "n": 0x0A, "t": 0x09, "\\": 0x5C, "a": 0x07,
 # handful of kb of scan response, we're not worried about catastrophic
 # backtracking here the way nmap has to be for arbitrary attacker input.
 _POSSESSIVE = re.compile(r'([*+?]|\{\d+(?:,\d*)?\})\+')
-
 
 def _decode_probe_string(s: str) -> bytes:
     out = bytearray()
@@ -65,7 +63,6 @@ def _decode_probe_string(s: str) -> bytes:
         i += 1
     return bytes(out)
 
-
 def _split_delimited(s: str, start: int) -> tuple[str, int]:
     """s[start] is the delimiter char. returns (content, index_after_closing_delim)."""
     delim = s[start]
@@ -81,7 +78,6 @@ def _split_delimited(s: str, start: int) -> tuple[str, int]:
         buf.append(s[i])
         i += 1
     return "".join(buf), i  # unterminated, shouldn't happen in a well-formed file
-
 
 @dataclass
 class Match:
@@ -136,7 +132,6 @@ class Match:
             is_soft  = self.is_soft,
         )
 
-
 @dataclass
 class ServiceInfo:
     service:  str
@@ -154,14 +149,12 @@ class ServiceInfo:
         if self.info:    parts.append(f"({self.info})")
         return " ".join(p for p in parts if p)
 
-
 @dataclass
 class Probe:
     name:     str
     matches:  list = field(default_factory=list)
     ports:    set  = field(default_factory=set)
     sslports: set  = field(default_factory=set)
-
 
 def _parse_port_list(s: str) -> set:
     out = set()
@@ -181,7 +174,6 @@ def _parse_port_list(s: str) -> set:
             except ValueError:
                 continue
     return out
-
 
 def _parse_version_fields(rest: str) -> dict:
     """rest is whatever follows the closing m//flags - p/.../ v/.../ etc."""
@@ -208,7 +200,6 @@ def _parse_version_fields(rest: str) -> dict:
         i += 1
     return out
 
-
 def _parse_match_line(line: str, is_soft: bool) -> "Match | None":
     # match <service> m<delim><pattern><delim><flags> [fields...]
     parts = line.split(None, 2)
@@ -228,7 +219,6 @@ def _parse_match_line(line: str, is_soft: bool) -> "Match | None":
     if "s" in flag_chars: flags |= re.DOTALL
     fields = _parse_version_fields(rest[after:].strip())
     return Match(service=service, pattern=pattern, flags=flags, is_soft=is_soft, **fields)
-
 
 class ServiceProbeDB:
     def __init__(self, path: Path = _DB_PATH):
@@ -335,7 +325,6 @@ class ServiceProbeDB:
     def match_count(self) -> int:
         self._ensure_loaded()
         return sum(len(p.matches) for p in self._probes.values())
-
 
 _db: "ServiceProbeDB | None" = None
 

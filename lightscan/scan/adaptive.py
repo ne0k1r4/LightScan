@@ -1,6 +1,5 @@
 """
 LightScan v2.0 PHANTOM — Adaptive Timing Engine | Developer: Light
-───────────────────────────────────────────────────────────────────
 Adaptive timing: adjusts concurrency + rate based on:
   - RTT to target (latency-aware)
   - Packet loss rate (retry-aware)
@@ -16,7 +15,6 @@ import statistics
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-
 
 @dataclass
 class HostStats:
@@ -59,7 +57,6 @@ class HostStats:
 
     def record_timeout(self):
         self.timeouts += 1
-
 
 class AdaptiveTimingEngine:
     """
@@ -166,15 +163,13 @@ class AdaptiveTimingEngine:
                 f"recv={self._global_recv}  "
                 f"loss={loss:.1%}")
 
-
-# ── drop-rate detector (Jun 13) ──────────────────────────────────────────────
+# drop-rate detector (Jun 13)
 # RTT-based backoff (existing) handles slow responses.
 # this handles something different: target actively DROPPING packets.
 # IDS rate limiting, iptables connlimit, whatever — when responses stop
 # coming we need to back off hard before we get banned.
 import collections as _col
 import time as _t
-
 
 class DropRateDetector:
     """sliding window packet drop rate detector.

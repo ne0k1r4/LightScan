@@ -13,7 +13,6 @@ from lightscan.cve.checker import CVEChecker
 from lightscan.cve.template_engine import TemplateLibrary, run_templates
 from lightscan.core.engine import ScanResult
 
-
 def versions_from_results(results: list[ScanResult]) -> dict[int, str]:
     """pulls {port: version} out of active.py's Phase 3 'active:service'
     findings, so the cve stage can skip templates that don't apply to
@@ -26,7 +25,6 @@ def versions_from_results(results: list[ScanResult]) -> dict[int, str]:
             if ver:
                 out[r.port] = ver
     return out
-
 
 async def run_all_checks(host: str, open_ports: list[int],
                          template_dirs: list[str] | None = None,
@@ -63,7 +61,7 @@ async def run_all_checks(host: str, open_ports: list[int],
         if key in seen: return False
         seen.add(key); return True
 
-    # ── Template engine ───────────────────────────────────────────────────────
+    # Template engine
     dirs = [str(Path(__file__).parent.parent / "templates")]
     if template_dirs: dirs.extend(template_dirs)
     lib = TemplateLibrary(dirs)
@@ -77,7 +75,7 @@ async def run_all_checks(host: str, open_ports: list[int],
     for r in tpl_results:
         if _dedup(r): results.append(r)
 
-    # ── Legacy hardcoded checks ───────────────────────────────────────────────
+    # Legacy hardcoded checks
     if use_legacy:
         checker = CVEChecker(timeout=timeout)
         # check_all() takes host + ports and dispatches to the right functions
@@ -86,7 +84,6 @@ async def run_all_checks(host: str, open_ports: list[int],
             if r and _dedup(r): results.append(r)
 
     return results
-
 
 async def run_templates_only(host: str, open_ports: list[int],
                              extra_dirs: list[str] | None = None,

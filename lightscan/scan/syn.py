@@ -19,7 +19,7 @@ from lightscan.scan.tcpflags import (
     ICMP_DEST_UNREACHABLE, ICMP_TTL_EXCEEDED,
 )
 
-# ── Scapy imports verification ──────────────────────────────────────────────
+# Scapy imports verification
 try:
     import logging
     logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
@@ -28,7 +28,6 @@ try:
     SCAPY_OK = True
 except (ImportError, KeyError, Exception):
     SCAPY_OK = False
-
 
 class SYNScanner:
     """
@@ -195,27 +194,26 @@ class SYNScanner:
                 results.append(r)
         return results
 
-
-# ─── C SYN Scanner (compiled at runtime for high-performance scanning) ───────
+# C SYN Scanner (compiled at runtime for high-performance scanning)
 
 _C_SRC = r"""
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <netpacket/packet.h>
-#include <net/if.h>
-#include <sys/ioctl.h>
-#include <errno.h>
-#include <pthread.h>
-#include <time.h>
+# include <stdio.h>
+# include <stdlib.h>
+# include <string.h>
+# include <unistd.h>
+# include <sys/socket.h>
+# include <arpa/inet.h>
+# include <netinet/ip.h>
+# include <netinet/tcp.h>
+# include <netpacket/packet.h>
+# include <net/if.h>
+# include <sys/ioctl.h>
+# include <errno.h>
+# include <pthread.h>
+# include <time.h>
 
-#define MAX_PORTS 65536
-#define THREADS 100
+# define MAX_PORTS 65536
+# define THREADS 100
 
 struct pseudo_header {
     uint32_t src; uint32_t dst;
@@ -335,7 +333,6 @@ int main(int argc, char *argv[]) {
 
 _C_BIN: Optional[str] = None
 
-
 def _compile_c_scanner():
     global _C_BIN
     if _C_BIN:
@@ -356,7 +353,6 @@ def _compile_c_scanner():
         print(f"\033[38;5;196m[SYN-C]\033[0m Compiled C scanner: {bin_path}")
         return bin_path
     return None
-
 
 def syn_scan_c(target: str, ports: list, timeout=5) -> list:
     """Run compiled C SYN scanner — fastest, ~nmap speed"""
@@ -391,7 +387,6 @@ def syn_scan_c(target: str, ports: list, timeout=5) -> list:
     print(f"\033[38;5;196m[SYN-C]\033[0m Done in {elapsed:.2f}s — open={len(results)}")
     return results
 
-
 def _run_connect_fallback(target: str, ports: list, timeout: float) -> list:
     """Safe connect-scan fallback — runs in a dedicated thread to avoid event loop conflicts."""
     import concurrent.futures
@@ -399,12 +394,10 @@ def _run_connect_fallback(target: str, ports: list, timeout: float) -> list:
         future = pool.submit(asyncio.run, _async_connect_scan(target, ports, timeout))
         return future.result()
 
-
 async def _async_connect_scan(target, ports, timeout):
     from lightscan.scan.portscan import tcp_scan
     tasks = [tcp_scan(target, p, timeout, False) for p in ports]
     return [r for r in await asyncio.gather(*tasks) if r]
-
 
 def syn_scan_auto(target: str, ports: list, timeout=2.0, threads=100,
                   verbose=False, prefer_c=False, jitter=0.0) -> list:

@@ -1,6 +1,5 @@
 """
 LightScan v2.0 PHANTOM — TCP Flag Parser & ICMP Classification | Developer: Light
-──────────────────────────────────────────────────────────────────────────────────
 Core fix: replaces naive bitmask comparisons across the scan layer with a
 proper flag parser and a full ICMP type-3 code table.
 
@@ -9,7 +8,7 @@ Used by: packetscan.py, syn.py, syn_scanner.py
 from __future__ import annotations
 from typing import Optional, Tuple
 
-# ── TCP flag bit positions (RFC 793 + RFC 3168) ───────────────────────────────
+# TCP flag bit positions (RFC 793 + RFC 3168)
 TCP_FIN = 0x01
 TCP_SYN = 0x02
 TCP_RST = 0x04
@@ -24,17 +23,14 @@ _FLAG_MAP = (
     (TCP_PSH, 'PSH'), (TCP_RST, 'RST'), (TCP_SYN, 'SYN'), (TCP_FIN, 'FIN'),
 )
 
-
 def parse_tcp_flags(flags: int) -> dict:
     """Return {flag_name: bool} for all 8 TCP flags."""
     return {name: bool(flags & bit) for bit, name in _FLAG_MAP}
-
 
 def flags_str(flags: int) -> str:
     """Human-readable flag string, e.g. 'SYN|ACK'."""
     active = [name for bit, name in _FLAG_MAP if flags & bit]
     return '|'.join(active) if active else 'NONE'
-
 
 def classify_tcp(flags: int) -> Optional[str]:
     """
@@ -58,7 +54,6 @@ def classify_tcp(flags: int) -> Optional[str]:
         return 'closed'
     return None
 
-
 def is_firewall_rst(flags: int) -> bool:
     """
     Heuristic: RST with no ACK and window=0 often indicates a firewall-generated
@@ -68,8 +63,7 @@ def is_firewall_rst(flags: int) -> bool:
     f = parse_tcp_flags(flags)
     return f['RST'] and not f['ACK']
 
-
-# ── ICMP Type 3 (Destination Unreachable) classification ─────────────────────
+# ICMP Type 3 (Destination Unreachable) classification
 # state: 'filtered' | 'closed' | 'firewall'
 # reason: short label for ScanResult.data and verbose output
 
@@ -94,7 +88,6 @@ ICMP3_TABLE: dict = {
 
 ICMP_TTL_EXCEEDED    = 11   # type 11 → filtered (TTL hop limit reached)
 ICMP_DEST_UNREACHABLE = 3   # type 3 → use ICMP3_TABLE
-
 
 def classify_icmp3(code: int) -> Tuple[str, str]:
     """

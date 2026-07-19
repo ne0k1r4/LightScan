@@ -1,6 +1,5 @@
 """
 Autonomous Orchestration Engine
-────────────────────────────────
 The whole reason this project exists. You give it a domain name.
 It figures out the rest.
 
@@ -51,8 +50,7 @@ BLU = "\033[38;5;117m"   # blue   — info
 DIM = "\033[38;5;240m"   # gray   — muted / secondary text
 R   = "\033[0m"          # reset
 
-
-# ── Target context (shared memory across all stages) ─────────────────────────
+# Target context (shared memory across all stages)
 
 @dataclass
 class TargetContext:
@@ -102,14 +100,12 @@ class TargetContext:
     def os_is_linux(self, host: str) -> bool:
         return "linux" in self.os_hints.get(host, "").lower()
 
-
-# ── Stage helpers ─────────────────────────────────────────────────────────────
+# Stage helpers
 
 def _stage(n: int, name: str):
     bar = f"\033[38;5;196m╪\033[0m"
     print(f"\n {bar} \033[1;38;5;196m[STAGE {n}]\033[0m \033[1m{name.upper()}\033[0m")
     print(f"   " + "\033[38;5;236m─\033[0m" * 60)
-
 
 async def _resolve(host: str) -> Optional[str]:
     loop = asyncio.get_running_loop()
@@ -117,7 +113,6 @@ async def _resolve(host: str) -> Optional[str]:
         return await loop.run_in_executor(None, socket.gethostbyname, host)
     except Exception:
         return None
-
 
 async def _crtsh(domain: str) -> List[str]:
     """Pull subdomains from crt.sh CT logs."""
@@ -138,7 +133,6 @@ async def _crtsh(domain: str) -> List[str]:
         except Exception: return []
     return await loop.run_in_executor(None, _fetch)
 
-
 _SUBDOMAIN_WORDLIST = [
     "www","mail","smtp","pop","imap","ftp","dev","test","staging","api","app","admin",
     "portal","vpn","remote","gitlab","jenkins","jira","confluence","grafana","monitor",
@@ -146,7 +140,6 @@ _SUBDOMAIN_WORDLIST = [
     "corp","intranet","files","upload","download","support","helpdesk","citrix","rdp",
     "exchange","owa","autodiscover","webmail","mx","ns1","ns2","blog","shop","store",
 ]
-
 
 async def _dns_brute(domain: str, wordlist: List[str]) -> List[str]:
     """DNS brute-force subdomain enumeration."""
@@ -163,12 +156,10 @@ async def _dns_brute(domain: str, wordlist: List[str]) -> List[str]:
     await asyncio.gather(*[_try(w) for w in wordlist])
     return found
 
-
 async def _axfr(domain: str) -> List[str]:
     """Attempt DNS zone transfer."""
     import dns_stub as _  # silent import, we implement minimally below
     pass
-
 
 def _infer_os(ttl: int, banner: str) -> str:
     """Heuristic OS family from TTL and banners."""
@@ -183,8 +174,7 @@ def _infer_os(ttl: int, banner: str) -> str:
         if kw in b: return "linux"
     return ""
 
-
-# ── Orchestration stages ──────────────────────────────────────────────────────
+# Orchestration stages
 
 async def stage_dns(ctx: TargetContext, timeout: float, stealth: bool):
     """Stage 1: Subdomain enumeration via crt.sh + DNS brute."""
@@ -214,7 +204,6 @@ async def stage_dns(ctx: TargetContext, timeout: float, stealth: bool):
         for s in ctx.subdomains
     ])
 
-
 async def stage_resolve(ctx: TargetContext, timeout: float):
     """Stage 2: Resolve subdomains → IPs, scope-filter, detect CDN."""
     _stage(2, "Asset resolution + scope enforcement")
@@ -239,7 +228,6 @@ async def stage_resolve(ctx: TargetContext, timeout: float):
     unique_ips = list(dict.fromkeys(ctx.ips.values()))
     print(f"  {GRN}→{R} {len(unique_ips)} unique IPs in scope")
     ctx.live_hosts = unique_ips
-
 
 async def stage_portscan(ctx: TargetContext, timeout: float,
                           ports: Optional[List[int]], intensity: int, stealth: bool, mode: str = "deep"):
@@ -284,7 +272,6 @@ async def stage_portscan(ctx: TargetContext, timeout: float,
                 if url not in ctx.web_targets:
                     ctx.web_targets.append(url)
 
-
 async def stage_vuln(ctx: TargetContext, timeout: float):
     """Stage 5: Validate vulns not already covered by active_scan."""
     _stage(5, "Extended vulnerability validation")
@@ -307,7 +294,6 @@ async def stage_vuln(ctx: TargetContext, timeout: float):
     except ImportError:
         pass
 
-
 async def stage_exploit_chain(ctx: TargetContext):
     """Stage 6: Build ordered exploit chains from confirmed findings."""
     _stage(6, "Exploit chain analysis")
@@ -323,7 +309,6 @@ async def stage_exploit_chain(ctx: TargetContext):
         ctx.add_result(ScanResult("orch:exploit-chain", c["host"], 0, "chain",
             Severity.CRITICAL if c["severity"] == "CRITICAL" else Severity.HIGH,
             c["summary"], {"steps": c["steps"]}))
-
 
 async def stage_cred_attack(ctx: TargetContext, timeout: float,
                               userlist: List[str], passlist: List[str]):
@@ -363,7 +348,6 @@ async def stage_cred_attack(ctx: TargetContext, timeout: float,
             except Exception as e:
                 print(f"  {DIM}[!] brute {proto} {host}: {e}{R}")
 
-
 async def stage_dc_hunt(ctx: TargetContext, timeout: float):
     """Stage 8: Detect Domain Controllers via Kerberos/LDAP/SMB."""
     _stage(8, "Domain Controller / Active Directory detection")
@@ -394,7 +378,6 @@ async def stage_dc_hunt(ctx: TargetContext, timeout: float):
             ctx.add_result(ScanResult("orch:dc", host, 3268, "DC_CANDIDATE", Severity.HIGH,
                 "DC candidate — GlobalCatalog+SMB", {}))
 
-
 async def stage_web(ctx: TargetContext, timeout: float, stealth: bool):
     """Stage 9: Full web scanner on discovered HTTP/HTTPS targets."""
     _stage(9, f"Web application deep scan ({len(ctx.web_targets)} targets)")
@@ -421,8 +404,7 @@ async def stage_web(ctx: TargetContext, timeout: float, stealth: bool):
         except Exception as e:
             print(f"  {DIM}[!] web scan error {url}: {e}{R}")
 
-
-# ── Stage 10: Compromise Map ──────────────────────────────────────────────────
+# Stage 10: Compromise Map
 
 def build_compromise_map(ctx: TargetContext) -> dict:
     """Build structured JSON compromise narrative."""
@@ -470,7 +452,6 @@ def build_compromise_map(ctx: TargetContext) -> dict:
         "total_findings": len(ctx.all_results),
     }
 
-
 def print_compromise_map(m: dict):
     print(f"\n{C}┌───────────────────────────────────────────────────────────────┐{R}")
     print(f"{C}│                    COMPROMISE MAP — {m['domain']:<26} │{R}")
@@ -501,8 +482,7 @@ def print_compromise_map(m: dict):
                 print(f"       {GRN}✔ CREDS{R} {c['proto'].upper()} {c['user']}:{c['pass']}")
     print()
 
-
-# ── Main orchestrator entry point ─────────────────────────────────────────────
+# Main orchestrator entry point
 
 async def run_auto(
     domain:     str,

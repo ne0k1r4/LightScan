@@ -1,6 +1,6 @@
 # scan/sversion.py — nmap-style protocol probe matching
 # Light (Neok1ra)
-#
+
 # sends actual protocol probes, not just reads first 256 bytes.
 # SSH: parse version string  HTTP: HEAD + Server header
 # FTP: 220 banner            SMTP: 220 + EHLO capabilities
@@ -12,7 +12,6 @@ import asyncio, re, struct
 
 _T = 3.0
 
-
 async def _probe(host: str, port: int, payload: bytes, timeout: float = _T) -> bytes:
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -23,10 +22,8 @@ async def _probe(host: str, port: int, payload: bytes, timeout: float = _T) -> b
     except Exception:
         return b""
 
-
 async def _banner(host, port, timeout=_T): return await _probe(host, port, b"", timeout)
 def _s(b): return b.decode("utf-8", "replace").strip()
-
 
 async def probe_ssh(host, port):
     t = _s(await _banner(host, port))
@@ -134,7 +131,6 @@ PROBE_MAP: dict[int, list] = {
 }
 GENERIC = [probe_ftp, probe_smtp, probe_ssh, probe_http]
 
-
 async def detect_version(host: str, port: int, timeout: float = _T) -> dict:
     for fn in PROBE_MAP.get(port, GENERIC):
         try:
@@ -142,7 +138,6 @@ async def detect_version(host: str, port: int, timeout: float = _T) -> dict:
             if r: return r
         except Exception: continue
     return {}
-
 
 async def detect_versions_bulk(host: str, ports: list[int],
                                 concurrency: int = 20, timeout: float = _T) -> dict[int, dict]:

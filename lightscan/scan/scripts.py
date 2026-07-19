@@ -37,8 +37,7 @@ from typing import Dict, List, Optional
 
 from lightscan.core.engine import ScanResult, Severity
 
-
-# ── Script registry ───────────────────────────────────────────────────────────
+# Script registry
 
 class ScriptRegistry:
     """Discovers and loads scripts from the scripts directory."""
@@ -120,7 +119,6 @@ class ScriptRegistry:
 
     def __len__(self): return len(self._scripts)
 
-
 async def run_script(script, host: str, port: int,
                      timeout: float = 8.0) -> List[ScanResult]:
     """Run a single script against a host:port."""
@@ -133,7 +131,6 @@ async def run_script(script, host: str, port: int,
         return []
     except Exception as e:
         return []
-
 
 async def run_scripts(
     host:       str,
@@ -170,14 +167,11 @@ async def run_scripts(
         await asyncio.gather(*tasks)
     return results
 
-
-# ══════════════════════════════════════════════════════════════════════════════
 # Built-in scripts — written inline, saved to scripts/ on first run
-# ══════════════════════════════════════════════════════════════════════════════
 
 BUILTIN_SCRIPTS = {}
 
-# ── http_headers ──────────────────────────────────────────────────────────────
+# http_headers
 BUILTIN_SCRIPTS["http_headers"] = '''"""Grab and analyse HTTP response headers."""
 import asyncio, ssl, urllib.request, urllib.error
 SCRIPT_NAME  = "http_headers"
@@ -231,7 +225,7 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# ── http_methods ──────────────────────────────────────────────────────────────
+# http_methods
 BUILTIN_SCRIPTS["http_methods"] = '''"""Test which HTTP methods are allowed on the server."""
 import asyncio, ssl
 SCRIPT_NAME  = "http_methods"
@@ -274,7 +268,7 @@ async def run(host, port, timeout=8.0):
         {"allowed": allowed, "dangerous": dangerous})]
 '''
 
-# ── tls_cert_info ─────────────────────────────────────────────────────────────
+# tls_cert_info
 BUILTIN_SCRIPTS["tls_cert_info"] = '''"""Extract TLS certificate info and check expiry."""
 import asyncio, ssl, socket
 from datetime import datetime
@@ -330,7 +324,7 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# ── ssh_algorithms ────────────────────────────────────────────────────────────
+# ssh_algorithms
 BUILTIN_SCRIPTS["ssh_algorithms"] = '''"""Extract SSH supported algorithms and flag weak ones."""
 import asyncio, socket
 SCRIPT_NAME  = "ssh_algorithms"
@@ -397,7 +391,7 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# ── smb_os_discovery ──────────────────────────────────────────────────────────
+# smb_os_discovery
 BUILTIN_SCRIPTS["smb_os_discovery"] = '''"""Enumerate OS and hostname via SMB negotiate."""
 import asyncio, struct, socket
 SCRIPT_NAME  = "smb_os_discovery"
@@ -432,7 +426,7 @@ async def run(host, port, timeout=8.0):
         return []
 '''
 
-# ── dns_recursion ──────────────────────────────────────────────────────────────
+# dns_recursion
 BUILTIN_SCRIPTS["dns_recursion"] = '''"""Test if DNS server allows open recursion."""
 import asyncio, struct, socket, time
 SCRIPT_NAME  = "dns_recursion"
@@ -473,8 +467,7 @@ async def run(host, port, timeout=8.0):
         Severity.INFO, "DNS recursion disabled", {"recursive": False})]
 '''
 
-
-# ── ssl_weak_ciphers ──────────────────────────────────────────────────────────
+# ssl_weak_ciphers
 BUILTIN_SCRIPTS["ssl_weak_ciphers"] = '''"""Detect weak SSL/TLS ciphers and protocols."""
 import asyncio, ssl, socket
 SCRIPT_NAME  = "ssl_weak_ciphers"
@@ -528,7 +521,7 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# ── http_auth_detect ──────────────────────────────────────────────────────────
+# http_auth_detect
 BUILTIN_SCRIPTS["http_auth_detect"] = '''"""Detect HTTP authentication mechanisms."""
 import asyncio, ssl, urllib.request, urllib.error, base64
 SCRIPT_NAME  = "http_auth_detect"
@@ -584,7 +577,7 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# ── ftp_anon_write ────────────────────────────────────────────────────────────
+# ftp_anon_write
 BUILTIN_SCRIPTS["ftp_anon_write"] = '''"""Test FTP anonymous login and write access."""
 import asyncio, ftplib, io
 SCRIPT_NAME  = "ftp_anon_write"
@@ -630,7 +623,7 @@ async def run(host, port, timeout=8.0):
     return out
 '''
 
-# ── smb_signing ───────────────────────────────────────────────────────────────
+# smb_signing
 BUILTIN_SCRIPTS["smb_signing"] = '''"""Check if SMB signing is required."""
 import asyncio, socket, struct
 SCRIPT_NAME  = "smb_signing"
@@ -679,7 +672,7 @@ async def run(host, port, timeout=8.0):
         {"signing_required": True, "signing_enabled": True})]
 '''
 
-# ── http_cors_check ───────────────────────────────────────────────────────────
+# http_cors_check
 BUILTIN_SCRIPTS["http_cors_check"] = '''"""Check for CORS misconfiguration."""
 import asyncio, ssl, urllib.request, urllib.error
 SCRIPT_NAME  = "http_cors_check"
@@ -737,7 +730,7 @@ async def run(host, port, timeout=8.0):
     return out
 '''
 
-# ── http_tech_detect ──────────────────────────────────────────────────────────
+# http_tech_detect
 BUILTIN_SCRIPTS["http_tech_detect"] = '''"""Detect web technologies from headers and body."""
 import asyncio, ssl, urllib.request, urllib.error, re
 SCRIPT_NAME  = "http_tech_detect"
@@ -812,7 +805,6 @@ async def run(host, port, timeout=8.0):
         Severity.INFO, f"Technologies: {', '.join(techs)}",
         {"technologies": techs})]
 '''
-
 
 def install_builtin_scripts(script_dir: Optional[str] = None) -> str:
     """Write built-in scripts to disk so ScriptRegistry can load them."""

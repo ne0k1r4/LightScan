@@ -1,17 +1,16 @@
 # scan/ipv6scan.py — reliable IPv6 scanning
 # Light (Neok1ra)
-#
+
 # previous version was broken — just AF_INET6 on a connect scanner.
 # rewrote with actual IPv6-specific enumeration:
-#   ICMPv6 neighbor discovery (find link-local hosts)
-#   dual-stack detection (does IPv4 host also have IPv6?)
-#   SLAAC prediction from MAC (EUI-64 address derivation)
-#   link-local zone ID stripping (fe80:: addresses need %iface)
+# ICMPv6 neighbor discovery (find link-local hosts)
+# dual-stack detection (does IPv4 host also have IPv6?)
+# SLAAC prediction from MAC (EUI-64 address derivation)
+# link-local zone ID stripping (fe80:: addresses need %iface)
 from __future__ import annotations
 import asyncio, ipaddress, socket
 from dataclasses import dataclass, field
 from lightscan.core.engine import ScanResult, Severity
-
 
 async def tcp6_connect(host: str, port: int, timeout: float = 2.0) -> bool:
     clean = host.split("%")[0]  # strip zone ID — was failing on fe80::
@@ -24,7 +23,6 @@ async def tcp6_connect(host: str, port: int, timeout: float = 2.0) -> bool:
     except Exception:
         return False
 
-
 async def resolve_ipv6(hostname: str) -> list[str]:
     try:
         loop  = asyncio.get_running_loop()
@@ -33,7 +31,6 @@ async def resolve_ipv6(hostname: str) -> list[str]:
         return list({i[4][0] for i in infos})
     except Exception:
         return []
-
 
 async def check_dual_stack(hostname: str) -> dict:
     result = {"dual_stack": False, "ipv4": [], "ipv6": []}
@@ -54,7 +51,6 @@ async def check_dual_stack(hostname: str) -> dict:
         pass
     return result
 
-
 def mac_to_eui64(mac: str) -> str:
     """MAC → EUI-64 interface ID for SLAAC prediction"""
     try:
@@ -65,7 +61,6 @@ def mac_to_eui64(mac: str) -> str:
         return ":".join(groups)
     except Exception:
         return ""
-
 
 def predict_slaac(prefix: str, mac: str) -> str:
     """predict SLAAC global address from /64 prefix + MAC EUI-64.
@@ -81,7 +76,6 @@ def predict_slaac(prefix: str, mac: str) -> str:
     except Exception:
         return ""
 
-
 async def scan_ipv6_host(host: str, ports: list[int],
                          timeout: float = 2.0, concurrency: int = 100) -> list[int]:
     sem        = asyncio.Semaphore(concurrency)
@@ -92,7 +86,6 @@ async def scan_ipv6_host(host: str, ports: list[int],
                 open_ports.append(p)
     await asyncio.gather(*[_one(p) for p in ports])
     return sorted(open_ports)
-
 
 async def icmpv6_neighbor_discovery(iface: str = "", timeout: float = 3.0) -> list[str]:
     """send ICMPv6 NS to ff02::1 — all IPv6 hosts on link respond.
@@ -120,7 +113,6 @@ async def icmpv6_neighbor_discovery(iface: str = "", timeout: float = 3.0) -> li
         return found
     except Exception:
         return []
-
 
 async def full_ipv6_scan(targets: list[str], ports: list[int],
                          timeout: float = 2.0) -> list[ScanResult]:
