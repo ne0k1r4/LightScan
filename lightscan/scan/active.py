@@ -185,15 +185,15 @@ _PROTO_PROBES: Dict[int, bytes] = {
 
 
 async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
-    """Returns {service, banner, version} via protocol-specific probing."""
+    """Returns {service, banner, version, product, os, devtype, info} via protocol-specific probing."""
     import re
     service = SERVICE_MAP.get(port, f"port/{port}")
     banner  = ""
+    raw     = b""
     probe   = _PROTO_PROBES.get(port, b"")
 
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
-        raw  = b""
         try: raw += await asyncio.wait_for(r.read(512), timeout=1.0)
         except asyncio.TimeoutError: pass
         if probe:
@@ -206,15 +206,38 @@ async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
     except Exception:
         pass
 
-    # version extraction
+    # real nmap-service-probes signature matching first - ~1200 real
+    # probes' worth of product/version/os/device-type instead of a
+    # handful of hand-picked regexes. port-scoped so a loosely-specific
+    # pattern from an unrelated service can't cross-match (see
+    # fingerprint.py). falls through to the old regex list below if
+    # nothing in the db matched, so this never regresses what already
+    # worked - it only adds coverage.
+    product = os_hint = devtype = info = ""
     ver = ""
-    for pat in [r"OpenSSH[_\s]([\d\.p]+)", r"Apache[/\s]([\d\.]+)", r"nginx[/\s]([\d\.]+)",
-                r"Microsoft-IIS[/\s]([\d\.]+)", r"vsftpd\s([\d\.]+)", r"MySQL\s([\d\.]+)",
-                r"redis_version:([\d\.]+)", r"MongoDB\s([\d\.]+)", r"([\d]+\.[\d]+\.[\d]+)"]:
-        m = re.search(pat, banner, re.IGNORECASE)
-        if m: ver = m.group(1); break
+    if raw:
+        try:
+            from lightscan.scan.fingerprint import get_db
+            sig = get_db().match(raw, port)
+            if sig:
+                service = sig.service
+                ver     = sig.version
+                product = sig.product
+                os_hint = sig.os
+                devtype = sig.devtype
+                info    = sig.info
+        except Exception:
+            pass  # bad regex in the db, missing data file, whatever - just fall through
 
-    return {"service": service, "banner": banner, "version": ver}
+    if not ver:
+        for pat in [r"OpenSSH[_\s]([\d\.p]+)", r"Apache[/\s]([\d\.]+)", r"nginx[/\s]([\d\.]+)",
+                    r"Microsoft-IIS[/\s]([\d\.]+)", r"vsftpd\s([\d\.]+)", r"MySQL\s([\d\.]+)",
+                    r"redis_version:([\d\.]+)", r"MongoDB\s([\d\.]+)", r"([\d]+\.[\d]+\.[\d]+)"]:
+            m = re.search(pat, banner, re.IGNORECASE)
+            if m: ver = m.group(1); break
+
+    return {"service": service, "banner": banner, "version": ver,
+            "product": product, "os": os_hint, "devtype": devtype, "info": info}
 
 
 # ── Phase 3: Vulnerability Validation ────────────────────────────────────────
@@ -566,10 +589,15 @@ async def active_scan(
             if isinstance(pr, dict) and (pr["version"] or pr["banner"]):
                 svc = pr["service"]
                 ver = pr.get("version","")
-                print(f"  \033[38;5;117m◈ [SVC]{R} {host}:{p} {svc} {ver}")
+                product = pr.get("product","")
+                label = f"{product} {ver}".strip() if product else f"{svc} {ver}".strip()
+                extra = f" — {pr['os']}" if pr.get("os") else ""
+                print(f"  \033[38;5;117m◈ [SVC]{R} {host}:{p} {label}{extra}")
                 results.append(ScanResult("active:service", host, p, "detected", Severity.INFO,
-                    f"{svc} {ver} — {pr['banner'][:80]}",
-                    {"service":svc,"version":ver,"banner":pr["banner"][:200]}))
+                    f"{label} — {pr['banner'][:80]}",
+                    {"service":svc,"version":ver,"banner":pr["banner"][:200],
+                     "product":product,"os":pr.get("os",""),"devtype":pr.get("devtype",""),
+                     "info":pr.get("info","")}))
 
     # Phase 4 ─ Vuln validation
     print(f"\n{C}⚡{R} \033[1m[PHASE 4] VULNERABILITY VALIDATION\033[0m")
