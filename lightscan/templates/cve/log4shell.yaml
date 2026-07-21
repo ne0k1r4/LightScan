@@ -1,16 +1,26 @@
 id: log4shell
-name: Log4Shell JNDI RCE
-severity: critical
+name: Log4Shell JNDI RCE (heuristic - Java stack indicators only)
+severity: high
 cve: CVE-2021-44228
 tags: [log4j, jndi, rce, java]
 port: 80
 protocol: http
-description: Log4j2 JNDI injection via HTTP headers — unauthenticated RCE
-remediation: Upgrade log4j2 >= 2.17.1; set log4j2.formatMsgNoLookups=true
+description: >
+  looks for real Java-application-server signatures (Tomcat's actual
+  Apache-Coyote header, JBoss/WildFly/GlassFish/WebLogic, JSESSIONID,
+  X-Powered-By: JSP/Servlet) rather than the word "apache" alone -
+  plain Apache httpd serving static content has nothing to do with
+  Log4j and shouldn't trigger this. this is a heuristic indicating a
+  Java stack MIGHT be present and worth checking manually, not a
+  confirmed exploit - the engine has no OOB/callback support to
+  actually confirm a JNDI lookup fired, so a real confirmation isn't
+  possible here. downgraded from critical to high for exactly that
+  reason - verify by hand before treating this as confirmed.
+remediation: if a Java stack is confirmed, check log4j2 version >= 2.17.1; set log4j2.formatMsgNoLookups=true
 reference: https://nvd.nist.gov/vuln/detail/CVE-2021-44228
 steps:
   - type: send
     data: /
   - type: match
-    regex: "(apache|tomcat|java|spring|struts)"
+    regex: "(Apache-Coyote|JBoss|WildFly|GlassFish|WebLogic|JSESSIONID|X-Powered-By:\\s*(JSP|Servlet))"
     part: headers

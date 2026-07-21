@@ -1,16 +1,28 @@
 id: apache-struts-rce
-name: Apache Struts OGNL RCE
-severity: critical
+name: Apache Struts OGNL RCE (heuristic - Java stack indicators only)
+severity: high
 cve: CVE-2017-5638
 tags: [apache, struts, ognl, rce, java]
 port: 80
 protocol: http
-description: Apache Struts 2 Content-Type OGNL injection — unauthenticated RCE
-remediation: Upgrade Struts >= 2.3.32 or 2.5.10.1
+description: >
+  looks for real Java-application-server signatures (Tomcat's actual
+  Apache-Coyote header, JBoss/WildFly/GlassFish/WebLogic, JSESSIONID,
+  a Struts-style .action URL error, or the classic Struts "no Action
+  mapped for namespace" error text) rather than the word "apache"
+  alone - plain Apache httpd serving static content isn't Struts and
+  shouldn't trigger this. heuristic only, not a confirmed exploit -
+  downgraded from critical to high, verify by hand.
+remediation: if Struts is confirmed, upgrade Struts >= 2.3.32 or 2.5.10.1
 reference: https://nvd.nist.gov/vuln/detail/CVE-2017-5638
 steps:
   - type: send
     data: /
   - type: match
-    regex: "(struts|apache|java)"
+    regex: "(Apache-Coyote|JBoss|WildFly|GlassFish|WebLogic|JSESSIONID)"
     part: headers
+  - type: send
+    data: /index.action
+  - type: match
+    regex: "(There is no Action mapped for namespace|struts\\.xml|org\\.apache\\.struts)"
+    part: body
