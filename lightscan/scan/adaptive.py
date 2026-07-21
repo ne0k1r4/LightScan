@@ -76,7 +76,7 @@ class AdaptiveTimingEngine:
         self.tmpl           = TIMING[max(0, min(5, base_timing))]
         self.max_concurrency= max_concurrency
         self._rate          = self.tmpl.max_rate
-        self._concurrency   = self.tmpl.parallelism
+        self._concurrency   = min(self.tmpl.parallelism, self.max_concurrency)
         self._host_stats:   Dict[str, HostStats] = {}
         self._global_sent   = 0
         self._global_recv   = 0

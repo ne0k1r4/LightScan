@@ -96,6 +96,25 @@ class PhantomEngine:
         )
         sys.stdout.flush()
 
+    @staticmethod
+    def _host_from_label(label: str, fallback: str) -> str:
+        # build_scan_tasks() labels are "host:port" (and "udp:host:port" for
+        # udp tasks) - pull the host back out so adaptive stats get
+        # attributed to the actual thing that was connected to, not to
+        # whatever (if anything) got passed into run(target=...). this is
+        # also what fixes run(tasks) being called with no target at all -
+        # that left self._target as "", which is falsy, so record_sent/
+        # record_response/record_timeout never fired and every single scan
+        # printed a static "sent=0 recv=0 loss=100.0%" regardless of what
+        # actually happened - and because of that, current_concurrency
+        # never adjusted off the timing template's raw default either.
+        if not label:
+            return fallback
+        parts = label.split(":")
+        if len(parts) >= 2 and parts[-1].isdigit():
+            return parts[-2] if len(parts) > 2 else parts[0]
+        return fallback
+
     async def _run_one(self, coro, label=""):
         async with self._sem:
             if self.rate_limit > 0:
@@ -103,7 +122,7 @@ class PhantomEngine:
 
             # adaptive timeout: per-target RTT-derived timeout, capped at self.timeout
             timeout = self.timeout
-            target  = getattr(self, "_target", "")
+            target  = self._host_from_label(label, getattr(self, "_target", ""))
             if self._adaptive and target:
                 timeout = min(self.timeout, self._adaptive.recommended_timeout(target))
                 self._adaptive.record_sent(target)
