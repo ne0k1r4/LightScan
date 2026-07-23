@@ -5,6 +5,7 @@ cve: CVE-2022-21661
 tags: [wordpress, cms, sqli, php]
 port: 80
 protocol: http
+intrusive: true
 description: WordPress WP_Query SQL injection via crafted query string
 remediation: Update WordPress to >= 5.8.3
 reference: https://nvd.nist.gov/vuln/detail/CVE-2022-21661
