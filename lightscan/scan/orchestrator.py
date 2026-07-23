@@ -272,7 +272,7 @@ async def stage_portscan(ctx: TargetContext, timeout: float,
                 if url not in ctx.web_targets:
                     ctx.web_targets.append(url)
 
-async def stage_vuln(ctx: TargetContext, timeout: float):
+async def stage_vuln(ctx: TargetContext, timeout: float, allow_intrusive: bool = False):
     """Stage 5: Validate vulns not already covered by active_scan."""
     _stage(5, "Extended vulnerability validation")
     # active_scan already ran vuln validation; this stage adds CVE template checks
@@ -285,7 +285,8 @@ async def stage_vuln(ctx: TargetContext, timeout: float):
         versions = versions_from_results(ctx.all_results)
         for host, plist in ctx.open_ports.items():
             results = await run_all_checks(host, plist, use_legacy=True,
-                                            versions=versions, timeout=timeout)
+                                            versions=versions, allow_intrusive=allow_intrusive,
+                                            timeout=timeout)
             for r in results:
                 if r.status not in ("not_vuln","not_detected","error","timeout","no_response"):
                     ctx.vulns.append(r)
@@ -497,6 +498,7 @@ async def run_auto(
     skip_brute: bool            = False,
     output_dir: str             = ".",
     mode:       str             = "deep",
+    allow_intrusive: bool       = False,
 ) -> Tuple[List[ScanResult], dict]:
     """
     Fully autonomous red-team pipeline.
@@ -522,7 +524,7 @@ async def run_auto(
     await stage_portscan(ctx, timeout, ports, intensity, stealth, mode=mode)
     
     if mode != "sweep":
-        await stage_vuln(ctx, timeout)
+        await stage_vuln(ctx, timeout, allow_intrusive)
         await stage_exploit_chain(ctx)
 
         if not skip_brute:

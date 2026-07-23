@@ -33,6 +33,7 @@ async def run_all_checks(host: str, open_ports: list[int],
                          use_legacy: bool = True,
                          log4shell_callback: str = "",
                          versions: dict[int, str] | None = None,
+                         allow_intrusive: bool = False,
                          timeout: float = 8.0,
                          concurrency: int = 32) -> list[ScanResult]:
     """
@@ -48,6 +49,9 @@ async def run_all_checks(host: str, open_ports: list[int],
         log4shell_callback: OAST callback URL for Log4Shell OOB detection
         versions:           {port: version} from deep_probe, filters out
                             templates whose version: constraint doesn't match
+        allow_intrusive:    also run intrusive: true templates (ones that
+                            actually run a command / read a file / inject
+                            sql on a hit, not just detect) - off by default
         timeout / concurrency: passed to runner
 
     Returns:
@@ -71,6 +75,7 @@ async def run_all_checks(host: str, open_ports: list[int],
         tpls = lib.for_ports(open_ports, versions=versions)
 
     tpl_results = await run_templates(tpls, host, open_ports, versions=versions,
+                                       allow_intrusive=allow_intrusive,
                                        timeout=timeout, concurrency=concurrency)
     for r in tpl_results:
         if _dedup(r): results.append(r)
@@ -90,6 +95,7 @@ async def run_templates_only(host: str, open_ports: list[int],
                              tags: list[str] | None = None,
                              ids:  list[str] | None = None,
                              versions: dict[int, str] | None = None,
+                             allow_intrusive: bool = False,
                              timeout=8.0) -> list[ScanResult]:
     """Thin wrapper — template engine only, no legacy checks."""
     return await run_all_checks(
@@ -98,6 +104,7 @@ async def run_templates_only(host: str, open_ports: list[int],
         template_tags=tags,
         template_ids=ids,
         versions=versions,
+        allow_intrusive=allow_intrusive,
         use_legacy=False,
         timeout=timeout,
     )

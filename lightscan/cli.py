@@ -104,6 +104,9 @@ def build_parser():
     m.add_argument("--template-dir",  metavar="DIR",       help="Extra template directory")
     m.add_argument("--template-tags", nargs="+", metavar="TAG", help="Filter templates by tag (redis unauth rce ...)")
     m.add_argument("--template-ids",  nargs="+", metavar="ID",  help="Run specific template IDs only")
+    m.add_argument("--allow-exploit", action="store_true", default=False,
+                   help="Also run intrusive: true templates (actually runs a command / reads a file / "
+                        "injects sql on a hit, not just detection). off by default")
     m.add_argument("--list-templates",action="store_true", help="List all loaded templates and exit")
     m.add_argument("--search",        metavar="QUERY",     help="Search scripts and templates by keyword/tag/CVE")
     m.add_argument("--update-templates", nargs="?", const="ne0k1r4/LightScan", metavar="REPO", help="Update templates from GitHub repository (default: ne0k1r4/LightScan)")
@@ -411,6 +414,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             skip_brute = getattr(args, 'skip_brute', False),
             output_dir = args.output,
             mode       = getattr(args, 'mode', 'deep'),
+            allow_intrusive = getattr(args, 'allow_exploit', False),
         )
         all_results.extend(results)
         if not args.no_report and all_results:
@@ -795,6 +799,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
     run_templates = getattr(args, 'templates', False)
     if (run_cve or run_templates) and args.target:
         from lightscan.cve.bridge import run_all_checks, versions_from_results
+        from lightscan.cve.template_engine import TemplateLibrary
         hosts = parse_targets(args.target) if not open_ports else list(open_ports.keys())
         extra_dirs = [args.template_dir] if getattr(args, 'template_dir', None) else None
         t_tags     = getattr(args, 'template_tags', None)
@@ -802,6 +807,18 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         cb         = args.log4shell_callback or ""
         use_legacy = run_cve  # legacy checks only with --cve, not --templates alone
         versions   = versions_from_results(all_results)  # from --active's deep_probe, if it ran
+        allow_exploit = getattr(args, 'allow_exploit', False)
+
+        if allow_exploit:
+            from pathlib import Path as _Path
+            lib = TemplateLibrary([str(_Path(__file__).parent / "templates")] + (extra_dirs or []))
+            intrusive_ids = [t.id for t in lib.filter(tags=t_tags, ids=t_ids) if t.intrusive]
+            if intrusive_ids:
+                print(f"\033[38;5;208m[!] --allow-exploit is set — these templates will actually run a "
+                      f"command / read a file / inject sql on a hit, not just detect:\033[0m")
+                for tid in intrusive_ids:
+                    print(f"      {tid}")
+
         print(f"\033[38;5;196m[{'CVE+TPL' if run_cve else 'TEMPLATES'}]\033[0m {len(hosts)} host(s)")
         for host in hosts:
             r = await run_all_checks(
@@ -812,6 +829,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 use_legacy=use_legacy,
                 log4shell_callback=cb,
                 versions=versions,
+                allow_intrusive=allow_exploit,
                 timeout=args.timeout,
             )
             all_results.extend(r)

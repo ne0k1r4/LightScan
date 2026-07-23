@@ -96,6 +96,7 @@ class Template:
     reference:   str          = ""
     version:     str          = ""     # optional constraint, e.g. "<6.2.7" or ">=2.0,<3.5"
     pivot:       list         = field(default_factory=list)   # commands for actual next steps on a hit
+    intrusive:   bool         = False  # true if steps actually do something (rce/read-file/sqli), not just detect
     raw:         dict         = field(default_factory=dict)
 
     @classmethod
@@ -144,6 +145,7 @@ class Template:
             reference   = d.get("reference",""),
             version     = str(d.get("version","")),
             pivot       = d.get("pivot", []),
+            intrusive   = bool(d.get("intrusive", False)),
             raw         = d,
         )
 
@@ -500,12 +502,15 @@ class TemplateLibrary:
 async def run_templates(templates: list[Template], host: str,
                         open_ports: list[int] | None = None,
                         versions: dict[int, str] | None = None,
+                        allow_intrusive: bool = False,
                         timeout=8.0, concurrency=32) -> list[ScanResult]:
     """
     Run a list of templates against a host.
-    Skips templates whose port is not in open_ports (if provided), and
-    skips ones whose version: constraint doesn't match a known version
-    for that port (if versions provided).
+    Skips templates whose port is not in open_ports (if provided), skips
+    ones whose version: constraint doesn't match a known version for that
+    port (if versions provided), and skips intrusive: true templates
+    (ones that actually run a command / read a file / inject sql, not
+    just detect) unless allow_intrusive is set.
     """
     runner = TemplateRunner(timeout)
     sem    = asyncio.Semaphore(concurrency)
@@ -514,6 +519,8 @@ async def run_templates(templates: list[Template], host: str,
         if open_ports and tpl.port not in open_ports:
             return None
         if versions and not version_ok(versions.get(tpl.port, ""), tpl.version):
+            return None
+        if tpl.intrusive and not allow_intrusive:
             return None
         async with sem:
             return await runner.run(tpl, host, tpl.port)
