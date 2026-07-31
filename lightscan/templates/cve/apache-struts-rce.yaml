@@ -1,8 +1,8 @@
-id: apache-struts-rce
-name: Apache Struts OGNL RCE (heuristic - Java stack indicators only)
+id: CVE-2017-5638
+name: CVE-2017-5638
 severity: high
 cve: CVE-2017-5638
-tags: [apache, struts, ognl, rce, java]
+tags: [apache, struts, ognl, rce, java, cve-2017-5638]
 port: 80
 protocol: http
 description: >

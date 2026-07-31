@@ -1,7 +1,7 @@
-id: prometheus-exposed
-name: Prometheus Metrics Exposed
+id: CVE-2020-5291
+name: CVE-2020-5291
 severity: medium
-tags: [prometheus, monitoring, exposure, metrics]
+tags: [prometheus, monitoring, exposure, metrics, cve-2020-5291]
 port: 9090
 protocol: http
 description: Prometheus metrics endpoint publicly accessible — internal data exposed

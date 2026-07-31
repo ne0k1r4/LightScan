@@ -1,7 +1,7 @@
-id: etcd-unauth
-name: etcd Unauthenticated Access
+id: CVE-2018-1099
+name: CVE-2018-1099
 severity: critical
-tags: [etcd, kubernetes, unauth, exposure]
+tags: [etcd, kubernetes, unauth, exposure, cve-2018-1099]
 port: 2379
 protocol: http
 description: etcd accessible without auth

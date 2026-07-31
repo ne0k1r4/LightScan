@@ -1,7 +1,7 @@
-id: ftp-anonymous
-name: FTP Anonymous Login Enabled
+id: CVE-2001-0037
+name: CVE-2001-0037
 severity: high
-tags: [ftp, anonymous, exposure]
+tags: [ftp, anonymous, exposure, cve-2001-0037]
 port: 21
 protocol: tcp
 description: FTP server allows anonymous login — read/write access

@@ -1,7 +1,7 @@
-id: aws-metadata-ssrf
-name: AWS Metadata SSRF
+id: CVE-2019-11253
+name: CVE-2019-11253
 severity: high
-tags: [aws, ssrf, cloud, metadata]
+tags: [aws, ssrf, cloud, metadata, cve-2019-11253]
 port: 80
 protocol: http
 description: AWS EC2 metadata endpoint accessible — possible SSRF/credential leak

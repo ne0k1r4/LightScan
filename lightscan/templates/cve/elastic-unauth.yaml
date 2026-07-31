@@ -1,7 +1,7 @@
-id: elastic-unauth
-name: Elasticsearch Unauthenticated Access
+id: CVE-2015-5377
+name: CVE-2015-5377
 severity: critical
-tags: [elasticsearch, unauth, exposure]
+tags: [elasticsearch, unauth, exposure, cve-2015-5377]
 port: 9200
 protocol: http
 description: Elasticsearch accessible without authentication

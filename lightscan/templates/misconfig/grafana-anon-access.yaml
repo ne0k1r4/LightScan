@@ -1,7 +1,7 @@
-id: grafana-anon-access
-name: Grafana Anonymous Access Enabled
+id: CVE-2019-19499
+name: CVE-2019-19499
 severity: high
-tags: [grafana, monitoring, unauth, exposure]
+tags: [grafana, monitoring, unauth, exposure, cve-2019-19499]
 port: 3000
 protocol: http
 description: Grafana accessible without authentication — dashboard data exposed

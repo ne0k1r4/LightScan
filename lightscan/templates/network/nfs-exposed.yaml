@@ -1,7 +1,7 @@
-id: nfs-world-readable
-name: NFS Share World-Readable
+id: CVE-1999-0116
+name: CVE-1999-0116
 severity: high
-tags: [nfs, exposure, file-share]
+tags: [nfs, exposure, file-share, cve-1999-0116]
 port: 2049
 protocol: tcp
 description: NFS share accessible without auth — file system exposure

@@ -1,8 +1,8 @@
-id: shellshock
-name: Bash ShellShock CGI RCE
+id: CVE-2014-6271
+name: CVE-2014-6271
 severity: critical
 cve: CVE-2014-6271
-tags: [bash, cgi, rce, shellshock]
+tags: [bash, cgi, rce, shellshock, cve-2014-6271]
 port: 80
 protocol: http
 description: Bash environment variable injection via CGI HTTP headers

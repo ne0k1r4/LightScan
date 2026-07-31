@@ -1,7 +1,7 @@
-id: jenkins-unauth
-name: Jenkins Unauthenticated Access
+id: CVE-2015-5317
+name: CVE-2015-5317
 severity: critical
-tags: [jenkins, cicd, unauth, rce]
+tags: [jenkins, cicd, unauth, rce, cve-2015-5317]
 port: 8080
 protocol: http
 description: Jenkins accessible without auth — script console enables OS command execution

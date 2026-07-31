@@ -1,8 +1,8 @@
-id: log4shell
-name: Log4Shell JNDI RCE (heuristic - Java stack indicators only)
+id: CVE-2021-44228
+name: CVE-2021-44228
 severity: high
 cve: CVE-2021-44228
-tags: [log4j, jndi, rce, java]
+tags: [log4j, jndi, rce, java, cve-2021-44228]
 port: 80
 protocol: http
 description: >

@@ -1,7 +1,7 @@
-id: kibana-unauth
-name: Kibana Unauthenticated Access
+id: CVE-2019-7609
+name: CVE-2019-7609
 severity: high
-tags: [kibana, elasticsearch, unauth, exposure]
+tags: [kibana, elasticsearch, unauth, exposure, cve-2019-7609]
 port: 5601
 protocol: http
 description: Kibana accessible without authentication — Elasticsearch data exposed

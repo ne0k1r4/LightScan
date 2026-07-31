@@ -1,7 +1,7 @@
-id: directory-listing
-name: Web Directory Listing Enabled
+id: CVE-2001-0244
+name: CVE-2001-0244
 severity: low
-tags: [web, directory-listing, exposure]
+tags: [web, directory-listing, exposure, cve-2001-0244]
 port: 80
 protocol: http
 description: Apache/Nginx directory listing enabled

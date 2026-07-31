@@ -1,7 +1,7 @@
-id: kubernetes-api-exposed
-name: Kubernetes API Server Anonymous Access
+id: CVE-2020-8554
+name: CVE-2020-8554
 severity: critical
-tags: [kubernetes, k8s, exposure]
+tags: [kubernetes, k8s, exposure, cve-2020-8554]
 port: 6443
 protocol: https
 description: K8s API server accessible without authentication

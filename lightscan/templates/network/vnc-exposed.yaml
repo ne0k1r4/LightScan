@@ -1,7 +1,7 @@
-id: vnc-exposed
-name: VNC Exposed Without Auth
+id: CVE-2019-15605
+name: CVE-2019-15605
 severity: critical
-tags: [vnc, remote, unauth, exposure]
+tags: [vnc, remote, unauth, exposure, cve-2019-15605]
 port: 5900
 protocol: tcp
 description: VNC server accessible — potential unauthenticated desktop access

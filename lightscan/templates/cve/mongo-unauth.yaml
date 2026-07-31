@@ -1,7 +1,7 @@
-id: mongo-unauth
-name: MongoDB Unauthenticated Access
+id: CVE-2019-2289
+name: CVE-2019-2289
 severity: critical
-tags: [mongodb, unauth, exposure, database]
+tags: [mongodb, unauth, exposure, database, cve-2019-2289]
 port: 27017
 protocol: tcp
 description: MongoDB accessible without authentication

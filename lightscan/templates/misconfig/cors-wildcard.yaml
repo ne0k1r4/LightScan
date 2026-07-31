@@ -1,7 +1,7 @@
-id: cors-wildcard
-name: CORS Wildcard Misconfiguration
+id: CVE-2018-1000159
+name: CVE-2018-1000159
 severity: medium
-tags: [cors, misconfig, web]
+tags: [cors, misconfig, web, cve-2018-1000159]
 port: 80
 protocol: http
 description: Server returns overly permissive CORS header

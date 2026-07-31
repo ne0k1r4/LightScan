@@ -1,8 +1,8 @@
-id: redis-unauth
-name: Redis Unauthenticated Access
+id: CVE-2022-0543
+name: CVE-2022-0543
 severity: critical
 cve: CVE-2022-0543
-tags: [redis, unauth, exposure, database]
+tags: [redis, unauth, exposure, database, cve-2022-0543]
 port: 6379
 protocol: tcp
 description: Redis accessible without authentication

@@ -1,7 +1,7 @@
-id: vault-unauth
-name: HashiCorp Vault Unauthenticated Access
+id: CVE-2020-35184
+name: CVE-2020-35184
 severity: critical
-tags: [vault, hashicorp, secrets, unauth]
+tags: [vault, hashicorp, secrets, unauth, cve-2020-35184]
 port: 8200
 protocol: http
 description: Vault API accessible — secrets engine status visible

@@ -19,12 +19,12 @@ TEMPLATE_DIR = "lightscan/templates"
 def test_exactly_the_three_known_exploit_templates_are_tagged():
     lib = TemplateLibrary([TEMPLATE_DIR])
     intrusive = sorted(t.id for t in lib if t.intrusive)
-    assert intrusive == ["apache-path-traversal", "drupalgeddon2", "wordpress-sqli"]
+    assert intrusive == ["CVE-2018-7600", "CVE-2021-41773", "CVE-2022-21661"]
 
 
 def test_intrusive_defaults_false_for_ordinary_templates():
     lib = TemplateLibrary([TEMPLATE_DIR])
-    redis_tpl = next(t for t in lib if t.id == "redis-unauth")
+    redis_tpl = next(t for t in lib if t.id == "CVE-2022-0543")
     assert redis_tpl.intrusive is False
 
 
@@ -44,7 +44,7 @@ async def test_intrusive_template_sends_nothing_without_the_flag():
     srv = await asyncio.start_server(handle, "127.0.0.1", 18280)
     try:
         lib = TemplateLibrary([TEMPLATE_DIR])
-        tpls = lib.filter(ids=["drupalgeddon2"])
+        tpls = lib.filter(ids=["CVE-2018-7600"])
         for t in tpls:
             t.port = 18280  # real port from GetRequest's list isn't needed here,
                              # open_ports= below is what actually gates dispatch
@@ -68,7 +68,7 @@ async def test_intrusive_template_actually_sends_the_payload_when_allowed():
     srv = await asyncio.start_server(handle, "127.0.0.1", 18281)
     try:
         lib = TemplateLibrary([TEMPLATE_DIR])
-        tpls = lib.filter(ids=["drupalgeddon2"])
+        tpls = lib.filter(ids=["CVE-2018-7600"])
         for t in tpls:
             t.port = 18281
         await run_templates(tpls, "127.0.0.1", open_ports=[18281], allow_intrusive=True)
@@ -89,7 +89,7 @@ async def test_non_intrusive_template_unaffected_by_the_flag():
     srv = await asyncio.start_server(handle, "127.0.0.1", 6379)
     try:
         lib = TemplateLibrary([TEMPLATE_DIR])
-        tpls = lib.filter(ids=["redis-unauth"])
+        tpls = lib.filter(ids=["CVE-2022-0543"])
         results = await run_templates(tpls, "127.0.0.1", open_ports=[6379], allow_intrusive=False)
         assert len(results) == 1
     finally:

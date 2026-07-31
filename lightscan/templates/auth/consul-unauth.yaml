@@ -1,7 +1,7 @@
-id: consul-unauth
-name: HashiCorp Consul Unauthenticated Access
+id: CVE-2021-28149
+name: CVE-2021-28149
 severity: critical
-tags: [consul, hashicorp, unauth, rce]
+tags: [consul, hashicorp, unauth, rce, cve-2021-28149]
 port: 8500
 protocol: http
 description: Consul HTTP API accessible without ACL token — service registration/RCE possible

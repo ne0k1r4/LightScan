@@ -1,7 +1,7 @@
-id: grafana-default-creds
-name: Grafana Default Credentials (admin/admin)
+id: CVE-2021-27358
+name: CVE-2021-27358
 severity: high
-tags: [grafana, default-creds, auth]
+tags: [grafana, default-creds, auth, cve-2021-27358]
 port: 3000
 protocol: http
 description: Grafana accessible with default admin/admin credentials

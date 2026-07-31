@@ -1,7 +1,7 @@
-id: smb-v1-enabled
-name: SMBv1 Protocol Enabled
+id: CVE-2017-0143
+name: CVE-2017-0143
 severity: high
-tags: [smb, smbv1, windows, legacy]
+tags: [smb, smbv1, windows, legacy, cve-2017-0143]
 port: 445
 protocol: tcp
 description: SMBv1 deprecated and vulnerable to EternalBlue

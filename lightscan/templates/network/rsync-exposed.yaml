@@ -1,7 +1,7 @@
-id: rsync-exposed
-name: Rsync Exposed Without Auth
+id: CVE-2018-5764
+name: CVE-2018-5764
 severity: high
-tags: [rsync, file, exposure, unauth]
+tags: [rsync, file, exposure, unauth, cve-2018-5764]
 port: 873
 protocol: tcp
 description: Rsync daemon accessible without authentication — file read/write possible

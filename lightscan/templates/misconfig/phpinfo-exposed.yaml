@@ -1,7 +1,7 @@
-id: phpinfo-exposed
-name: PHP Info Page Exposed
+id: CVE-2003-0865
+name: CVE-2003-0865
 severity: medium
-tags: [php, exposure, info-disclosure]
+tags: [php, exposure, info-disclosure, cve-2003-0865]
 port: 80
 protocol: http
 description: phpinfo() page exposes server config

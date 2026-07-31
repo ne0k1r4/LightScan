@@ -1,8 +1,8 @@
-id: drupalgeddon2
-name: Drupalgeddon2 RCE
+id: CVE-2018-7600
+name: CVE-2018-7600
 severity: critical
 cve: CVE-2018-7600
-tags: [drupal, cms, rce, php]
+tags: [drupal, cms, rce, php, cve-2018-7600]
 port: 80
 protocol: http
 intrusive: true

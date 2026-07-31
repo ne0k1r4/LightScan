@@ -1,7 +1,7 @@
-id: rdp-exposed
-name: RDP Exposed to Internet
+id: CVE-2019-0708
+name: CVE-2019-0708
 severity: high
-tags: [rdp, windows, exposure, remote]
+tags: [rdp, windows, exposure, remote, cve-2019-0708]
 port: 3389
 protocol: tcp
 description: RDP exposed — brute force and exploitation target

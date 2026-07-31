@@ -1,8 +1,8 @@
-id: openssh-user-enum
-name: OpenSSH Username Enumeration
+id: CVE-2018-15473
+name: CVE-2018-15473
 severity: medium
 cve: CVE-2018-15473
-tags: [ssh, openssh, enumeration, auth]
+tags: [ssh, openssh, enumeration, auth, cve-2018-15473]
 port: 22
 protocol: tcp
 description: OpenSSH < 7.7 allows remote attackers to enumerate valid usernames

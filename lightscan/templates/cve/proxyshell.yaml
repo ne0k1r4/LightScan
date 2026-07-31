@@ -1,8 +1,8 @@
-id: proxyshell
-name: Exchange ProxyShell RCE
+id: CVE-2021-34473
+name: CVE-2021-34473
 severity: critical
 cve: CVE-2021-34473
-tags: [exchange, rce, proxyshell, microsoft]
+tags: [exchange, rce, proxyshell, microsoft, cve-2021-34473]
 port: 443
 protocol: https
 description: Exchange Server pre-auth path confusion leading to ACL bypass and RCE

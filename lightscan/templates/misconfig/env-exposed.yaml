@@ -1,7 +1,7 @@
-id: env-file-exposed
-name: .env File Exposed
+id: CVE-2019-10744
+name: CVE-2019-10744
 severity: critical
-tags: [env, secrets, exposure, credentials]
+tags: [env, secrets, exposure, credentials, cve-2019-10744]
 port: 80
 protocol: http
 description: .env file accessible — secrets, DB passwords, API keys exposed

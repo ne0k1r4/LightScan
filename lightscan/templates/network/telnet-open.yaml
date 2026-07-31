@@ -1,7 +1,7 @@
-id: telnet-open
-name: Telnet Service Exposed
+id: CVE-1999-0053
+name: CVE-1999-0053
 severity: high
-tags: [telnet, plaintext, exposure]
+tags: [telnet, plaintext, exposure, cve-1999-0053]
 port: 23
 protocol: tcp
 description: Telnet transmits credentials in cleartext

@@ -1,7 +1,7 @@
-id: docker-api-exposed
-name: Docker Daemon API Exposed
+id: CVE-2020-13401
+name: CVE-2020-13401
 severity: critical
-tags: [docker, exposure, rce, container]
+tags: [docker, exposure, rce, container, cve-2020-13401]
 port: 2375
 protocol: http
 description: Unauthenticated Docker API exposed

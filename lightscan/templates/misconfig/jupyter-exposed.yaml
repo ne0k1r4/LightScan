@@ -1,7 +1,7 @@
-id: jupyter-exposed
-name: Jupyter Notebook Exposed
+id: CVE-2019-10856
+name: CVE-2019-10856
 severity: critical
-tags: [jupyter, python, rce, unauth]
+tags: [jupyter, python, rce, unauth, cve-2019-10856]
 port: 8888
 protocol: http
 description: Jupyter Notebook accessible without token — arbitrary Python execution

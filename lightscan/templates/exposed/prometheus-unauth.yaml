@@ -1,7 +1,7 @@
-id: prometheus-unauth
-name: Prometheus Metrics Exposed
+id: CVE-2020-5291
+name: CVE-2020-5291
 severity: medium
-tags: [prometheus, exposure, metrics]
+tags: [prometheus, exposure, metrics, cve-2020-5291]
 port: 9090
 protocol: http
 description: Prometheus metrics endpoint accessible without authentication — system info disclosure

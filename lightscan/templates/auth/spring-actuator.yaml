@@ -1,7 +1,7 @@
-id: spring-actuator-exposed
-name: Spring Boot Actuator Exposed
+id: CVE-2018-1199
+name: CVE-2018-1199
 severity: high
-tags: [spring, java, actuator, exposure]
+tags: [spring, java, actuator, exposure, cve-2018-1199]
 port: 8080
 protocol: http
 description: Spring Boot Actuator endpoints exposed — env, heapdump, beans accessible

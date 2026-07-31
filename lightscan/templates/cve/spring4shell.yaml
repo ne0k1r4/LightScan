@@ -1,8 +1,8 @@
-id: spring4shell
-name: Spring4Shell RCE
+id: CVE-2022-22965
+name: CVE-2022-22965
 severity: critical
 cve: CVE-2022-22965
-tags: [spring, rce, java, framework]
+tags: [spring, rce, java, framework, cve-2022-22965]
 port: 8080
 protocol: http
 description: Spring Framework RCE via data binding with class parameter

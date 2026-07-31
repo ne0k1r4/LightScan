@@ -1,7 +1,7 @@
-id: kubernetes-api-exposed
-name: Kubernetes API Server Exposed
+id: CVE-2020-8554
+name: CVE-2020-8554
 severity: critical
-tags: [kubernetes, k8s, api, container]
+tags: [kubernetes, k8s, api, container, cve-2020-8554]
 port: 6443
 protocol: https
 description: Kubernetes API server accessible — potential cluster compromise

@@ -1,8 +1,8 @@
-id: wordpress-sqli
-name: WordPress Core SQLi
+id: CVE-2022-21661
+name: CVE-2022-21661
 severity: critical
 cve: CVE-2022-21661
-tags: [wordpress, cms, sqli, php]
+tags: [wordpress, cms, sqli, php, cve-2022-21661]
 port: 80
 protocol: http
 intrusive: true

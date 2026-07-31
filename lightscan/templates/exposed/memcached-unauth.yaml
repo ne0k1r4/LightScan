@@ -1,7 +1,7 @@
-id: memcached-unauth
-name: Memcached Unauthenticated Access
+id: CVE-2018-1000115
+name: CVE-2018-1000115
 severity: high
-tags: [memcached, unauth, exposure]
+tags: [memcached, unauth, exposure, cve-2018-1000115]
 port: 11211
 protocol: tcp
 description: Memcached accessible without auth

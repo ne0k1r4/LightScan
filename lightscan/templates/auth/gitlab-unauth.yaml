@@ -1,7 +1,7 @@
-id: gitlab-open-registration
-name: GitLab Open User Registration
+id: CVE-2019-11547
+name: CVE-2019-11547
 severity: medium
-tags: [gitlab, registration, exposure]
+tags: [gitlab, registration, exposure, cve-2019-11547]
 port: 80
 protocol: http
 description: GitLab allows unrestricted user registration — code exposure

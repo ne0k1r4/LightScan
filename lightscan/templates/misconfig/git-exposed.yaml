@@ -1,7 +1,7 @@
-id: git-repo-exposed
-name: .git Directory Exposed
+id: CVE-2020-11008
+name: CVE-2020-11008
 severity: high
-tags: [git, exposure, source-code]
+tags: [git, exposure, source-code, cve-2020-11008]
 port: 80
 protocol: http
 description: .git directory accessible via HTTP — full source code disclosure

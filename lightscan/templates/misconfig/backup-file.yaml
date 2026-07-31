@@ -1,7 +1,7 @@
-id: backup-file-exposed
-name: Backup / Config File Exposed
+id: CVE-2019-10744
+name: CVE-2019-10744
 severity: high
-tags: [backup, exposure, config]
+tags: [backup, exposure, config, cve-2019-10744]
 port: 80
 protocol: http
 description: Common backup file patterns accessible (config.bak, db.sql, etc.)

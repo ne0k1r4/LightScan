@@ -1,7 +1,7 @@
-id: snmp-public-community
-name: SNMP Public Community String
+id: CVE-1999-0170
+name: CVE-1999-0170
 severity: medium
-tags: [snmp, community, network]
+tags: [snmp, community, network, cve-1999-0170]
 port: 161
 protocol: udp
 description: SNMP v1/v2c with default public community — device info disclosure

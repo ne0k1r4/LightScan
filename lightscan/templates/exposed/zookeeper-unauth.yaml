@@ -1,7 +1,7 @@
-id: zookeeper-unauth
-name: ZooKeeper Unauthenticated Access
+id: CVE-2019-6473
+name: CVE-2019-6473
 severity: high
-tags: [zookeeper, unauth, exposure]
+tags: [zookeeper, unauth, exposure, cve-2019-6473]
 port: 2181
 protocol: tcp
 description: ZooKeeper four-letter command accessible without auth

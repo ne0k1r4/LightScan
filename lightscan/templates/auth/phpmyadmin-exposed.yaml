@@ -1,7 +1,7 @@
-id: phpmyadmin-exposed
-name: phpMyAdmin Exposed to Internet
+id: CVE-2020-26947
+name: CVE-2020-26947
 severity: high
-tags: [phpmyadmin, mysql, web, exposure]
+tags: [phpmyadmin, mysql, web, exposure, cve-2020-26947]
 port: 80
 protocol: http
 description: phpMyAdmin accessible from internet

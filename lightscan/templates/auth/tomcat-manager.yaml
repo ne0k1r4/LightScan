@@ -1,7 +1,7 @@
-id: tomcat-manager-exposed
-name: Apache Tomcat Manager Exposed
+id: CVE-2019-0232
+name: CVE-2019-0232
 severity: high
-tags: [tomcat, manager, default-creds]
+tags: [tomcat, manager, default-creds, cve-2019-0232]
 port: 8080
 protocol: http
 description: Tomcat Manager application accessible — enables WAR deployment = RCE

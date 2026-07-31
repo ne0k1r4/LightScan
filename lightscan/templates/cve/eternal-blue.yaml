@@ -1,8 +1,8 @@
-id: eternalblue
-name: EternalBlue SMB RCE (MS17-010)
+id: CVE-2017-0144
+name: CVE-2017-0144
 severity: critical
 cve: CVE-2017-0144
-tags: [smb, rce, eternalblue, windows]
+tags: [smb, rce, eternalblue, windows, cve-2017-0144]
 port: 445
 protocol: tcp
 description: SMBv1 DOUBLEPULSAR/EternalBlue remote code execution
