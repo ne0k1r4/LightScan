@@ -163,6 +163,8 @@ def build_parser():
     out.add_argument("--resume",          action="store_true", help="Resume from checkpoint")
     out.add_argument("--clear-checkpoint",action="store_true", help="Clear checkpoint and start fresh")
     out.add_argument("-v","--verbose",    action="store_true", help="Verbose output")
+    out.add_argument("-q","--quiet",      action="store_true", help="Quiet mode: suppress banners, status lines, and progress output")
+    out.add_argument("--min-severity",    choices=["info", "low", "medium", "high", "critical"], default="info", help="Filter minimum severity of reported findings (default: info)")
     out.add_argument("--no-discovery", action="store_true", help="Skip host discovery")
     out.add_argument("--smb-enum", action="store_true", help="SMB null session + share enum")
     out.add_argument("--snmp", action="store_true", help="SNMP enumeration")
@@ -883,6 +885,12 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 r=await brute.run(handler,users,passwords,host,actual_port,proto,args.stop_first)
             all_results.extend(r)
 
+    # Minimum severity filter & Quiet mode handling
+    SEV_MAP = {"info": 1, "low": 2, "medium": 3, "high": 4, "critical": 5}
+    min_rank = SEV_MAP.get(getattr(args, "min_severity", "info").lower(), 1)
+    if min_rank > 1:
+        all_results = [r for r in all_results if hasattr(r, "severity") and SEV_MAP.get(r.severity.value.lower(), 1) >= min_rank]
+
     # Summary
     elapsed=time.time()-t_start; meta["duration"]=elapsed
     crit=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="CRITICAL")
@@ -893,33 +901,34 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
     
     high_critical_findings = [r for r in all_results if hasattr(r,"severity") and r.severity.value in ("CRITICAL", "HIGH")]
     
-    print()
-    if high_critical_findings:
-        print(f"\033[38;5;196m┌───\033[0m \033[1mCRITICAL & HIGH FINDINGS SUMMARY\033[0m \033[38;5;196m" + "─" * 40 + "\033[0m")
-        print(f"  \033[38;5;244m%-10s %-20s %-8s %-38s\033[0m" % ("SEVERITY", "TARGET", "PORT", "DETAILS"))
-        print(f"  " + "\033[38;5;238m─\033[0m" * 74)
-        for r in high_critical_findings:
-            col = "\033[38;5;196;1m" if r.severity.value == "CRITICAL" else "\033[38;5;202;1m"
-            print(f"  {col}%-10s\033[0m %-20s %-8s %-38s" % (
-                r.severity.value, r.target[:20], str(r.port) if r.port else "-", r.detail[:38]
-            ))
-        print(f"\033[38;5;196m└" + "─" * 76 + "\033[0m\n")
+    if not getattr(args, "quiet", False):
+        print()
+        if high_critical_findings:
+            print(f"\033[38;5;196m┌───\033[0m \033[1mCRITICAL & HIGH FINDINGS SUMMARY\033[0m \033[38;5;196m" + "─" * 40 + "\033[0m")
+            print(f"  \033[38;5;244m%-10s %-20s %-8s %-38s\033[0m" % ("SEVERITY", "TARGET", "PORT", "DETAILS"))
+            print(f"  " + "\033[38;5;238m─\033[0m" * 74)
+            for r in high_critical_findings:
+                col = "\033[38;5;196;1m" if r.severity.value == "CRITICAL" else "\033[38;5;202;1m"
+                print(f"  {col}%-10s\033[0m %-20s %-8s %-38s" % (
+                    r.severity.value, r.target[:20], str(r.port) if r.port else "-", r.detail[:38]
+                ))
+            print(f"\033[38;5;196m└" + "─" * 76 + "\033[0m\n")
 
-    C = "\033[38;5;196m"; YEL = "\033[38;5;208m"; GRN = "\033[38;5;82m"; R = "\033[0m"
-    print(f"{C}┌───────────────────────────────────────────────────────────────┐{R}")
-    print(f"{C}│                      SCAN EXECUTION COMPLETE                  │{R}")
-    print(f"{C}├───────────────────────────────────────────────────────────────┤{R}")
-    print(f"{C}│{R}  Total Duration : {f'{elapsed:.1f}s':<44} {C}│{R}")
-    print(f"{C}│{R}  Total Findings : {len(all_results):<44} {C}│{R}")
-    print(f"{C}│{R}  {C}CRITICAL{R}       : {C}{crit:<44}{R} {C}│{R}")
-    print(f"{C}│{R}  {YEL}HIGH{R}           : {YEL}{high:<44}{R} {C}│{R}")
-    print(f"{C}│{R}  MEDIUM         : {med:<44} {C}│{R}")
-    print(f"{C}│{R}  LOW / INFO     : {f'{low} / {info}':<44} {C}│{R}")
-    if not args.no_report and all_results:
-        base = args.basename or f"lightscan_report_{int(t_start)}"
-        saved_part = f"{base}.html / .json"
-        print(f"{C}│{R}  Saved Report   : {GRN}{saved_part:<44}{R} {C}│{R}")
-    print(f"{C}└───────────────────────────────────────────────────────────────┘{R}\n")
+        C = "\033[38;5;196m"; YEL = "\033[38;5;208m"; GRN = "\033[38;5;82m"; R = "\033[0m"
+        print(f"{C}┌───────────────────────────────────────────────────────────────┐{R}")
+        print(f"{C}│                      SCAN EXECUTION COMPLETE                  │{R}")
+        print(f"{C}├───────────────────────────────────────────────────────────────┤{R}")
+        print(f"{C}│{R}  Total Duration : {f'{elapsed:.1f}s':<44} {C}│{R}")
+        print(f"{C}│{R}  Total Findings : {len(all_results):<44} {C}│{R}")
+        print(f"{C}│{R}  {C}CRITICAL{R}       : {C}{crit:<44}{R} {C}│{R}")
+        print(f"{C}│{R}  {YEL}HIGH{R}           : {YEL}{high:<44}{R} {C}│{R}")
+        print(f"{C}│{R}  MEDIUM         : {med:<44} {C}│{R}")
+        print(f"{C}│{R}  LOW / INFO     : {f'{low} / {info}':<44} {C}│{R}")
+        if not args.no_report and all_results:
+            base = args.basename or f"lightscan_report_{int(t_start)}"
+            saved_part = f"{base}.html / .json"
+            print(f"{C}│{R}  Saved Report   : {GRN}{saved_part:<44}{R} {C}│{R}")
+        print(f"{C}└───────────────────────────────────────────────────────────────┘{R}\n")
 
     if not args.no_report and all_results:
         Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
