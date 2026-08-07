@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+- fix: template audit — dropped fabricated CVE IDs from ~30 unauth/misconfig checks;
+  they now carry honest descriptive IDs with real remediation and references
+- refactor: merged duplicate kibana / docker-api / prometheus / kubernetes-api / bluekeep checks (59 templates)
+- fix: BlueKeep probe now exchanges the mstshash cookie for accurate pre-NLA detection
 
 ## v2.1.0 — 2026-06-13
 - feat: host discovery (ICMP ping + ARP sweep) before port scan
