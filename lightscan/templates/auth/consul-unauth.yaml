@@ -1,11 +1,18 @@
-id: CVE-2021-28149
-name: CVE-2021-28149
+id: consul-unauth
+name: Consul HTTP API without ACL token
 severity: critical
-tags: [consul, hashicorp, unauth, rce, cve-2021-28149]
+tags: [consul, hashicorp, unauth, rce]
 port: 8500
 protocol: http
-description: Consul HTTP API accessible without ACL token — service registration/RCE possible
-remediation: Enable ACL system; restrict API access
+description: >
+  Consul's HTTP API answers requests that carry no ACL token. An
+  attacker who can reach it can read and write the KV store, register
+  services and checks (the classic consul-template / exec-hook RCE
+  chain), and pull agent config that frequently leaks tokens and certs.
+remediation: >
+  Turn on ACLs (acl { enabled = true, default_policy = "deny" }), issue
+  per-client tokens, and keep the API on a trusted network segment.
+reference: https://developer.hashicorp.com/consul/tutorials/security/access-control-setup-production
 steps:
   - type: send
     data: /v1/agent/self

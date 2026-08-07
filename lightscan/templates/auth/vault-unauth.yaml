@@ -1,11 +1,18 @@
-id: CVE-2020-35184
-name: CVE-2020-35184
+id: vault-unauth
+name: Vault API without a token
 severity: critical
-tags: [vault, hashicorp, secrets, unauth, cve-2020-35184]
+tags: [vault, hashicorp, secrets, unauth]
 port: 8200
 protocol: http
-description: Vault API accessible — secrets engine status visible
-remediation: Enable authentication; restrict Vault API access
+description: >
+  The Vault HTTP API responds to requests that carry no token. Even the
+  health and seal-status endpoints leak deployment details, and if any
+  auth method is misconfigured an anonymous caller can walk straight
+  into the secrets engine.
+remediation: >
+  Require a token for every request, review auth-method tuning so tokens
+  always get a policy, and keep the API off public networks.
+reference: https://developer.hashicorp.com/vault/tutorials/auth-methods
 steps:
   - type: send
     data: /v1/sys/health

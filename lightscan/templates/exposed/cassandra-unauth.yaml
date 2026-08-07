@@ -1,11 +1,18 @@
-id: CVE-2020-17516
-name: CVE-2020-17516
+id: cassandra-unauth
+name: Cassandra CQL without authentication
 severity: critical
-tags: [cassandra, unauth, database, exposure, cve-2020-17516]
+tags: [cassandra, unauth, database, exposure]
 port: 9042
 protocol: tcp
-description: Cassandra CQL native transport accessible without authentication
-remediation: Enable authenticator in cassandra.yaml
+description: >
+  The Cassandra native CQL transport accepts connections without any
+  credentials. Keyspaces, tables and the data in them are fully
+  accessible — read, write or truncate — by anyone on the network.
+remediation: >
+  Set authenticator: PasswordAuthenticator (or LDAP) plus
+  authorization: CassandraAuthorizer in cassandra.yaml, and never expose
+  9042 outside the cluster.
+reference: https://cassandra.apache.org/doc/stable/cassandra/operating/security.html
 steps:
   - type: send
     data: "000400000002000000160001000d6363716c5f76657273696f6e"

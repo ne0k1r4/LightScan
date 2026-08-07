@@ -1,11 +1,17 @@
-id: CVE-2015-5623
-name: CVE-2015-5623
+id: wp-xmlrpc
+name: WordPress XML-RPC enabled
 severity: medium
-tags: [wordpress, xmlrpc, brute-force, cve-2015-5623]
+tags: [wordpress, xmlrpc, brute-force]
 port: 80
 protocol: http
-description: XML-RPC enables credential brute force via system.multicall and SSRF
-remediation: Disable XML-RPC via plugin or nginx rule
+description: >
+  /xmlrpc.php answers with the XML-RPC API enabled. system.multicall
+  batches hundreds of password guesses into one request (amplified
+  brute-force) and the pingback handler can be abused for SSRF.
+remediation: >
+  Disable XML-RPC unless a plugin genuinely needs it — block xmlrpc.php
+  with a firewall rule or a plugin like "Disable XML-RPC".
+reference: https://developer.wordpress.org/plugins/xml-rpc/
 steps:
   - type: send
     data: /xmlrpc.php

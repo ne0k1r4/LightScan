@@ -1,11 +1,19 @@
-id: CVE-2018-1099
-name: CVE-2018-1099
+id: etcd-unauth
+name: etcd without client authentication
 severity: critical
+cve: CVE-2018-1099
 tags: [etcd, kubernetes, unauth, exposure, cve-2018-1099]
 port: 2379
 protocol: http
-description: etcd accessible without auth
-remediation: Enable client certificate authentication
+description: >
+  etcd answers on its client port without checking certificates. The KV
+  store holds the whole Kubernetes cluster state — secrets, tokens,
+  configmaps — and CVE-2018-1099 means even a browser tab can pivot into
+  it via DNS rebinding if you are on the same network.
+remediation: >
+  Turn on client certificate authentication for every etcd member and
+  keep 2379 on a private network only.
+reference: https://etcd.io/docs/v3.5/op-guide/security/
 steps:
   - type: send
     data: /version

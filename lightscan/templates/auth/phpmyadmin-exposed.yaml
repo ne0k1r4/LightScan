@@ -1,10 +1,18 @@
-id: CVE-2020-26947
-name: CVE-2020-26947
+id: phpmyadmin-exposed
+name: phpMyAdmin reachable from the internet
 severity: high
-tags: [phpmyadmin, mysql, web, exposure, cve-2020-26947]
+tags: [phpmyadmin, mysql, web, exposure]
 port: 80
 protocol: http
-description: phpMyAdmin accessible from internet
+description: >
+  phpMyAdmin is installed and answering on a public interface. Every
+  exposed login page like this is a brute-force target, and the tool has
+  seen years of RCE and auth-bypass bugs — an exposed phpMyAdmin is
+  effectively a standing invitation to the database.
+remediation: >
+  Remove phpMyAdmin from production, or at minimum restrict it to admin
+  IPs / VPN, force strong credentials plus 2FA, and keep it patched.
+reference: https://www.phpmyadmin.net/security/
 steps:
   - type: send
     data: /phpmyadmin/

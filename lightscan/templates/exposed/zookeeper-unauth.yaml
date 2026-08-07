@@ -1,11 +1,18 @@
-id: CVE-2019-6473
-name: CVE-2019-6473
+id: zookeeper-unauth
+name: ZooKeeper four-letter commands without auth
 severity: high
-tags: [zookeeper, unauth, exposure, cve-2019-6473]
+tags: [zookeeper, unauth, exposure]
 port: 2181
 protocol: tcp
-description: ZooKeeper four-letter command accessible without auth
-remediation: Enable SASL authentication
+description: >
+  ZooKeeper's four-letter commands answer without authentication. mntr
+  and conf leak the whole ensemble layout, and commands like rmr allow
+  destructive changes to what is often the coordination backbone of a
+  distributed system.
+remediation: >
+  Enable SASL authentication (requireClientAuthScheme=sasl) and firewall
+  2181/2888/3888 to the ensemble only.
+reference: https://zookeeper.apache.org/doc/current/zookeeperAdmin.html#sc_authOptions
 steps:
   - type: send
     data: "mntr\n"

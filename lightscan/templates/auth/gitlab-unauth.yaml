@@ -1,10 +1,18 @@
-id: CVE-2019-11547
-name: CVE-2019-11547
+id: gitlab-unauth
+name: GitLab unrestricted user registration
 severity: medium
-tags: [gitlab, registration, exposure, cve-2019-11547]
+tags: [gitlab, registration, exposure]
 port: 80
 protocol: http
-description: GitLab allows unrestricted user registration — code exposure
+description: >
+  GitLab has public sign-up enabled, so anyone can create an account.
+  That is usually step one of a GitLab attack: internal repositories
+  become discoverable, and once inside, self-service project creation
+  gives attackers a foothold for SSRF via webhooks or CI runners.
+remediation: >
+  Disable public sign-up in Admin Area -> Settings -> General (signup
+  enabled = false) and require admin approval for new users instead.
+reference: https://docs.gitlab.com/ee/administration/settings/sign_up_restrictions.html
 steps:
   - type: send
     data: /users/sign_up

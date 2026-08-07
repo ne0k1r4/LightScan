@@ -1,11 +1,17 @@
-id: CVE-2019-7609
-name: CVE-2019-7609
+id: kibana-unauth
+name: Kibana without authentication
 severity: high
-tags: [kibana, elasticsearch, unauth, exposure, cve-2019-7609]
+tags: [kibana, elasticsearch, unauth, exposure]
 port: 5601
 protocol: http
-description: Kibana accessible without authentication — Elasticsearch data exposed
-remediation: Enable X-Pack security; configure authentication
+description: >
+  Kibana serves dashboards to unauthenticated visitors, so everything
+  shipped into Elasticsearch — logs, customer data, sometimes
+  credentials — is queryable by anyone who can reach the port.
+remediation: >
+  Enable Elastic security (X-Pack) and require a login for every Kibana
+  space; until then, put Kibana behind an authenticated reverse proxy.
+reference: https://www.elastic.co/guide/en/kibana/current/using-kibana-with-security.html
 steps:
   - type: send
     data: /api/status
@@ -15,3 +21,7 @@ steps:
   - type: match
     not_contains: "Unauthorized"
     part: body
+  - type: extract
+    regex: '"number":\s*"([^"]+)"'
+    group: 1
+    name: version

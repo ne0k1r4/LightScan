@@ -1,11 +1,19 @@
-id: CVE-2018-1199
-name: CVE-2018-1199
+id: spring-actuator
+name: Spring Boot Actuator endpoints exposed
 severity: high
-tags: [spring, java, actuator, exposure, cve-2018-1199]
+tags: [spring, java, actuator, exposure]
 port: 8080
 protocol: http
-description: Spring Boot Actuator endpoints exposed — env, heapdump, beans accessible
-remediation: Restrict /actuator endpoints; require authentication
+description: >
+  Spring Boot Actuator management endpoints answer without protection.
+  /actuator/env shows environment variables (cloud credentials, DB
+  passwords), /actuator/heapdump dumps the JVM heap, and older configs
+  even allow writes via /actuator/refresh or gateway routes.
+remediation: >
+  Never expose management endpoints publicly — keep the exposure list
+  minimal, firewall them off, and add authentication where they must be
+  reachable.
+reference: https://docs.spring.io/spring-boot/reference/actuator/endpoints.html
 steps:
   - type: send
     data: /actuator

@@ -1,14 +1,20 @@
-id: CVE-2020-5291
-name: CVE-2020-5291
+id: prometheus-unauth
+name: Prometheus metrics endpoint exposed
 severity: medium
-tags: [prometheus, exposure, metrics, cve-2020-5291]
+tags: [prometheus, exposure, metrics]
 port: 9090
 protocol: http
-description: Prometheus metrics endpoint accessible without authentication — system info disclosure
-remediation: Add reverse proxy with auth; use --web.listen-address=127.0.0.1
+description: >
+  The Prometheus /metrics endpoint is public. Metric names and labels
+  describe the whole stack — services, pods, versions, instance IPs —
+  and the query API lets anyone walk the data Prometheus collects.
+remediation: >
+  Serve Prometheus behind an authenticated reverse proxy or bind it to
+  127.0.0.1 with --web.listen-address.
+reference: https://prometheus.io/docs/guides/securing-prometheus/
 steps:
   - type: send
     data: /metrics
   - type: match
-    contains: "# HELP"
+    regex: "(go_goroutines|process_cpu|HELP|TYPE)"
     part: body
