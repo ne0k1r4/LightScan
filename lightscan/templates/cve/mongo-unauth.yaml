@@ -1,11 +1,16 @@
-id: CVE-2019-2289
-name: CVE-2019-2289
+id: mongodb-unauth
+name: MongoDB without authentication
 severity: critical
-tags: [mongodb, unauth, exposure, database, cve-2019-2289]
+tags: [mongodb, unauth, exposure, database]
 port: 27017
 protocol: tcp
-description: MongoDB accessible without authentication
-remediation: Enable auth in mongod.conf; bind to 127.0.0.1
+description: >
+  MongoDB's wire protocol answers without credentials. Databases can be
+  dumped, modified, or dropped outright — the 2017 MongoRansom wave that
+  encrypted and held collections for ransom targeted exactly this setup.
+remediation: >
+  Enable authorization (security.authorization: enabled), set a real
+  root password, and bind mongod to 127.0.0.1 or a private network.
 reference: https://www.mongodb.com/docs/manual/security/
 steps:
   - type: send

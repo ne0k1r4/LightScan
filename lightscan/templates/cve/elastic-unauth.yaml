@@ -1,11 +1,18 @@
-id: CVE-2015-5377
-name: CVE-2015-5377
+id: elasticsearch-unauth
+name: Elasticsearch without authentication
 severity: critical
-tags: [elasticsearch, unauth, exposure, cve-2015-5377]
+tags: [elasticsearch, unauth, exposure]
 port: 9200
 protocol: http
-description: Elasticsearch accessible without authentication
-remediation: Enable X-Pack security
+description: >
+  Elasticsearch serves its REST API to unauthenticated callers. The
+  whole cluster — indices, documents, mappings, even stored scripts —
+  can be read, modified, or deleted by anyone who can connect. This is
+  how the 2017 "ransomware" wipes happened.
+remediation: >
+  Enable Elastic security with a real password on every node and don't
+  expose 9200 beyond the cluster network.
+reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/security-minimal-setup.html
 steps:
   - type: send
     data: /
@@ -13,6 +20,6 @@ steps:
     contains: cluster_name
     part: body
   - type: extract
-    regex: '"number":\s*"([\d.]+)"'
+    regex: '"number":\s*"([^"]+)"'
     group: 1
     name: version
