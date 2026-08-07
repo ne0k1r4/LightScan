@@ -1,11 +1,18 @@
-id: CVE-2019-10856
-name: CVE-2019-10856
+id: jupyter-exposed
+name: Jupyter Notebook without token
 severity: critical
-tags: [jupyter, python, rce, unauth, cve-2019-10856]
+tags: [jupyter, python, rce, unauth]
 port: 8888
 protocol: http
-description: Jupyter Notebook accessible without token — arbitrary Python execution
-remediation: Set notebook password; bind to localhost only
+description: >
+  Jupyter is running without token authentication. Anyone reaching the
+  notebook server gets a browser-based Python kernel — a notebook cell
+  with os.system() or subprocess is straight code execution on the host.
+remediation: >
+  Set a strong notebook token/password, bind to 127.0.0.1 (or run behind
+  authenticated JupyterHub / a reverse proxy), and disable passwordless
+  local servers.
+reference: https://jupyter-notebook.readthedocs.io/en/stable/security.html
 steps:
   - type: send
     data: /api/kernels

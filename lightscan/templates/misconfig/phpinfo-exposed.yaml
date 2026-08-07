@@ -1,10 +1,17 @@
-id: CVE-2003-0865
-name: CVE-2003-0865
+id: phpinfo-exposed
+name: phpinfo() page exposed
 severity: medium
-tags: [php, exposure, info-disclosure, cve-2003-0865]
+tags: [php, exposure, info-disclosure]
 port: 80
 protocol: http
-description: phpinfo() page exposes server config
+description: >
+  A phpinfo() page is publicly reachable. It prints the PHP build, loaded
+  modules, environment variables and full server paths — a perfect
+  reconnaissance checklist before targeting the app.
+remediation: >
+  Remove phpinfo() pages from production (or gate them behind admin
+  auth); they are debug tooling, not application code.
+reference: https://www.php.net/manual/en/function.phpinfo.php
 steps:
   - type: send
     data: /phpinfo.php

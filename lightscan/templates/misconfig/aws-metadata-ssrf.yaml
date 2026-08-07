@@ -1,11 +1,19 @@
-id: CVE-2019-11253
-name: CVE-2019-11253
+id: aws-metadata-ssrf
+name: AWS metadata service reachable via SSRF
 severity: high
-tags: [aws, ssrf, cloud, metadata, cve-2019-11253]
+tags: [aws, ssrf, cloud, metadata]
 port: 80
 protocol: http
-description: AWS EC2 metadata endpoint accessible — possible SSRF/credential leak
-remediation: Enforce IMDSv2; block metadata access from application
+description: >
+  An endpoint on this host reflects requests to 169.254.169.254 (the
+  cloud metadata service), or the metadata endpoint is directly
+  reachable. A successful hit hands over the instance role credentials —
+  usually IAM keys that can read S3, SSM and more.
+remediation: >
+  Enforce IMDSv2 with a required token and hop limit of 1, block
+  169.254.169.254 in the app-layer proxy / WAF, and keep instance roles
+  scoped with least privilege.
+reference: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html
 steps:
   - type: send
     data: /latest/meta-data/

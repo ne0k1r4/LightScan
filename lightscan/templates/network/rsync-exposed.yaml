@@ -1,11 +1,18 @@
-id: CVE-2018-5764
-name: CVE-2018-5764
+id: rsync-exposed
+name: Rsync daemon without authentication
 severity: high
-tags: [rsync, file, exposure, unauth, cve-2018-5764]
+tags: [rsync, file, exposure, unauth]
 port: 873
 protocol: tcp
-description: Rsync daemon accessible without authentication — file read/write possible
-remediation: Add secrets file to rsync; restrict hosts allowed
+description: >
+  An rsync daemon answers with its module list — no auth required.
+  Depending on module settings that means reading and writing arbitrary
+  files on the host, including dotfiles and SSH keys.
+remediation: >
+  Require auth via the secrets file, list allowed hosts in
+  /etc/rsyncd.conf, and expose only read-only modules if rsync must be
+  public.
+reference: https://download.samba.org/pub/rsync/rsyncd.conf.html
 steps:
   - type: send
     data: ""

@@ -1,11 +1,18 @@
-id: CVE-2019-19499
-name: CVE-2019-19499
+id: grafana-anon-access
+name: Grafana anonymous access enabled
 severity: high
-tags: [grafana, monitoring, unauth, exposure, cve-2019-19499]
+tags: [grafana, monitoring, unauth, exposure]
 port: 3000
 protocol: http
-description: Grafana accessible without authentication — dashboard data exposed
-remediation: Disable anonymous access in grafana.ini
+description: >
+  Grafana has anonymous access turned on, so dashboards — and whatever
+  they visualize, metrics, logs, sometimes PII — are visible without a
+  login. Depending on the anonymous role, the viewer may even reach
+  data-source queries.
+remediation: >
+  Set auth.anonymous.enabled = false in grafana.ini, or scope the
+  anonymous role to a dedicated read-only dashboard.
+reference: https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/grafana/
 steps:
   - type: send
     data: /api/org

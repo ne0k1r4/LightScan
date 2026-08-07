@@ -1,11 +1,17 @@
-id: CVE-1999-0170
-name: CVE-1999-0170
+id: snmp-community
+name: SNMP with default community string
 severity: medium
-tags: [snmp, community, network, cve-1999-0170]
+tags: [snmp, community, network]
 port: 161
 protocol: udp
-description: SNMP v1/v2c with default public community — device info disclosure
-remediation: Upgrade to SNMPv3 with auth+encryption; change community string
+description: >
+  SNMP v1/v2c answers with a guessable community (public/private). With
+  write access, a community string is remote control over the device;
+  with read access it still dumps interfaces, routes and system info.
+remediation: >
+  Move to SNMPv3 with auth and encryption, or at minimum set unique long
+  community strings and scope them per-ACL.
+reference: https://datatracker.ietf.org/doc/html/rfc3411
 steps:
   - type: send
     data: "302602010004067075626c6963a01902044b6f2bc6020100020100300b300906052b06010201010500"

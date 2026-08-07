@@ -1,11 +1,17 @@
-id: CVE-2019-15605
-name: CVE-2019-15605
+id: vnc-exposed
+name: VNC server exposed
 severity: critical
-tags: [vnc, remote, unauth, exposure, cve-2019-15605]
+tags: [vnc, remote, unauth, exposure]
 port: 5900
 protocol: tcp
-description: VNC server accessible — potential unauthenticated desktop access
-remediation: Add VNC password; restrict to VPN; use SSH tunnel
+description: >
+  A VNC server answers the RFB handshake. No password, a weak one, or the
+  old 8-character challenge-response means an attacker gets the desktop
+  — and with it everything the logged-in user can see and do.
+remediation: >
+  Set a strong VNC password, restrict the service to the VPN, and prefer
+  SSH tunneling (or a VNC server that speaks TLS/VeNCrypt).
+reference: https://www.realvnc.com/en/connect/docs/rfbproto.pdf
 steps:
   - type: send
     data: ""

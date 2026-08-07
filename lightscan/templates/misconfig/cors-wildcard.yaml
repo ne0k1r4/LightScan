@@ -1,10 +1,17 @@
-id: CVE-2018-1000159
-name: CVE-2018-1000159
+id: cors-wildcard
+name: Permissive CORS wildcard
 severity: medium
-tags: [cors, misconfig, web, cve-2018-1000159]
+tags: [cors, misconfig, web]
 port: 80
 protocol: http
-description: Server returns overly permissive CORS header
+description: >
+  The server answers with Access-Control-Allow-Origin: * on API
+  endpoints. Any website the victim visits can then read these responses
+  in the browser and exfiltrate the data.
+remediation: >
+  Restrict Access-Control-Allow-Origin to the exact frontend origin you
+  control, and never combine * with allow-credentials.
+reference: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
 steps:
   - type: send
     data: /api/

@@ -1,10 +1,18 @@
-id: CVE-2019-10744
-name: CVE-2019-10744
+id: backup-file
+name: Backup files exposed via HTTP
 severity: high
-tags: [backup, exposure, config, cve-2019-10744]
+tags: [backup, exposure, config]
 port: 80
 protocol: http
-description: Common backup file patterns accessible (config.bak, db.sql, etc.)
+description: >
+  Common backup artifacts — config.bak, db.sql, tar.gz dumps, editor
+  swap files — are fetchable over HTTP. These files usually contain
+  database credentials, API keys, or the crown jewels of the app.
+remediation: >
+  Never keep backups under the web root; serve them from a protected
+  bucket or host with ACLs, and add webserver rules to deny
+  .bak/.sql/.gz/.swp patterns.
+reference: https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Webpage_Content_for_Information_Leakage.html
 steps:
   - type: send
     data: /config.bak

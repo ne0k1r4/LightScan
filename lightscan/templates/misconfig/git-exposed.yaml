@@ -1,11 +1,18 @@
-id: CVE-2020-11008
-name: CVE-2020-11008
+id: git-exposed
+name: Git directory exposed via HTTP
 severity: high
-tags: [git, exposure, source-code, cve-2020-11008]
+tags: [git, exposure, source-code]
 port: 80
 protocol: http
-description: .git directory accessible via HTTP — full source code disclosure
-remediation: Block /.git/ in webserver config; use .htaccess/nginx deny
+description: >
+  The .git folder is fetchable over HTTP. With .git/HEAD plus the object
+  store, an attacker reconstructs the whole source tree — hardcoded
+  credentials, internal logic, and the roadmap of every future attack.
+remediation: >
+  Block /.git/ at the webserver level (nginx location deny, Apache
+  Require all denied) and make sure deployments are clean checkouts
+  without the .git directory.
+reference: https://github.com/git/git/blob/master/Documentation/gitrepository-layout.adoc
 steps:
   - type: send
     data: /.git/HEAD

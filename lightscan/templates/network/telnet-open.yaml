@@ -1,11 +1,16 @@
-id: CVE-1999-0053
-name: CVE-1999-0053
+id: telnet-open
+name: Telnet service exposed
 severity: high
-tags: [telnet, plaintext, exposure, cve-1999-0053]
+tags: [telnet, plaintext, exposure]
 port: 23
 protocol: tcp
-description: Telnet transmits credentials in cleartext
-remediation: Replace with SSH
+description: >
+  Telnet is listening — usernames, passwords and everything typed in the
+  session travels in cleartext. Anyone sniffing the network captures the
+  credentials and whatever the session does.
+remediation: >
+  Disable telnetd and migrate to SSH with key-based auth.
+reference: https://www.rfc-editor.org/rfc/rfc854
 steps:
   - type: send
     data: ""

@@ -1,11 +1,17 @@
-id: CVE-2001-0037
-name: CVE-2001-0037
+id: ftp-anon
+name: FTP anonymous login allowed
 severity: high
-tags: [ftp, anonymous, exposure, cve-2001-0037]
+tags: [ftp, anonymous, exposure]
 port: 21
 protocol: tcp
-description: FTP server allows anonymous login — read/write access
-remediation: Disable anonymous FTP; use SFTP
+description: >
+  The FTP server accepts the anonymous account. Depending on the
+  configuration that is read access to everything, and often write access
+  to the webroot for uploads — a classic way in.
+remediation: >
+  Disable anonymous FTP (or restrict it to a dedicated empty directory
+  with no write permission) and move file sharing to SFTP/FTPS.
+reference: https://vsftpd.beasts.org/vsftpd_conf.html
 steps:
   - type: send
     data: ""

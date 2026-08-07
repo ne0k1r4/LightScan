@@ -1,10 +1,17 @@
-id: CVE-2001-0244
-name: CVE-2001-0244
+id: directory-listing
+name: Web directory listing enabled
 severity: low
-tags: [web, directory-listing, exposure, cve-2001-0244]
+tags: [web, directory-listing, exposure]
 port: 80
 protocol: http
-description: Apache/Nginx directory listing enabled
+description: >
+  The web server renders directory indexes instead of a 403. Attackers
+  use the listing to map the app, find backups, and spot files that were
+  never meant to be public.
+remediation: >
+  Disable autoindex (Options -Indexes for Apache, autoindex off in
+  nginx) and make sure a default index page exists for every folder.
+reference: https://nginx.org/en/docs/http/ngx_http_autoindex_module.html
 steps:
   - type: send
     data: /

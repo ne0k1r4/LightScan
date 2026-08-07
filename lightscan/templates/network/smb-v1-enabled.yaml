@@ -1,11 +1,17 @@
 id: CVE-2017-0143
 name: CVE-2017-0143
 severity: high
+cve: CVE-2017-0143
 tags: [smb, smbv1, windows, legacy, cve-2017-0143]
 port: 445
 protocol: tcp
-description: SMBv1 deprecated and vulnerable to EternalBlue
-remediation: Run Set-SmbServerConfiguration to disable SMBv1
+description: >
+  SMBv1 is still enabled on this host. The protocol family behind
+  MS17-010 (EternalBlue, CVE-2017-0143) turns a reachable 445 into
+  remote code execution — it was the delivery vehicle for WannaCry and
+  NotPetya.
+remediation: Run Set-SmbServerConfiguration -EnableSMB1Protocol $false (and disable it client-side via dism)
+reference: https://nvd.nist.gov/vuln/detail/CVE-2017-0143
 steps:
   - type: send
     data: "0000008cff534d4262000000008043c80000000000000000000000000000fffe0000400000006e00025043204e4554574f524b2050524f4752414d20312e300002"

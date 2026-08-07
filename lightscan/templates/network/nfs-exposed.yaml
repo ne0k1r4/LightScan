@@ -1,11 +1,18 @@
-id: CVE-1999-0116
-name: CVE-1999-0116
+id: nfs-exposed
+name: NFS share exported without restriction
 severity: high
-tags: [nfs, exposure, file-share, cve-1999-0116]
+tags: [nfs, exposure, file-share]
 port: 2049
 protocol: tcp
-description: NFS share accessible without auth — file system exposure
-remediation: Restrict exports in /etc/exports by IP range
+description: >
+  An NFS export answers mount requests without host restrictions. Anyone
+  on the network can mount the share — home directories, web roots or
+  application data become readable (or writable) over the wire.
+remediation: >
+  Scope exports to specific IPs/subnets in /etc/exports (no
+  no_root_squash, no insecure), and prefer Kerberos (sec=krb5) where
+  possible.
+reference: https://linux.die.net/man/5/exports
 steps:
   - type: send
     data: "800000288f8b769d000000020000006100000000000000010000000000000002000186a30000000300000000"
