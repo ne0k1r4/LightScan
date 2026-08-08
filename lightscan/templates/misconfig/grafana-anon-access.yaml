@@ -5,17 +5,20 @@ tags: [grafana, monitoring, unauth, exposure]
 port: 3000
 protocol: http
 description: >
-  Grafana has anonymous access turned on, so dashboards — and whatever
-  they visualize, metrics, logs, sometimes PII — are visible without a
-  login. Depending on the anonymous role, the viewer may even reach
-  data-source queries.
+  Grafana answers unauthenticated API requests — anonymous access is
+  enabled or the default admin/admin login was never changed. Either
+  way dashboards and data are visible without a login, and
+  data-source probing can open an SSRF path.
 remediation: >
-  Set auth.anonymous.enabled = false in grafana.ini, or scope the
-  anonymous role to a dedicated read-only dashboard.
+  Disable anonymous access (auth.anonymous.enabled = false), force a
+  password change on the admin account, and keep Grafana behind SSO
+  or a VPN.
 reference: https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/grafana/
 steps:
   - type: send
     data: /api/org
+  - type: match
+    status: [200]
   - type: match
     contains: "name"
     part: body
