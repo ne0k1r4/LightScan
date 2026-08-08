@@ -19,5 +19,10 @@ steps:
   - type: match
     status: [200]
   - type: match
-    not_contains: "not found"
-    not_contains: "error"
+    matchers:
+      - type: word
+        words: ["not found"]
+        negative: true
+      - type: word
+        words: ["error"]
+        negative: true

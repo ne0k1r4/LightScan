@@ -1,8 +1,7 @@
 id: rdp-exposed
 name: RDP exposed to the network
 severity: high
-cve: CVE-2019-0708
-tags: [rdp, windows, exposure, remote, cve-2019-0708]
+tags: [rdp, windows, exposure, remote]
 port: 3389
 protocol: tcp
 description: >

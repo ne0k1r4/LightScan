@@ -5,8 +5,12 @@ cve: CVE-2022-0543
 tags: [redis, unauth, exposure, database, cve-2022-0543]
 port: 6379
 protocol: tcp
-description: Redis accessible without authentication
-remediation: Set requirepass in redis.conf
+description: >
+  Redis answers without authentication. On Debian-packaged builds
+  this also exposes the Lua sandbox escape CVE-2022-0543 — an
+  unauthenticated EVAL/SCRIPT LOAD chain is remotely exploitable
+  without any credentials.
+remediation: Set requirepass in redis.conf; on distro-packaged builds also upgrade to a patched redis package
 reference: https://nvd.nist.gov/vuln/detail/CVE-2022-0543
 steps:
   - type: send
