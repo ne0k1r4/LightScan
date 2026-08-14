@@ -72,3 +72,25 @@ func TestScanMetricsAggregatesOutcomeAndRetryCounts(t *testing.T) {
 		t.Fatalf("unexpected outcome counters: %+v", metrics)
 	}
 }
+
+func TestIPv6LiteralAndCIDRTargetsStayBounded(t *testing.T) {
+	literal, err := parseTargets("[::1]", 4)
+	if err != nil {
+		t.Fatalf("parse bracketed IPv6 literal: %v", err)
+	}
+	if len(literal) != 1 || literal[0] != "::1" {
+		t.Fatalf("literal=%v", literal)
+	}
+
+	cidr, err := parseTargets("2001:db8::1/128", 4)
+	if err != nil {
+		t.Fatalf("parse IPv6 /128: %v", err)
+	}
+	if len(cidr) != 1 || cidr[0] != "2001:db8::1" {
+		t.Fatalf("cidr=%v", cidr)
+	}
+
+	if _, err := parseTargets("2001:db8::/64", 4); err == nil {
+		t.Fatal("expected broader IPv6 CIDR to remain rejected")
+	}
+}

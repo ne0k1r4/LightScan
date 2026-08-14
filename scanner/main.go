@@ -139,9 +139,9 @@ func validPort(port int) bool {
 	return port >= 1 && port <= 65535
 }
 
-// parseTargets expands only IPv4 CIDR targets. The Python layer owns full
-// multi-family target normalization; this guard keeps the standalone binary
-// predictable and prevents accidental unbounded expansion.
+// parseTargets accepts IPv4 and IPv6 literals, expands bounded IPv4 CIDRs,
+// and accepts IPv6 /128 CIDRs as a literal alias. Broader IPv6 CIDRs remain
+// intentionally rejected to prevent accidental massive expansion.
 func parseTargets(spec string, maxTargets int) ([]string, error) {
 	if maxTargets < 1 {
 		return nil, fmt.Errorf("max targets must be at least 1")
@@ -154,6 +154,11 @@ func parseTargets(spec string, maxTargets int) ([]string, error) {
 }
 
 func parseTargetSpec(spec string, maxTargets int) ([]string, error) {
+	if strings.HasPrefix(spec, "[") && strings.HasSuffix(spec, "]") {
+		spec = strings.TrimSuffix(strings.TrimPrefix(spec, "["), "]")
+	} else if strings.HasPrefix(spec, "[") || strings.HasSuffix(spec, "]") {
+		return nil, fmt.Errorf("invalid bracketed target: %s", spec)
+	}
 	if spec == "" {
 		return nil, fmt.Errorf("target specification cannot be empty")
 	}
@@ -212,10 +217,13 @@ func parseCIDR(spec string, maxTargets int) ([]string, error) {
 		return nil, err
 	}
 	ipv4 := ip.To4()
-	if ipv4 == nil {
-		return nil, fmt.Errorf("Go engine currently accepts IPv4 CIDR targets only")
-	}
 	ones, bits := network.Mask.Size()
+	if ipv4 == nil {
+		if bits == 128 && ones == 128 {
+			return []string{network.IP.String()}, nil
+		}
+		return nil, fmt.Errorf("Go engine accepts IPv6 CIDR targets only as /128 literals")
+	}
 	if bits != 32 {
 		return nil, fmt.Errorf("invalid IPv4 CIDR: %s", spec)
 	}
@@ -476,7 +484,7 @@ func boundedBuffer(concurrency int) int {
 }
 
 func main() {
-	target := flag.String("t", "", "Target: IPv4, IPv4 CIDR, range, hostname, or file:path")
+	target := flag.String("t", "", "Target: IPv4/IPv6 literal, IPv4 CIDR, range, hostname, or file:path")
 	portSpec := flag.String("p", "top100", "Ports: 22,80,443 | 1-1024 | top100")
 	concurrency := flag.Int("c", 1000, "Maximum concurrent connections")
 	perHostConcurrency := flag.Int("per-host-concurrency", 64, "Maximum concurrent connections per host")

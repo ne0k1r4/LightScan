@@ -50,6 +50,10 @@ def parse_targets(spec: str, *, max_targets: int = DEFAULT_MAX_TARGETS) -> list[
 
 def _parse_target_spec(spec: str, *, max_targets: int) -> list[str]:
     spec = (spec or "").strip()
+    if spec.startswith("[") and spec.endswith("]"):
+        spec = spec[1:-1]
+    elif spec.startswith("[") or spec.endswith("]"):
+        raise TargetSpecError(f"invalid bracketed target: {spec!r}")
     if not spec:
         raise TargetSpecError("target specification cannot be empty")
 

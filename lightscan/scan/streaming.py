@@ -16,6 +16,7 @@ from typing import Callable, Iterable, Sequence
 
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.core.runtime_telemetry import capture_runtime_snapshot, resource_delta
+from lightscan.scan.aimd import AimdConcurrencyController
 from lightscan.scan.portscan import CRIT_PORTS, HIGH_PORTS, PROBES, SERVICE_MAP
 
 
@@ -70,6 +71,7 @@ class ScanMetrics:
     skipped: int = 0
     elapsed: float = 0.0
     runtime: dict[str, int | None] = field(default_factory=dict)
+    aimd: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -87,6 +89,7 @@ class ScanMetrics:
             "skipped": self.skipped,
             "elapsed": round(self.elapsed, 3),
             "runtime": self.runtime,
+            "aimd": self.aimd,
         }
 
 
@@ -167,6 +170,7 @@ class StreamingTCPScanner:
         )
         self._adaptive = None
         self._adaptive_window = None
+        self._aimd = None
         if controls.adaptive:
             from lightscan.scan.adaptive import AdaptiveTimingEngine
 
@@ -174,7 +178,13 @@ class StreamingTCPScanner:
                 base_timing=controls.timing,
                 max_concurrency=controls.concurrency,
             )
-            self._adaptive_window = _AdaptiveWindow(self._adaptive.current_concurrency)
+            self._aimd = AimdConcurrencyController(
+                initial=self._adaptive.current_concurrency,
+                maximum=controls.concurrency,
+                minimum=max(1, min(4, controls.per_host_concurrency, controls.concurrency)),
+            )
+            self._adaptive_window = _AdaptiveWindow(self._aimd.current)
+            self.metrics.aimd = self._aimd.summary()
 
     async def scan(
         self,
@@ -377,8 +387,11 @@ class StreamingTCPScanner:
             await self._adaptive.record_response(host, elapsed)
         elif status in {"filtered", "transient"}:
             await self._adaptive.record_timeout(host)
-        if self._adaptive_window is not None:
-            await self._adaptive_window.update(self._adaptive.current_concurrency)
+        if self._adaptive_window is not None and self._aimd is not None:
+            loss_aware_limit = self._aimd.record(status)
+            combined_limit = min(self._adaptive.current_concurrency, loss_aware_limit)
+            await self._adaptive_window.update(combined_limit)
+            self.metrics.aimd = self._aimd.summary()
 
     @property
     def adaptive_summary(self) -> str | None:
