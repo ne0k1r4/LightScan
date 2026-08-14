@@ -72,6 +72,7 @@ async def scan_with_go(
             "--per-host-concurrency", str(controls.per_host_concurrency),
             "--max-targets", str(len(hosts)),
             "--retries", str(controls.retries),
+            "--retry-jitter", str(controls.retry_jitter),
             "--host-timeout", f"{controls.host_timeout}s",
             "--max-rate", str(controls.max_rate),
             "-T", str(max(1, round(timeout * 1000))),
@@ -99,6 +100,7 @@ async def scan_with_go(
                 if record.get("type") == "summary":
                     aggregate_metrics = dict(record.get("metrics") or {})
                     aggregate_metrics["elapsed"] = record.get("elapsed", 0.0)
+                    aggregate_metrics["runtime"] = dict(record.get("runtime") or {})
                     continue
                 if record.get("status") != "open":
                     continue

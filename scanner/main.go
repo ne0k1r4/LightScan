@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,29 +23,42 @@ import (
 
 // Result is emitted as one NDJSON object per scanned port when --json is set.
 type Result struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Status   string `json:"status"` // open | closed | filtered | skipped | error
-	Banner   string `json:"banner,omitempty"`
-	Ms       int64  `json:"ms"`
-	Attempts int    `json:"attempts"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+	Status         string `json:"status"` // open | closed | filtered | skipped | error
+	Banner         string `json:"banner,omitempty"`
+	Ms             int64  `json:"ms"`
+	Attempts       int    `json:"attempts"`
+	RetryFiltered  int    `json:"retry_filtered,omitempty"`
+	RetryTransient int    `json:"retry_transient,omitempty"`
+	RetryDelayMs   int64  `json:"retry_delay_ms,omitempty"`
 }
 
 type Summary struct {
-	Type    string      `json:"type"`
-	Metrics scanMetrics `json:"metrics"`
-	Elapsed float64     `json:"elapsed"`
+	Type    string           `json:"type"`
+	Metrics scanMetrics      `json:"metrics"`
+	Runtime runtimeTelemetry `json:"runtime"`
+	Elapsed float64          `json:"elapsed"`
+}
+
+type runtimeTelemetry struct {
+	GoRoutines          int  `json:"go_routines"`
+	OpenFileDescriptors *int `json:"open_file_descriptors,omitempty"`
 }
 
 type scanMetrics struct {
-	Scheduled int `json:"scheduled"`
-	Attempts  int `json:"attempts"`
-	Open      int `json:"open"`
-	Closed    int `json:"closed"`
-	Filtered  int `json:"filtered"`
-	Errors    int `json:"errors"`
-	Skipped   int `json:"skipped"`
-	Retries   int `json:"retries"`
+	Scheduled      int   `json:"scheduled"`
+	Attempts       int   `json:"attempts"`
+	Open           int   `json:"open"`
+	Closed         int   `json:"closed"`
+	Filtered       int   `json:"filtered"`
+	Errors         int   `json:"errors"`
+	Skipped        int   `json:"skipped"`
+	Retries        int   `json:"retries"`
+	Transient      int   `json:"transient"`
+	RetryFiltered  int   `json:"retry_filtered"`
+	RetryTransient int   `json:"retry_transient"`
+	RetryDelayMs   int64 `json:"retry_delay_ms"`
 }
 
 func (metrics *scanMetrics) add(result Result) {
@@ -52,6 +67,9 @@ func (metrics *scanMetrics) add(result Result) {
 	if result.Attempts > 1 {
 		metrics.Retries += result.Attempts - 1
 	}
+	metrics.RetryFiltered += result.RetryFiltered
+	metrics.RetryTransient += result.RetryTransient
+	metrics.RetryDelayMs += result.RetryDelayMs
 	switch result.Status {
 	case "open":
 		metrics.Open++
@@ -61,6 +79,8 @@ func (metrics *scanMetrics) add(result Result) {
 		metrics.Filtered++
 	case "skipped":
 		metrics.Skipped++
+	case "transient":
+		metrics.Transient++
 	default:
 		metrics.Errors++
 	}
@@ -77,6 +97,7 @@ type config struct {
 	perHostConcurrency int
 	maxRate            float64
 	retries            int
+	retryJitter        float64
 	hostTimeout        time.Duration
 	grabBanners        bool
 }
@@ -426,7 +447,14 @@ func scanPort(host string, port int, cfg config, deadline time.Time, gate *rateG
 			return result
 		}
 		if attempt > 0 {
-			time.Sleep(minDuration(50*time.Millisecond*time.Duration(1<<(attempt-1)), 500*time.Millisecond))
+			delay := retryDelay(attempt, cfg.retryJitter)
+			result.RetryDelayMs += delay.Milliseconds()
+			if result.Status == "filtered" {
+				result.RetryFiltered++
+			} else if result.Status == "transient" {
+				result.RetryTransient++
+			}
+			time.Sleep(delay)
 		}
 
 		gate.wait()
@@ -436,7 +464,7 @@ func scanPort(host string, port int, cfg config, deadline time.Time, gate *rateG
 		result.Ms = time.Since(started).Milliseconds()
 		if err != nil {
 			result.Status = classifyError(err)
-			if result.Status == "filtered" && attempt < cfg.retries {
+			if (result.Status == "filtered" || result.Status == "transient") && attempt < cfg.retries {
 				continue
 			}
 			return result
@@ -452,6 +480,15 @@ func scanPort(host string, port int, cfg config, deadline time.Time, gate *rateG
 	return result
 }
 
+func retryDelay(attempt int, jitter float64) time.Duration {
+	base := minDuration(50*time.Millisecond*time.Duration(1<<(attempt-1)), 500*time.Millisecond)
+	if jitter <= 0 {
+		return base
+	}
+	factor := (1 - jitter) + rand.Float64()*(2*jitter)
+	return time.Duration(float64(base) * factor)
+}
+
 func classifyError(err error) string {
 	if errors, ok := err.(*net.OpError); ok && errors.Timeout() {
 		return "filtered"
@@ -463,7 +500,19 @@ func classifyError(err error) string {
 	if strings.Contains(text, "timed out") || strings.Contains(text, "no route to host") || strings.Contains(text, "network is unreachable") {
 		return "filtered"
 	}
+	if strings.Contains(text, "too many open files") || strings.Contains(text, "no buffer space") || strings.Contains(text, "cannot assign requested address") || strings.Contains(text, "connection aborted") {
+		return "transient"
+	}
 	return "error"
+}
+
+func captureRuntimeTelemetry() runtimeTelemetry {
+	telemetry := runtimeTelemetry{GoRoutines: runtime.NumGoroutine()}
+	if entries, err := os.ReadDir("/proc/self/fd"); err == nil {
+		count := len(entries)
+		telemetry.OpenFileDescriptors = &count
+	}
+	return telemetry
 }
 
 func minDuration(left, right time.Duration) time.Duration {
@@ -491,7 +540,8 @@ func main() {
 	hostGroup := flag.Int("host-group", 256, "Hosts scheduled per fair-scan group")
 	timeoutMs := flag.Int("T", 1500, "Connection timeout in milliseconds")
 	maxRate := flag.Float64("max-rate", 0, "Maximum connection starts per second; 0 disables the cap")
-	retries := flag.Int("retries", 1, "Retries for timeout or filtered outcomes")
+	retries := flag.Int("retries", 1, "Retries for timeout or transient outcomes")
+	retryJitter := flag.Float64("retry-jitter", 0.15, "Symmetric retry jitter from 0.0 to 1.0")
 	hostTimeout := flag.Duration("host-timeout", 0, "Maximum wall time per host, for example 15s; 0 disables")
 	maxTargets := flag.Int("max-targets", 65536, "Maximum expanded target count")
 	outputJSON := flag.Bool("json", false, "Output NDJSON (one result per line)")
@@ -505,7 +555,7 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if *concurrency < 1 || *perHostConcurrency < 1 || *hostGroup < 1 || *timeoutMs < 1 || *retries < 0 || *maxRate < 0 {
+	if *concurrency < 1 || *perHostConcurrency < 1 || *hostGroup < 1 || *timeoutMs < 1 || *retries < 0 || *maxRate < 0 || *retryJitter < 0 || *retryJitter > 1 {
 		fmt.Fprintln(os.Stderr, "error: concurrency, host group, timeout, retries, and rate controls are invalid")
 		os.Exit(2)
 	}
@@ -527,6 +577,7 @@ func main() {
 		perHostConcurrency: *perHostConcurrency,
 		maxRate:            *maxRate,
 		retries:            *retries,
+		retryJitter:        *retryJitter,
 		hostTimeout:        *hostTimeout,
 		grabBanners:        !*noBanner,
 	}
@@ -562,6 +613,7 @@ func main() {
 			_ = encoder.Encode(Summary{
 				Type:    "summary",
 				Metrics: metrics,
+				Runtime: captureRuntimeTelemetry(),
 				Elapsed: time.Since(scanStarted).Seconds(),
 			})
 		}

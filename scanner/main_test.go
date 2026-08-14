@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParsePortsRejectsInvalidValues(t *testing.T) {
 	for _, specification := range []string{"", "0", "65536", "443-80", "80,,443"} {
@@ -92,5 +95,30 @@ func TestIPv6LiteralAndCIDRTargetsStayBounded(t *testing.T) {
 
 	if _, err := parseTargets("2001:db8::/64", 4); err == nil {
 		t.Fatal("expected broader IPv6 CIDR to remain rejected")
+	}
+}
+
+func TestRetryDelayCanDisableJitterForReproducibleRuns(t *testing.T) {
+	if got := retryDelay(1, 0); got != 50*time.Millisecond {
+		t.Fatalf("retryDelay(1, 0)=%s, want 50ms", got)
+	}
+	if got := retryDelay(2, 0); got != 100*time.Millisecond {
+		t.Fatalf("retryDelay(2, 0)=%s, want 100ms", got)
+	}
+}
+
+func TestScanMetricsRetainsTransientAndRetryEvidence(t *testing.T) {
+	metrics := scanMetrics{}
+	metrics.add(Result{
+		Status:         "transient",
+		Attempts:       2,
+		RetryTransient: 1,
+		RetryDelayMs:   50,
+	})
+	if metrics.Transient != 1 || metrics.Retries != 1 || metrics.RetryTransient != 1 || metrics.RetryDelayMs != 50 {
+		t.Fatalf("unexpected transient metrics: %+v", metrics)
+	}
+	if captureRuntimeTelemetry().GoRoutines < 1 {
+		t.Fatal("expected runtime telemetry to report at least one goroutine")
 	}
 }
