@@ -1,5 +1,5 @@
 """
-LightScan v2.4 — CLI Entry Point
+LightScan v2.5 — CLI Entry Point
 Developer: Light (Neok1ra)
 
 Usage:
@@ -36,7 +36,7 @@ from lightscan.scan.evasion import parse_timing  # used in multiple branches
 def build_parser():
     p = argparse.ArgumentParser(
         prog="lightscan",
-        description="LightScan v2.4 — Authorized Network Inventory & Assessment Scanner",
+        description="LightScan v2.5 — Authorized Network Inventory & Assessment Scanner",
         formatter_class=argparse.RawTextHelpFormatter,
         add_help=False
     )
@@ -116,6 +116,8 @@ def build_parser():
                    help="Maximum TCP connection starts per second; 0 disables the cap")
     m.add_argument("--retries",      type=int, default=1,
                    help="Retries for timeout or filtered TCP outcomes (default: 1)")
+    m.add_argument("--retry-jitter", type=float, default=0.15,
+                   help="Random retry-backoff fraction from 0.0 to 1.0 (default: 0.15)")
     m.add_argument("--host-timeout", type=float, default=0.0,
                    help="Maximum seconds spent on one host; 0 disables the cap")
     m.add_argument("--per-host-concurrency", type=int, default=32,
@@ -291,13 +293,14 @@ async def async_main(args):
     if any(value < 0 for value in (
         getattr(args, "max_rate", 0.0),
         getattr(args, "retries", 0),
+        getattr(args, "retry_jitter", 0.0),
         getattr(args, "host_timeout", 0.0),
-    )) or any(value < 1 for value in (
+    )) or not 0.0 <= getattr(args, "retry_jitter", 0.0) <= 1.0 or any(value < 1 for value in (
         getattr(args, "per_host_concurrency", 1),
         getattr(args, "host_group_size", 1),
     )):
         print("\033[38;5;208m[!] Invalid streaming scan controls. "
-              "Rate, retries, and host timeout cannot be negative; "
+              "Rate, retries, and host timeout cannot be negative; retry jitter must be 0.0 to 1.0; "
               "concurrency controls must be at least 1.\033[0m")
         sys.exit(1)
 
@@ -859,6 +862,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             per_host_concurrency=args.per_host_concurrency,
             max_rate=args.max_rate,
             retries=args.retries,
+            retry_jitter=args.retry_jitter,
             host_timeout=args.host_timeout,
             host_group_size=args.host_group_size,
             adaptive=getattr(args, "adaptive", False),
@@ -869,7 +873,7 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             f"\033[38;5;196m[SCAN]\033[0m {engine_name} engine | "
             f"{len(hosts)+len(cdn_hosts)} host(s) × {len(ports)} port(s){cdn_note} | "
             f"concurrency={controls.concurrency} per-host={controls.per_host_concurrency} "
-            f"rate={controls.max_rate or 'unlimited'}"
+            f"rate={controls.max_rate or 'unlimited'} retry-jitter={controls.retry_jitter}"
         )
 
         scan_r = []
@@ -1207,6 +1211,7 @@ def print_minimal_help() -> None:
         f"  Common Options:",
         f"    {ORANGE}-p <ports>{RESET}          Ports (e.g. 22,80,443 | 1-1024 | top100)",
         f"    {ORANGE}--max-rate <n>{RESET}      Cap TCP connection starts per second",
+        f"    {ORANGE}--retry-jitter <0..1>{RESET} Randomize retry backoff (default: 0.15)",
         f"    {ORANGE}--per-host-concurrency{RESET}  Limit in-flight TCP jobs per host",
         f"    {ORANGE}--go-engine{RESET}         Use compiled Go TCP scanner (make go first)",
         f"    {ORANGE}--stream-open <path>{RESET} Stream open results as NDJSON",

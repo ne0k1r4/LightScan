@@ -116,7 +116,7 @@ class Reporter:
                 "args": str(meta.get("command", "")),
                 "start": str(start),
                 "startstr": time.ctime(start),
-                "version": "2.4.0",
+                "version": "2.5.0",
                 "xmloutputversion": "1.04",
             },
         )
@@ -289,7 +289,7 @@ td{{padding:6px 8px;border-bottom:1px solid #222}}tr:hover{{background:#151515}}
 .stat{{background:#1a1a1a;padding:1rem;border-left:3px solid #e84545}}
 .stat h2{{margin:0;color:#e84545}}.stat p{{margin:0;color:#888}}</style></head><body>
 <h1>LightScan Report</h1>
-<p style='color:#555'>generated {html.escape(time.ctime())} · lightscan v2.4.0</p>
+<p style='color:#555'>generated {html.escape(time.ctime())} · lightscan v2.5.0</p>
 <div class='stats'>
 <div class='stat'><h2>{len(results)}</h2><p>findings</p></div>
 <div class='stat'><h2>{critical}</h2><p>critical</p></div>

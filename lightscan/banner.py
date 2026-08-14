@@ -12,7 +12,7 @@ import random
 import shutil
 import sys
 
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 AUTHOR  = "Light"
 ALIAS   = "Neok1ra"
 

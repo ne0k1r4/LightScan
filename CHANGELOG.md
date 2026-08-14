@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### v2.5.0 — Advanced Reliability Controls
+
+#### Added
+- `lightscan/core/runtime_telemetry.py`: portable process-resource snapshots reporting open file descriptors where available, soft/hard descriptor limits, and maximum resident memory.
+- `lightscan/scan/aimd.py`: a small additive-increase/multiplicative-decrease controller for loss-aware adaptive concurrency.
+- `tests/test_reliability_telemetry.py`: local-only tests for jittered retry delays, transient error classification, retry metrics, and process telemetry.
+- `tests/test_aimd_ipv6.py`: local-only tests for the AIMD control law, bracketed IPv6 normalization, and IPv6 loopback TCP discovery.
+
+#### Changed
+- `lightscan/scan/streaming.py`: classifies resource-pressure and temporary network failures as transient, retries filtered and transient outcomes with bounded randomized delay, exports retry/telemetry metrics, and lets the adaptive window use AIMD feedback.
+- `scanner/main.go` and `scanner/main_test.go`: add bracketed IPv6 literal/CIDR readiness, transient retry classification, bounded jittered delays, retry aggregate fields, and process runtime telemetry to the Go NDJSON completion summary.
+- `lightscan/scan/go_runner.py`: forwards retry-jitter settings to `lscan` and retains the Go runtime telemetry summary in the common performance metadata.
+- `lightscan/core/target.py`: normalizes bracketed IPv6 literals such as `[::1]` before resolution and scan planning.
+- `lightscan/cli.py`: adds validated `--retry-jitter` control, forwards it to both execution engines, exposes the setting in scan status and concise help, and aligns CLI identity at v2.5.
+- `pyproject.toml`, `setup.py`, `lightscan/__init__.py`, `lightscan/banner.py`, and `lightscan/core/reporter.py`: align packaging, runtime banners, and XML/HTML report metadata at `2.5.0`.
+- `README.md`, `PERFORMANCE.md`, and `CHANGELOG.md`: document the v2.5 reliability controls, adaptive behaviour, IPv6 normalization, local validation scope, and release record.
+
+#### Fixed
+- Retry behavior now distinguishes filtered results from temporary local resource pressure instead of treating all non-open outcomes as equivalent.
+- Adaptive scan concurrency now reduces promptly after loss feedback and recovers conservatively after sustained success.
+
 ### v2.4.0 — Constrained Lua Checks and Loopback Benchmark
 
 #### Added

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="lightscan",
-    version="2.4.0",
+    version="2.5.0",
     description="Authorized network inventory and assessment scanner",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
