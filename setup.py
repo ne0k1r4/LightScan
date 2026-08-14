@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="lightscan",
-    version="2.0.0",
-    description="Autonomous red-team reconnaissance and attack framework",
+    version="2.4.0",
+    description="Authorized network inventory and assessment scanner",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="Light",
@@ -13,7 +13,7 @@ setup(
     packages=find_packages(),
     python_requires=">=3.10",
     entry_points={"console_scripts": ["lightscan=lightscan.cli:main"]},
-    install_requires=[],  # zero hard deps — stdlib only
+    install_requires=["PyYAML==6.0.1"],  # Required by the bundled template engine
     extras_require={
         "full": [
             "paramiko==3.4.0",

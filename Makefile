@@ -2,10 +2,10 @@
 # make          → install core (dev mode)
 # make full     → install with all optional deps
 # make go       → build Go scanner binary
-# make test     → run test suite
+# make test     → run Python and Go test suites
 # make lint     → ruff lint check
 # make clean    → remove build artifacts and __pycache__
-# make release  → bump version, tag, push
+# make release  → tag and push the current version
 
 PYTHON  := python3
 PIP     := $(PYTHON) -m pip
@@ -13,7 +13,7 @@ GOBIN   := scanner/lscan
 GOSRC   := scanner/main.go
 VERSION := $(shell grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)
 
-.PHONY: all install full go test lint clean release fmt
+.PHONY: all install full go go-test test lint clean release fmt
 
 all: install
 
@@ -36,10 +36,16 @@ go-install: go
 	install -m 755 $(GOBIN) /usr/local/bin/lscan
 	@echo "✓ lscan installed to /usr/local/bin/lscan"
 
+go-test:
+	@if command -v go >/dev/null 2>&1; then \
+		cd scanner && go test ./...; \
+	else \
+		echo "Go not found — skipping native companion tests"; \
+	fi
+
 test:
-	$(PYTHON) -m pytest tests/ -v --tb=short 2>/dev/null || \
-		$(PYTHON) -m pytest lightscan/ --doctest-modules -v 2>/dev/null || \
-		$(PYTHON) -m py_compile lightscan/**/*.py lightscan/*.py && echo "✓ Syntax OK"
+	$(PYTHON) -m pytest -q
+	@$(MAKE) go-test
 
 lint:
 	@command -v ruff >/dev/null 2>&1 && ruff check lightscan/ || \

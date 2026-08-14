@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lightscan"
-version = "2.0.0"
-description = "Autonomous red-team reconnaissance and attack framework"
+version = "2.4.0"
+description = "Authorized network inventory and assessment scanner"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Light", email = "ne0k1r4@proton.me" }]
 requires-python = ">=3.10"
-keywords = ["security", "pentest", "red-team", "scanner", "recon", "ctf"]
+keywords = ["security", "network-scanner", "service-discovery", "inventory", "assessment"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -22,7 +22,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Information Technology",
 ]
-dependencies = []  # zero hard deps — pure stdlib core
+dependencies = ["PyYAML==6.0.1"]  # Required by the bundled YAML template engine
 
 [project.optional-dependencies]
 full = [
@@ -58,7 +58,7 @@ where = ["."]
 include = ["lightscan*"]
 
 [tool.setuptools.package-data]
-lightscan = ["templates/**/*.yaml", "data/*.json", "data/nmap-service-probes"]
+lightscan = ["templates/**/*.yaml", "data/*.json", "data/nmap-service-probes", "lua_scripts/*.lua"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

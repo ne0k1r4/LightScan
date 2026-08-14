@@ -1,10 +1,86 @@
 # Changelog
 
 ## Unreleased
-- fix: template audit — dropped fabricated CVE IDs from ~30 unauth/misconfig checks;
-  they now carry honest descriptive IDs with real remediation and references
-- refactor: merged duplicate kibana / docker-api / prometheus / kubernetes-api / bluekeep / grafana checks (58 templates)
-- fix: BlueKeep probe now exchanges the mstshash cookie for accurate pre-NLA detection
+
+### v2.4.0 — Constrained Lua Checks and Loopback Benchmark
+
+#### Added
+- `lightscan/scan/lua_checks.py`: an NSE-inspired Lua 5.4 service-check engine that discovers declarative metadata, runs checks in a short-lived restricted process, permits only safe categories, and normalizes findings into `ScanResult`.
+- `lightscan/lua_scripts/tcp_banner_inventory.lua` and `lightscan/lua_scripts/http_security_headers.lua`: bundled non-destructive inventory and HTTP response-header checks.
+- `LUA_CHECKS.md`: Lua API, safe execution boundary, observation contract, review checklist, and custom-check workflow.
+- `tools/benchmark_loopback.py`: a loopback-only three-engine 1–65,535 TCP-connect benchmark harness that refuses arbitrary targets.
+- `benchmark_results/loopback_65535.json` and `benchmark_results/loopback_65535_chart.png`: recorded three-trial local benchmark data and visualization.
+- `BENCHMARK_65535.md`: benchmark methodology, raw results, analysis, scope limits, and reproduction instructions.
+- `tests/test_lua_checks.py`: local-only coverage for safe discovery, forbidden-capability rejection, HTTP check findings, and enforced execution timeouts.
+
+#### Changed
+- `lightscan/cli.py`: adds `--lua-script`, `--lua-script-tags`, `--lua-script-dir`, `--list-lua-scripts`, and `--lua-concurrency`; Lua checks are scheduled only after confirmed port discovery and cannot be combined with retention-free streaming.
+- `pyproject.toml`: packages bundled `.lua` checks so installed wheels retain the extension library.
+- `README.md`, `PERFORMANCE.md`, and `RESEARCH_SOURCES.md`: document the v2.4 Lua contract, local benchmark results, and official NSE/TCP-connect design references.
+- `pyproject.toml`, `setup.py`, `lightscan/__init__.py`, `lightscan/banner.py`, `lightscan/cli.py`, and `lightscan/core/reporter.py`: release identity and report metadata are aligned at `2.4.0`.
+
+#### Fixed
+- `lightscan/scan/lua_checks.py`: safely moves observed service context through a temporary JSON file rather than interpolating untrusted banner content into generated Lua source.
+- `lightscan/scan/lua_checks.py`: corrected Lua JSON-wrapper escaping and table-key handling under Lua 5.4, and converts subprocess timeouts into controlled check-specific errors.
+
+### v2.3.0 — Incremental Results and Telemetry
+
+#### Added
+- `lightscan/core/ndjson.py`: durable NDJSON event writer that immediately emits each open result and closes with one metadata and performance summary event.
+- `lightscan/core/metrics.py`: portable `lightscan-performance/v1` snapshots, derived throughput/outcome rates, and offline baseline-versus-candidate comparisons.
+- `tests/test_ndjson_metrics.py`: local-only coverage for event stream ordering, retention-free scans, snapshot generation, and metric comparison.
+- `RESEARCH_SOURCES.md`: authoritative performance, service-detection, and structured-output design references retained for future maintainers.
+
+#### Changed
+- `lightscan/scan/streaming.py`: accepts result callbacks and `retain_results=False`, allowing high-scale scans to avoid retaining the open-result list while still counting metrics.
+- `lightscan/scan/go_runner.py` and `scanner/main.go`: Go NDJSON now ends with a compact completion summary; the Python bridge retains aggregate attempts, outcome, retry, and elapsed metrics while streaming only open results.
+- `lightscan/cli.py`: adds `--stream-open`, `--metrics-out`, and offline `--compare-metrics` controls, concise help coverage, and an explicit guard because retention-free streaming cannot supply the open-port list required by `--sv`.
+- `tests/test_streaming_scanner.py` and `scanner/main_test.go`: verify Go summary metrics and native aggregate counters.
+- `README.md` and `PERFORMANCE.md`: document retention-free NDJSON streams, portable snapshots, controlled comparisons, and v2.3 benchmark guidance.
+- `pyproject.toml`, `setup.py`, `lightscan/__init__.py`, `lightscan/banner.py`, `lightscan/cli.py`, and `lightscan/core/reporter.py`: release identity and generated report metadata are aligned at `2.3.0`.
+
+#### Fixed
+- `scanner/main.go`: aggregate outcome metrics remain available even with `--open`, preventing high-scale Go runs from losing closed, filtered, retry, or skipped counts.
+
+### v2.2.0 — Streaming Performance Architecture
+
+#### Added
+- `lightscan/scan/streaming.py`: bounded asynchronous TCP scheduler with a fixed-capacity work queue, fair port-major host grouping, global connection-rate limiting, adaptive RTT/loss feedback window, per-host concurrency, retry-aware timeout classification, host-time ceilings, and runtime metrics.
+- `lightscan/scan/go_runner.py`: streamed NDJSON bridge from the optional Go `lscan` binary into LightScan's common `ScanResult` and reporting contract.
+- `scanner/main.go`: rewritten Go TCP engine with bounded job/result channels, exact target/port input validation, retry and rate controls, per-host limits, host timeouts, and writer completion synchronization.
+- `scanner/main_test.go` and `tests/test_streaming_scanner.py`: native Go and local-only Python coverage for bounded planning, queue limits, rate gates, streaming results, and Go bridge compatibility.
+- `PERFORMANCE.md`: operator controls, architectural boundaries, benchmark methodology, and references for the v2.2 execution model.
+
+#### Changed
+- `lightscan/cli.py`: `--scan` now uses the streaming scheduler and exposes `--go-engine`, `--go-binary`, `--max-rate`, `--retries`, `--host-timeout`, `--per-host-concurrency`, `--host-group-size`, `--no-banner-grab`, and `--no-adaptive`.
+- `Makefile`: `make test` now runs both Python and Go tests when Go is available.
+- `.gitignore`: excludes the platform-specific `scanner/lscan` build output so source commits remain portable.
+- `README.md`: documents the v2.2 scheduler, Go execution engine, performance controls, and local validation workflow.
+- `pyproject.toml`, `setup.py`, `lightscan/__init__.py`, `lightscan/banner.py`, `lightscan/cli.py`, and `lightscan/core/reporter.py`: release identity and report metadata are aligned at `2.2.0`.
+
+#### Fixed
+- `scanner/main.go`: Go output now waits for the NDJSON writer to drain, preventing process exit from truncating scan output.
+- `scanner/main.go`: target expansion and job buffers are explicitly bounded rather than scaling unchecked with input size or configured worker count.
+
+### v2.1.1 — Reliability and Reporting Foundation
+
+### Added
+- `lightscan/core/target.py`: bounded target planning with a default 65,536-target ceiling, strict CIDR/range/file parsing, stable de-duplication, and explicit `TargetSpecError` messages before network activity begins.
+- `lightscan/cli.py`: `--max-targets` and `--version-concurrency` controls, plus a scan-first service-probe flow when `--scan --sv` are combined.
+- `lightscan/scan/sversion.py`: normalized `ScanResult` service-probe adapter with protocol-derived `method=probed` and `confidence=10` evidence.
+- `tests/test_target_validation.py`, `tests/test_service_version.py`, and `tests/test_reporter_formats.py`: local-only regression coverage for scan planning, probes, and report contracts.
+
+### Changed
+- `lightscan/core/reporter.py`: JSON now retains complete result data while keeping legacy `host` and `service` aliases; Nmap-style XML now contains run statistics, port state, service method/confidence, and script records for non-port findings; HTML escapes untrusted banner text.
+- `lightscan/README.md`: rewritten around authorized inventory workflows, target limits, scan-first version detection, and output contracts.
+- `pyproject.toml` and `setup.py`: package metadata was updated for the authorized inventory and assessment positioning, and the required `PyYAML` dependency was declared for the bundled template engine.
+
+### Fixed
+- `lightscan/cli.py` and `lightscan/scan/sversion.py`: repaired the broken `--sv` path, which imported an undefined `detect_services` symbol.
+- `lightscan/scan/sversion.py`: service-probe connections now close deterministically and consistently honor their supplied timeout.
+- fix: template audit — dropped fabricated CVE IDs from ~30 unauth/misconfig checks; they now carry honest descriptive IDs with real remediation and references.
+- refactor: merged duplicate kibana / docker-api / prometheus / kubernetes-api / bluekeep / grafana checks (58 templates).
+- fix: BlueKeep probe now exchanges the mstshash cookie for accurate pre-NLA detection.
 
 ## v2.1.0 — 2026-06-13
 - feat: host discovery (ICMP ping + ARP sweep) before port scan

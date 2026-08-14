@@ -16,6 +16,9 @@ venv/
 *.log
 
 
+# Go companion build artifact
+scanner/lscan
+
 # Generated reports
 lightscan_report.*
 *_report.html

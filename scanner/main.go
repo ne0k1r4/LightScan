@@ -1,22 +1,13 @@
 // LightScan Go Scanner — high-performance TCP connect scanner companion binary.
 //
-// Why Go? Python's async TCP scanner is fast, but Go's goroutine scheduler
-// handles 10,000+ concurrent connections more efficiently for large subnet sweeps.
-// This binary is called by the Python engine when --raw-go is passed.
-//
-// Usage (standalone):
-//   ./lscan -t 10.0.0.0/24 -p 22,80,443,8080 -c 2000 -T 1500
-//   ./lscan -t 192.168.1.1-50 -p top100 --json
-//
-// Usage (from Python via subprocess):
-//   lscan -t <target> -p <ports> -c <concurrency> -T <timeout_ms> --json
-//
-// Output: one JSON object per line (NDJSON) for easy Python parsing.
-//   {"host":"10.0.0.1","port":22,"status":"open","banner":"SSH-2.0-OpenSSH_8.9","ms":4}
+// The Go engine is deliberately limited to authorized TCP inventory work. It
+// uses a bounded queue, host-fair scheduling, explicit rate and retry controls,
+// and NDJSON output so the Python CLI can retain one report contract.
 package main
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -28,17 +19,67 @@ import (
 	"time"
 )
 
-// ── Result ───────────────────────────────────────────────────────────────────
-
+// Result is emitted as one NDJSON object per scanned port when --json is set.
 type Result struct {
-	Host   string `json:"host"`
-	Port   int    `json:"port"`
-	Status string `json:"status"` // open | closed | filtered
-	Banner string `json:"banner,omitempty"`
-	Ms     int64  `json:"ms"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Status   string `json:"status"` // open | closed | filtered | skipped | error
+	Banner   string `json:"banner,omitempty"`
+	Ms       int64  `json:"ms"`
+	Attempts int    `json:"attempts"`
 }
 
-// ── Port lists ────────────────────────────────────────────────────────────────
+type Summary struct {
+	Type    string      `json:"type"`
+	Metrics scanMetrics `json:"metrics"`
+	Elapsed float64     `json:"elapsed"`
+}
+
+type scanMetrics struct {
+	Scheduled int `json:"scheduled"`
+	Attempts  int `json:"attempts"`
+	Open      int `json:"open"`
+	Closed    int `json:"closed"`
+	Filtered  int `json:"filtered"`
+	Errors    int `json:"errors"`
+	Skipped   int `json:"skipped"`
+	Retries   int `json:"retries"`
+}
+
+func (metrics *scanMetrics) add(result Result) {
+	metrics.Scheduled++
+	metrics.Attempts += result.Attempts
+	if result.Attempts > 1 {
+		metrics.Retries += result.Attempts - 1
+	}
+	switch result.Status {
+	case "open":
+		metrics.Open++
+	case "closed":
+		metrics.Closed++
+	case "filtered":
+		metrics.Filtered++
+	case "skipped":
+		metrics.Skipped++
+	default:
+		metrics.Errors++
+	}
+}
+
+type job struct {
+	host string
+	port int
+}
+
+type config struct {
+	timeout            time.Duration
+	concurrency        int
+	perHostConcurrency int
+	maxRate            float64
+	retries            int
+	hostTimeout        time.Duration
+	grabBanners        bool
+}
 
 var top100 = []int{
 	20, 21, 22, 23, 25, 53, 69, 79, 80, 88, 110, 111, 119, 123, 135, 137,
@@ -48,124 +89,208 @@ var top100 = []int{
 	8443, 8888, 9000, 9090, 9200, 9300, 9443, 10000, 27017,
 }
 
-// ── Target parsing ────────────────────────────────────────────────────────────
-
-// parsePorts converts "22,80,443" or "1-1024" or "top100" into a port list.
 func parsePorts(spec string) ([]int, error) {
-	if strings.EqualFold(spec, "top100") {
-		return top100, nil
+	if strings.EqualFold(spec, "top100") || strings.EqualFold(spec, "top-100") {
+		return append([]int(nil), top100...), nil
 	}
+	if strings.TrimSpace(spec) == "" {
+		return nil, fmt.Errorf("port specification cannot be empty")
+	}
+
 	ports := make([]int, 0)
 	seen := map[int]bool{}
-	for _, part := range strings.Split(spec, ",") {
-		part = strings.TrimSpace(part)
+	for _, rawPart := range strings.Split(spec, ",") {
+		part := strings.TrimSpace(rawPart)
+		if part == "" {
+			return nil, fmt.Errorf("empty port entry in %q", spec)
+		}
 		if strings.Contains(part, "-") {
 			bounds := strings.SplitN(part, "-", 2)
-			lo, err1 := strconv.Atoi(bounds[0])
-			hi, err2 := strconv.Atoi(bounds[1])
-			if err1 != nil || err2 != nil || lo > hi {
+			if len(bounds) != 2 {
 				return nil, fmt.Errorf("invalid port range: %s", part)
 			}
-			for p := lo; p <= hi; p++ {
-				if !seen[p] {
-					ports = append(ports, p)
-					seen[p] = true
+			lo, err1 := strconv.Atoi(bounds[0])
+			hi, err2 := strconv.Atoi(bounds[1])
+			if err1 != nil || err2 != nil || lo > hi || !validPort(lo) || !validPort(hi) {
+				return nil, fmt.Errorf("invalid port range: %s", part)
+			}
+			for port := lo; port <= hi; port++ {
+				if !seen[port] {
+					ports = append(ports, port)
+					seen[port] = true
 				}
 			}
-		} else {
-			p, err := strconv.Atoi(part)
-			if err != nil {
-				return nil, fmt.Errorf("invalid port: %s", part)
-			}
-			if !seen[p] {
-				ports = append(ports, p)
-				seen[p] = true
-			}
+			continue
+		}
+
+		port, err := strconv.Atoi(part)
+		if err != nil || !validPort(port) {
+			return nil, fmt.Errorf("invalid port: %s", part)
+		}
+		if !seen[port] {
+			ports = append(ports, port)
+			seen[port] = true
 		}
 	}
 	return ports, nil
 }
 
-// parseTargets expands a target spec into a list of IP strings.
-// Supports: single IP, CIDR (10.0.0.0/24), range (10.0.0.1-10), hostname.
-func parseTargets(spec string) ([]string, error) {
-	// File input
+func validPort(port int) bool {
+	return port >= 1 && port <= 65535
+}
+
+// parseTargets expands only IPv4 CIDR targets. The Python layer owns full
+// multi-family target normalization; this guard keeps the standalone binary
+// predictable and prevents accidental unbounded expansion.
+func parseTargets(spec string, maxTargets int) ([]string, error) {
+	if maxTargets < 1 {
+		return nil, fmt.Errorf("max targets must be at least 1")
+	}
+	hosts, err := parseTargetSpec(strings.TrimSpace(spec), maxTargets)
+	if err != nil {
+		return nil, err
+	}
+	return dedupe(hosts), nil
+}
+
+func parseTargetSpec(spec string, maxTargets int) ([]string, error) {
+	if spec == "" {
+		return nil, fmt.Errorf("target specification cannot be empty")
+	}
 	if strings.HasPrefix(spec, "file:") {
-		f, err := os.Open(spec[5:])
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-		var hosts []string
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			line := strings.TrimSpace(sc.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			h, err := parseTargets(line)
-			if err == nil {
-				hosts = append(hosts, h...)
-			}
-		}
-		return hosts, nil
+		return parseTargetFile(spec[5:], maxTargets)
 	}
-
-	// CIDR
 	if strings.Contains(spec, "/") {
-		_, ipNet, err := net.ParseCIDR(spec)
-		if err != nil {
-			return nil, err
-		}
-		var hosts []string
-		for ip := ipNet.IP.Mask(ipNet.Mask); ipNet.Contains(ip); incrementIP(ip) {
-			// Skip network and broadcast
-			if ip[len(ip)-1] == 0 || ip[len(ip)-1] == 255 {
-				continue
-			}
-			hosts = append(hosts, ip.String())
-		}
-		return hosts, nil
+		return parseCIDR(spec, maxTargets)
 	}
-
-	// Range: 10.0.0.1-50
-	parts := strings.SplitN(spec, "-", 2)
-	if len(parts) == 2 {
-		baseIP := net.ParseIP(parts[0])
-		if baseIP != nil {
-			end, err := strconv.Atoi(parts[1])
-			if err == nil {
-				ipv4 := baseIP.To4()
-				start := int(ipv4[3])
-				var hosts []string
-				for i := start; i <= end && i <= 255; i++ {
-					hosts = append(hosts, fmt.Sprintf("%d.%d.%d.%d",
-						ipv4[0], ipv4[1], ipv4[2], i))
-				}
-				return hosts, nil
-			}
+	if strings.Contains(spec, "-") {
+		if hosts, ok, err := parseIPv4Range(spec, maxTargets); ok || err != nil {
+			return hosts, err
 		}
 	}
-
-	// Single IP or hostname
 	return []string{spec}, nil
 }
 
-func incrementIP(ip net.IP) {
-	for i := len(ip) - 1; i >= 0; i-- {
-		ip[i]++
-		if ip[i] != 0 {
+func parseTargetFile(path string, maxTargets int) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var hosts []string
+	scanner := bufio.NewScanner(file)
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		remaining := maxTargets - len(hosts)
+		if remaining < 1 {
+			return nil, fmt.Errorf("target limit of %d exceeded while reading %s", maxTargets, path)
+		}
+		expanded, err := parseTargetSpec(line, remaining)
+		if err != nil {
+			return nil, fmt.Errorf("%s:%d: %w", path, lineNumber, err)
+		}
+		hosts = append(hosts, expanded...)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(hosts) > maxTargets {
+		return nil, fmt.Errorf("target limit of %d exceeded while reading %s", maxTargets, path)
+	}
+	return hosts, nil
+}
+
+func parseCIDR(spec string, maxTargets int) ([]string, error) {
+	ip, network, err := net.ParseCIDR(spec)
+	if err != nil {
+		return nil, err
+	}
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return nil, fmt.Errorf("Go engine currently accepts IPv4 CIDR targets only")
+	}
+	ones, bits := network.Mask.Size()
+	if bits != 32 {
+		return nil, fmt.Errorf("invalid IPv4 CIDR: %s", spec)
+	}
+
+	total := uint64(1) << uint(32-ones)
+	usable := total
+	if ones <= 30 {
+		usable -= 2
+	}
+	if usable > uint64(maxTargets) {
+		return nil, fmt.Errorf("%q expands to %d targets, above the %d target limit", spec, usable, maxTargets)
+	}
+
+	start := binary.BigEndian.Uint32(network.IP.To4())
+	end := start + uint32(total-1)
+	hosts := make([]string, 0, usable)
+	for value := start; ; value++ {
+		if ones > 30 || (value != start && value != end) {
+			hosts = append(hosts, uint32ToIPv4(value))
+		}
+		if value == end {
 			break
 		}
 	}
+	return hosts, nil
 }
 
-// ── Banner grabbing ───────────────────────────────────────────────────────────
+func parseIPv4Range(spec string, maxTargets int) ([]string, bool, error) {
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 {
+		return nil, false, nil
+	}
+	base := net.ParseIP(strings.TrimSpace(parts[0])).To4()
+	if base == nil {
+		return nil, false, nil
+	}
+	end, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return nil, true, fmt.Errorf("invalid IPv4 range: %s", spec)
+	}
+	start := int(base[3])
+	if end < start || end > 255 {
+		return nil, true, fmt.Errorf("invalid IPv4 range: %s", spec)
+	}
+	count := end - start + 1
+	if count > maxTargets {
+		return nil, true, fmt.Errorf("%q expands to %d targets, above the %d target limit", spec, count, maxTargets)
+	}
+	hosts := make([]string, 0, count)
+	for octet := start; octet <= end; octet++ {
+		hosts = append(hosts, fmt.Sprintf("%d.%d.%d.%d", base[0], base[1], base[2], octet))
+	}
+	return hosts, true, nil
+}
 
-// Quick service-specific probes — send the right bytes, read what comes back.
+func uint32ToIPv4(value uint32) string {
+	return net.IPv4(byte(value>>24), byte(value>>16), byte(value>>8), byte(value)).String()
+}
+
+func dedupe(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	return unique
+}
+
 var probes = map[int][]byte{
-	21:    nil,                                    // FTP sends banner on connect
-	22:    nil,                                    // SSH sends banner on connect
+	21:    nil,
+	22:    nil,
 	25:    []byte("EHLO lightscan.local\r\n"),
 	80:    []byte("HEAD / HTTP/1.0\r\nHost: x\r\n\r\n"),
 	443:   []byte("HEAD / HTTP/1.0\r\nHost: x\r\n\r\n"),
@@ -173,156 +298,300 @@ var probes = map[int][]byte{
 	8080:  []byte("HEAD / HTTP/1.0\r\nHost: x\r\n\r\n"),
 	8443:  []byte("HEAD / HTTP/1.0\r\nHost: x\r\n\r\n"),
 	9200:  []byte("GET / HTTP/1.0\r\nHost: x\r\n\r\n"),
-	27017: {0x3a, 0x00, 0x00, 0x00, 0xd4, 0x07}, // MongoDB ping (truncated for banner)
+	27017: {0x3a, 0x00, 0x00, 0x00, 0xd4, 0x07},
 }
 
 func grabBanner(conn net.Conn, port int, timeout time.Duration) string {
-	conn.SetReadDeadline(time.Now().Add(timeout))
+	readTimeout := timeout / 2
+	if readTimeout < 50*time.Millisecond {
+		readTimeout = 50 * time.Millisecond
+	}
+	conn.SetReadDeadline(time.Now().Add(readTimeout))
 
-	// Read initial banner (services that push on connect)
-	buf := make([]byte, 512)
-	n, _ := conn.Read(buf)
-	banner := strings.TrimSpace(string(buf[:n]))
-
-	// Send probe if we got nothing and one exists for this port
+	buffer := make([]byte, 512)
+	count, _ := conn.Read(buffer)
+	banner := strings.TrimSpace(string(buffer[:count]))
 	if banner == "" {
 		if probe, ok := probes[port]; ok && len(probe) > 0 {
-			conn.SetWriteDeadline(time.Now().Add(timeout))
-			conn.Write(probe)
-			conn.SetReadDeadline(time.Now().Add(timeout))
-			n, _ = conn.Read(buf)
-			banner = strings.TrimSpace(string(buf[:n]))
+			conn.SetWriteDeadline(time.Now().Add(readTimeout))
+			_, _ = conn.Write(probe)
+			conn.SetReadDeadline(time.Now().Add(readTimeout))
+			count, _ = conn.Read(buffer)
+			banner = strings.TrimSpace(string(buffer[:count]))
 		}
 	}
 
-	// Sanitize: strip non-printable, limit length
 	clean := make([]byte, 0, len(banner))
-	for _, b := range []byte(banner) {
-		if b >= 32 && b < 127 {
-			clean = append(clean, b)
+	for _, value := range []byte(banner) {
+		if value >= 32 && value < 127 {
+			clean = append(clean, value)
 		}
 	}
-	s := string(clean)
-	if len(s) > 200 {
-		s = s[:200]
+	if len(clean) > 200 {
+		clean = clean[:200]
 	}
-	return s
+	return string(clean)
 }
 
-// ── Scanner core ──────────────────────────────────────────────────────────────
+type rateGate struct {
+	interval time.Duration
+	mu       sync.Mutex
+	next     time.Time
+}
 
-func scanPort(host string, port int, timeoutMs int, grabBanners bool) Result {
-	addr := fmt.Sprintf("%s:%d", host, port)
-	t0   := time.Now()
+func newRateGate(maxRate float64) *rateGate {
+	if maxRate <= 0 {
+		return &rateGate{}
+	}
+	return &rateGate{interval: time.Duration(float64(time.Second) / maxRate)}
+}
 
-	conn, err := net.DialTimeout("tcp", addr, time.Duration(timeoutMs)*time.Millisecond)
-	elapsed := time.Since(t0).Milliseconds()
+func (gate *rateGate) wait() {
+	if gate.interval <= 0 {
+		return
+	}
+	gate.mu.Lock()
+	now := time.Now()
+	scheduled := now
+	if gate.next.After(now) {
+		scheduled = gate.next
+	}
+	gate.next = scheduled.Add(gate.interval)
+	gate.mu.Unlock()
+	if delay := time.Until(scheduled); delay > 0 {
+		time.Sleep(delay)
+	}
+}
 
-	if err != nil {
-		status := "closed"
-		if isFiltered(err) {
-			status = "filtered"
+type hostLimiter struct {
+	perHost     int
+	hostTimeout time.Duration
+	mu          sync.Mutex
+	states      map[string]*hostState
+}
+
+type hostState struct {
+	semaphore chan struct{}
+	deadline  time.Time
+}
+
+func newHostLimiter(perHost int, hostTimeout time.Duration) *hostLimiter {
+	return &hostLimiter{
+		perHost:     perHost,
+		hostTimeout: hostTimeout,
+		states:      make(map[string]*hostState),
+	}
+}
+
+func (limiter *hostLimiter) acquire(host string) (*hostState, bool) {
+	limiter.mu.Lock()
+	state := limiter.states[host]
+	if state == nil {
+		state = &hostState{semaphore: make(chan struct{}, limiter.perHost)}
+		if limiter.hostTimeout > 0 {
+			state.deadline = time.Now().Add(limiter.hostTimeout)
 		}
-		return Result{Host: host, Port: port, Status: status, Ms: elapsed}
+		limiter.states[host] = state
 	}
-	defer conn.Close()
+	limiter.mu.Unlock()
 
-	banner := ""
-	if grabBanners {
-		banner = grabBanner(conn, port, time.Duration(timeoutMs/2)*time.Millisecond)
+	if !state.deadline.IsZero() && time.Now().After(state.deadline) {
+		return state, false
 	}
-
-	return Result{Host: host, Port: port, Status: "open", Banner: banner, Ms: elapsed}
+	state.semaphore <- struct{}{}
+	if !state.deadline.IsZero() && time.Now().After(state.deadline) {
+		<-state.semaphore
+		return state, false
+	}
+	return state, true
 }
 
-// isFiltered tries to distinguish a hard TCP reset (closed) from a silent
-// drop (filtered) — not perfect without raw sockets, but useful heuristic.
-func isFiltered(err error) bool {
-	s := err.Error()
-	return strings.Contains(s, "i/o timeout") ||
-		strings.Contains(s, "connection timed out") ||
-		strings.Contains(s, "no route to host")
+func (limiter *hostLimiter) release(state *hostState) {
+	<-state.semaphore
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+func scanPort(host string, port int, cfg config, deadline time.Time, gate *rateGate) Result {
+	result := Result{Host: host, Port: port, Status: "error"}
+	for attempt := 0; attempt <= cfg.retries; attempt++ {
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			result.Status = "skipped"
+			return result
+		}
+		if attempt > 0 {
+			time.Sleep(minDuration(50*time.Millisecond*time.Duration(1<<(attempt-1)), 500*time.Millisecond))
+		}
+
+		gate.wait()
+		result.Attempts++
+		started := time.Now()
+		connection, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), cfg.timeout)
+		result.Ms = time.Since(started).Milliseconds()
+		if err != nil {
+			result.Status = classifyError(err)
+			if result.Status == "filtered" && attempt < cfg.retries {
+				continue
+			}
+			return result
+		}
+
+		if cfg.grabBanners {
+			result.Banner = grabBanner(connection, port, cfg.timeout)
+		}
+		_ = connection.Close()
+		result.Status = "open"
+		return result
+	}
+	return result
+}
+
+func classifyError(err error) string {
+	if errors, ok := err.(*net.OpError); ok && errors.Timeout() {
+		return "filtered"
+	}
+	text := strings.ToLower(err.Error())
+	if strings.Contains(text, "connection refused") {
+		return "closed"
+	}
+	if strings.Contains(text, "timed out") || strings.Contains(text, "no route to host") || strings.Contains(text, "network is unreachable") {
+		return "filtered"
+	}
+	return "error"
+}
+
+func minDuration(left, right time.Duration) time.Duration {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func boundedBuffer(concurrency int) int {
+	if concurrency < 32 {
+		return 64
+	}
+	if concurrency > 2048 {
+		return 4096
+	}
+	return concurrency * 2
+}
 
 func main() {
-	target      := flag.String("t", "",     "Target: IP, CIDR, range, hostname, or file:path")
-	portSpec    := flag.String("p", "top100", "Ports: 22,80,443 | 1-1024 | top100")
-	concurrency := flag.Int("c",   1000,    "Max concurrent connections")
-	timeoutMs   := flag.Int("T",   1500,    "Connection timeout in milliseconds")
-	outputJSON  := flag.Bool("json", false, "Output NDJSON (one result per line)")
-	openOnly    := flag.Bool("open", false, "Only print open ports")
-	noBanner    := flag.Bool("no-banner", false, "Skip banner grabbing")
+	target := flag.String("t", "", "Target: IPv4, IPv4 CIDR, range, hostname, or file:path")
+	portSpec := flag.String("p", "top100", "Ports: 22,80,443 | 1-1024 | top100")
+	concurrency := flag.Int("c", 1000, "Maximum concurrent connections")
+	perHostConcurrency := flag.Int("per-host-concurrency", 64, "Maximum concurrent connections per host")
+	hostGroup := flag.Int("host-group", 256, "Hosts scheduled per fair-scan group")
+	timeoutMs := flag.Int("T", 1500, "Connection timeout in milliseconds")
+	maxRate := flag.Float64("max-rate", 0, "Maximum connection starts per second; 0 disables the cap")
+	retries := flag.Int("retries", 1, "Retries for timeout or filtered outcomes")
+	hostTimeout := flag.Duration("host-timeout", 0, "Maximum wall time per host, for example 15s; 0 disables")
+	maxTargets := flag.Int("max-targets", 65536, "Maximum expanded target count")
+	outputJSON := flag.Bool("json", false, "Output NDJSON (one result per line)")
+	summaryJSON := flag.Bool("summary", false, "Emit one NDJSON completion summary after results")
+	openOnly := flag.Bool("open", false, "Only print open ports")
+	noBanner := flag.Bool("no-banner", false, "Skip banner grabbing")
 	flag.Parse()
 
 	if *target == "" {
 		fmt.Fprintln(os.Stderr, "error: -t <target> is required")
 		flag.Usage()
-		os.Exit(1)
+		os.Exit(2)
+	}
+	if *concurrency < 1 || *perHostConcurrency < 1 || *hostGroup < 1 || *timeoutMs < 1 || *retries < 0 || *maxRate < 0 {
+		fmt.Fprintln(os.Stderr, "error: concurrency, host group, timeout, retries, and rate controls are invalid")
+		os.Exit(2)
 	}
 
-	hosts, err := parseTargets(*target)
+	hosts, err := parseTargets(*target, *maxTargets)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing targets: %v\n", err)
-		os.Exit(1)
+		os.Exit(2)
 	}
-
 	ports, err := parsePorts(*portSpec)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing ports: %v\n", err)
-		os.Exit(1)
+		os.Exit(2)
 	}
 
-	// Work queue
-	type job struct{ host string; port int }
-	jobs := make(chan job, *concurrency*2)
-	var wg sync.WaitGroup
-	sem  := make(chan struct{}, *concurrency)
+	cfg := config{
+		timeout:            time.Duration(*timeoutMs) * time.Millisecond,
+		concurrency:        *concurrency,
+		perHostConcurrency: *perHostConcurrency,
+		maxRate:            *maxRate,
+		retries:            *retries,
+		hostTimeout:        *hostTimeout,
+		grabBanners:        !*noBanner,
+	}
+	jobs := make(chan job, boundedBuffer(cfg.concurrency))
+	results := make(chan Result, boundedBuffer(cfg.concurrency))
+	gate := newRateGate(cfg.maxRate)
+	limiter := newHostLimiter(cfg.perHostConcurrency, cfg.hostTimeout)
 
-	// Result writer (single goroutine to avoid interleaved output)
-	results := make(chan Result, *concurrency*2)
+	scanStarted := time.Now()
+	writerDone := make(chan struct{})
 	go func() {
-		enc := json.NewEncoder(os.Stdout)
-		for r := range results {
-			if *openOnly && r.Status != "open" {
+		defer close(writerDone)
+		encoder := json.NewEncoder(os.Stdout)
+		metrics := scanMetrics{}
+		for result := range results {
+			metrics.add(result)
+			if *openOnly && result.Status != "open" {
 				continue
 			}
 			if *outputJSON {
-				enc.Encode(r)
-			} else {
-				if r.Status == "open" {
-					banner := ""
-					if r.Banner != "" {
-						banner = "  " + r.Banner
-					}
-					fmt.Printf("OPEN  %s:%-6d%s\n", r.Host, r.Port, banner)
-				}
+				_ = encoder.Encode(result)
+				continue
 			}
+			if result.Status == "open" {
+				banner := ""
+				if result.Banner != "" {
+					banner = "  " + result.Banner
+				}
+				fmt.Printf("OPEN  %s:%-6d%s\n", result.Host, result.Port, banner)
+			}
+		}
+		if *outputJSON && *summaryJSON {
+			_ = encoder.Encode(Summary{
+				Type:    "summary",
+				Metrics: metrics,
+				Elapsed: time.Since(scanStarted).Seconds(),
+			})
 		}
 	}()
 
-	// Workers
-	for i := 0; i < *concurrency; i++ {
-		wg.Add(1)
+	var workerGroup sync.WaitGroup
+	for worker := 0; worker < cfg.concurrency; worker++ {
+		workerGroup.Add(1)
 		go func() {
-			defer wg.Done()
-			for j := range jobs {
-				sem <- struct{}{}
-				r := scanPort(j.host, j.port, *timeoutMs, !*noBanner)
-				<-sem
-				results <- r
+			defer workerGroup.Done()
+			for current := range jobs {
+				state, allowed := limiter.acquire(current.host)
+				if !allowed {
+					results <- Result{Host: current.host, Port: current.port, Status: "skipped"}
+					continue
+				}
+				result := scanPort(current.host, current.port, cfg, state.deadline, gate)
+				limiter.release(state)
+				results <- result
 			}
 		}()
 	}
 
-	// Feed jobs
-	for _, h := range hosts {
-		for _, p := range ports {
-			jobs <- job{host: h, port: p}
+	// Port-major ordering spreads early work across hosts rather than exhausting
+	// one host's entire port list before moving to the next host.
+	for _, port := range ports {
+		for start := 0; start < len(hosts); start += *hostGroup {
+			end := start + *hostGroup
+			if end > len(hosts) {
+				end = len(hosts)
+			}
+			for _, host := range hosts[start:end] {
+				jobs <- job{host: host, port: port}
+			}
 		}
 	}
 	close(jobs)
-	wg.Wait()
+	workerGroup.Wait()
 	close(results)
+	<-writerDone
 }

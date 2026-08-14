@@ -1,0 +1,266 @@
+{
+  "schema": "lightscan-loopback-benchmark/v1",
+  "scope": {
+    "target": "127.0.0.1",
+    "ports": "1-65535",
+    "scan_type": "TCP connect",
+    "remote_network_traffic": false
+  },
+  "controls": {
+    "trials": 3,
+    "concurrency": 1024,
+    "timeout_seconds": 1.0,
+    "retries": 0,
+    "banner_grab": false
+  },
+  "lightscan_python": {
+    "trials": [
+      {
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "lightscan",
+          "--no-banner",
+          "--scan",
+          "-t",
+          "127.0.0.1",
+          "-p",
+          "1-65535",
+          "--concurrency",
+          "1024",
+          "--per-host-concurrency",
+          "1024",
+          "--timeout",
+          "1.0",
+          "--retries",
+          "0",
+          "--no-adaptive",
+          "--no-banner-grab",
+          "--no-report"
+        ],
+        "elapsed_seconds": 2.569181,
+        "returncode": 0,
+        "stderr_tail": ""
+      },
+      {
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "lightscan",
+          "--no-banner",
+          "--scan",
+          "-t",
+          "127.0.0.1",
+          "-p",
+          "1-65535",
+          "--concurrency",
+          "1024",
+          "--per-host-concurrency",
+          "1024",
+          "--timeout",
+          "1.0",
+          "--retries",
+          "0",
+          "--no-adaptive",
+          "--no-banner-grab",
+          "--no-report"
+        ],
+        "elapsed_seconds": 2.487892,
+        "returncode": 0,
+        "stderr_tail": ""
+      },
+      {
+        "command": [
+          "/usr/bin/python3",
+          "-m",
+          "lightscan",
+          "--no-banner",
+          "--scan",
+          "-t",
+          "127.0.0.1",
+          "-p",
+          "1-65535",
+          "--concurrency",
+          "1024",
+          "--per-host-concurrency",
+          "1024",
+          "--timeout",
+          "1.0",
+          "--retries",
+          "0",
+          "--no-adaptive",
+          "--no-banner-grab",
+          "--no-report"
+        ],
+        "elapsed_seconds": 2.556355,
+        "returncode": 0,
+        "stderr_tail": ""
+      }
+    ],
+    "median_seconds": 2.556355,
+    "minimum_seconds": 2.487892,
+    "maximum_seconds": 2.569181,
+    "ports_per_second_median": 25636.111
+  },
+  "lightscan_go": {
+    "trials": [
+      {
+        "command": [
+          "/home/ubuntu/lightscan/scanner/lscan",
+          "-t",
+          "127.0.0.1",
+          "-p",
+          "1-65535",
+          "-c",
+          "1024",
+          "--per-host-concurrency",
+          "1024",
+          "-T",
+          "1000",
+          "--retries",
+          "0",
+          "--no-banner",
+          "--open",
+          "--json",
+          "--summary"
+        ],
+        "elapsed_seconds": 0.351653,
+        "returncode": 0,
+        "stderr_tail": ""
+      },
+      {
+        "command": [
+          "/home/ubuntu/lightscan/scanner/lscan",
+          "-t",
+          "127.0.0.1",
+          "-p",
+          "1-65535",
+          "-c",
+          "1024",
+          "--per-host-concurrency",
+          "1024",
+          "-T",
+          "1000",
+          "--retries",
+          "0",
+          "--no-banner",
+          "--open",
+          "--json",
+          "--summary"
+        ],
+        "elapsed_seconds": 0.357081,
+        "returncode": 0,
+        "stderr_tail": ""
+      },
+      {
+        "command": [
+          "/home/ubuntu/lightscan/scanner/lscan",
+          "-t",
+          "127.0.0.1",
+          "-p",
+          "1-65535",
+          "-c",
+          "1024",
+          "--per-host-concurrency",
+          "1024",
+          "-T",
+          "1000",
+          "--retries",
+          "0",
+          "--no-banner",
+          "--open",
+          "--json",
+          "--summary"
+        ],
+        "elapsed_seconds": 0.405944,
+        "returncode": 0,
+        "stderr_tail": ""
+      }
+    ],
+    "median_seconds": 0.357081,
+    "minimum_seconds": 0.351653,
+    "maximum_seconds": 0.405944,
+    "ports_per_second_median": 183529.787
+  },
+  "nmap": {
+    "trials": [
+      {
+        "command": [
+          "nmap",
+          "-sT",
+          "-Pn",
+          "-n",
+          "--max-retries",
+          "0",
+          "--min-parallelism",
+          "1024",
+          "--max-parallelism",
+          "1024",
+          "--host-timeout",
+          "60s",
+          "-p",
+          "1-65535",
+          "127.0.0.1"
+        ],
+        "elapsed_seconds": 0.390874,
+        "returncode": 0,
+        "stderr_tail": "Warning: Your --min-parallelism option is pretty high!  This can hurt reliability.\nWarning: Your max-parallelism (-M) option is extraordinarily high, which can hurt reliability\n"
+      },
+      {
+        "command": [
+          "nmap",
+          "-sT",
+          "-Pn",
+          "-n",
+          "--max-retries",
+          "0",
+          "--min-parallelism",
+          "1024",
+          "--max-parallelism",
+          "1024",
+          "--host-timeout",
+          "60s",
+          "-p",
+          "1-65535",
+          "127.0.0.1"
+        ],
+        "elapsed_seconds": 0.374729,
+        "returncode": 0,
+        "stderr_tail": "Warning: Your --min-parallelism option is pretty high!  This can hurt reliability.\nWarning: Your max-parallelism (-M) option is extraordinarily high, which can hurt reliability\n"
+      },
+      {
+        "command": [
+          "nmap",
+          "-sT",
+          "-Pn",
+          "-n",
+          "--max-retries",
+          "0",
+          "--min-parallelism",
+          "1024",
+          "--max-parallelism",
+          "1024",
+          "--host-timeout",
+          "60s",
+          "-p",
+          "1-65535",
+          "127.0.0.1"
+        ],
+        "elapsed_seconds": 0.367434,
+        "returncode": 0,
+        "stderr_tail": "Warning: Your --min-parallelism option is pretty high!  This can hurt reliability.\nWarning: Your max-parallelism (-M) option is extraordinarily high, which can hurt reliability\n"
+      }
+    ],
+    "median_seconds": 0.374729,
+    "minimum_seconds": 0.367434,
+    "maximum_seconds": 0.390874,
+    "ports_per_second_median": 174886.385
+  },
+  "comparison": {
+    "python_to_nmap_median_time_ratio": 6.8219,
+    "go_to_nmap_median_time_ratio": 0.9529,
+    "python_to_go_median_time_ratio": 7.159,
+    "python_minus_nmap_median_seconds": 2.181626,
+    "go_minus_nmap_median_seconds": -0.017648
+  }
+}

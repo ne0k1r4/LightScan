@@ -1,1 +1,1 @@
-"""LightScan v2.0 — autonomous red-team recon and attack framework."""
+"""LightScan v2.4 — authorized network inventory and assessment scanner."""
