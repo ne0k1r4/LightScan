@@ -66,6 +66,8 @@ def build_parser():
     tg.add_argument("--ipv6-only",   action="store_true",   help="Scan IPv6 addresses only")
     tg.add_argument("--dual-stack",  action="store_true",   help="Scan both IPv4 and IPv6 addresses")
     tg.add_argument("--os-v2",       action="store_true",   help="Use improved OS fingerprint database (120+ signatures)")
+    tg.add_argument("--os-evidence",  action="store_true",
+                    help="Infer OS family from existing service evidence; sends no extra probes")
     tg.add_argument("--packet-scan",  action="store_true",  help="AF_PACKET half-open SYN scan (Linux root, open/closed/filtered/firewall)")
     tg.add_argument("--stealth-scan", action="store_true",  help="IDS-evasion mode: T1 timing + jitter + sport randomisation (implies --packet-scan)")
     tg.add_argument("--spoof-sport",  type=int, default=0, metavar="PORT", help="Spoof source port (e.g. 53 or 80) to bypass port-based ACLs")
@@ -476,6 +478,10 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             print(f"\033[38;5;208m[!] Unable to import Nmap XML: {exc}\033[0m", file=sys.stderr)
             return all_results
         all_results.extend(imported)
+        if getattr(args, "os_evidence", False):
+            from lightscan.scan.os_evidence import infer_os_from_results
+
+            all_results.extend(infer_os_from_results(all_results))
         meta["nmap_import"] = import_summary
         print(
             f"\033[38;5;82m[+] Imported Nmap XML: {import_summary['hosts_imported']} host(s), "
@@ -1157,6 +1163,15 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 r=await brute.run(handler,users,passwords,host,actual_port,proto,args.stop_first)
             all_results.extend(r)
 
+    # Optional OS evidence fusion runs strictly on results already collected above.
+    if getattr(args, "os_evidence", False):
+        from lightscan.scan.os_evidence import infer_os_from_results
+
+        os_evidence = infer_os_from_results(all_results)
+        all_results.extend(os_evidence)
+        if os_evidence and not getattr(args, "quiet", False):
+            print(f"\033[38;5;240m[i] Added {len(os_evidence)} OS-evidence observation(s) without extra probes\033[0m")
+
     # Minimum severity filter & Quiet mode handling
     SEV_MAP = {"info": 1, "low": 2, "medium": 3, "high": 4, "critical": 5}
     min_rank = SEV_MAP.get(getattr(args, "min_severity", "info").lower(), 1)
@@ -1239,6 +1254,7 @@ def print_minimal_help() -> None:
         f"    {ORANGE}--stream-open <path>{RESET} Stream open results as NDJSON",
         f"    {ORANGE}--metrics-out <path>{RESET}  Save comparable performance telemetry",
         f"    {ORANGE}--import-nmap-xml <path>{RESET} Import local Nmap OS/service evidence only",
+        f"    {ORANGE}--os-evidence{RESET}       Infer OS family from existing service data only",
         f"    {ORANGE}--lua-script <check>{RESET} Run constrained safe Lua checks",
         f"    {ORANGE}--list-lua-scripts{RESET}  List bundled Lua checks without scanning",
         f"    {ORANGE}--cve{RESET}               Run legacy/template vulnerability checks",
