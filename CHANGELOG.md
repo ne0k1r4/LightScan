@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### v2.6.0 Documentation and Benchmark Addendum
+
+#### Added
+- `BENCHMARK_V26.md`: measured three-trial local loopback TCP-connect comparison of LightScan Python, LightScan Go, and standard Nmap, including exact controls, raw-result references, feature comparison, scope limitations, and reproduction steps.
+- `benchmark_results/loopback_65535_v26.json`: raw v2.6.0 loopback benchmark commands, trial durations, medians, throughput values, and comparison ratios.
+- `benchmark_results/loopback_65535_v26_chart.png`: chart rendered directly from the measured v2.6.0 benchmark JSON.
+
+#### Changed
+- `README.md`: rewritten as a comprehensive v2.6.0 installation, authorized-operation, configuration, Nmap XML interoperability, output-contract, local-benchmark, development, and troubleshooting guide.
+- `CHANGELOG.md`: records the documentation and benchmark addendum so every release-deliverable file is traceable to the final commit.
+
 ### v2.6.0 — Evidence Interoperability and Passive OS Context
 
 #### Added
