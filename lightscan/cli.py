@@ -209,6 +209,8 @@ def build_parser():
                      help="Write a portable v1 performance snapshot after --scan")
     out.add_argument("--compare-metrics", nargs=2, metavar=("BASELINE.json", "CANDIDATE.json"),
                      help="Compare two v1 performance snapshots and exit")
+    out.add_argument("--import-nmap-xml", metavar="PATH",
+                     help="Import OS and open-service observations from local Nmap XML; does not scan")
     out.add_argument("--resume",          action="store_true", help="Resume from checkpoint")
     out.add_argument("--clear-checkpoint",action="store_true", help="Clear checkpoint and start fresh")
     out.add_argument("-v","--verbose",    action="store_true", help="Verbose output")
@@ -464,6 +466,26 @@ def run_update_templates(repo_spec: str):
         print(f"\033[38;5;196m[!] Error updating templates: {e}\033[0m")
 
 async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
+    # Nmap XML import is offline and consumes only user-provided evidence.
+    if getattr(args, "import_nmap_xml", None):
+        from lightscan.core.nmap_xml import NmapXMLImportError, import_nmap_xml
+
+        try:
+            imported, import_summary = import_nmap_xml(args.import_nmap_xml)
+        except NmapXMLImportError as exc:
+            print(f"\033[38;5;208m[!] Unable to import Nmap XML: {exc}\033[0m", file=sys.stderr)
+            return all_results
+        all_results.extend(imported)
+        meta["nmap_import"] = import_summary
+        print(
+            f"\033[38;5;82m[+] Imported Nmap XML: {import_summary['hosts_imported']} host(s), "
+            f"{import_summary['os_observations']} OS observation(s), "
+            f"{import_summary['service_observations']} open-service observation(s)\033[0m"
+        )
+        if not args.no_report and all_results:
+            Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
+        return all_results
+
     # Performance snapshot comparison is offline and does not require a target.
     if getattr(args, "compare_metrics", None):
         from lightscan.core.metrics import compare_snapshots
@@ -1216,6 +1238,7 @@ def print_minimal_help() -> None:
         f"    {ORANGE}--go-engine{RESET}         Use compiled Go TCP scanner (make go first)",
         f"    {ORANGE}--stream-open <path>{RESET} Stream open results as NDJSON",
         f"    {ORANGE}--metrics-out <path>{RESET}  Save comparable performance telemetry",
+        f"    {ORANGE}--import-nmap-xml <path>{RESET} Import local Nmap OS/service evidence only",
         f"    {ORANGE}--lua-script <check>{RESET} Run constrained safe Lua checks",
         f"    {ORANGE}--list-lua-scripts{RESET}  List bundled Lua checks without scanning",
         f"    {ORANGE}--cve{RESET}               Run legacy/template vulnerability checks",
