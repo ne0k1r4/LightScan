@@ -1,5 +1,5 @@
 """
-LightScan v2.5 — CLI Entry Point
+LightScan v2.6 — CLI Entry Point
 Developer: Light (Neok1ra)
 
 Usage:
@@ -36,7 +36,7 @@ from lightscan.scan.evasion import parse_timing  # used in multiple branches
 def build_parser():
     p = argparse.ArgumentParser(
         prog="lightscan",
-        description="LightScan v2.5 — Authorized Network Inventory & Assessment Scanner",
+        description="LightScan v2.6 — Authorized Network Inventory & Assessment Scanner",
         formatter_class=argparse.RawTextHelpFormatter,
         add_help=False
     )
@@ -478,15 +478,19 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             print(f"\033[38;5;208m[!] Unable to import Nmap XML: {exc}\033[0m", file=sys.stderr)
             return all_results
         all_results.extend(imported)
+        os_evidence_count = 0
         if getattr(args, "os_evidence", False):
             from lightscan.scan.os_evidence import infer_os_from_results
 
-            all_results.extend(infer_os_from_results(all_results))
+            os_evidence = infer_os_from_results(all_results)
+            os_evidence_count = len(os_evidence)
+            all_results.extend(os_evidence)
         meta["nmap_import"] = import_summary
         print(
             f"\033[38;5;82m[+] Imported Nmap XML: {import_summary['hosts_imported']} host(s), "
             f"{import_summary['os_observations']} OS observation(s), "
-            f"{import_summary['service_observations']} open-service observation(s)\033[0m"
+            f"{import_summary['service_observations']} open-service observation(s), "
+            f"{os_evidence_count} passive OS-evidence observation(s)\033[0m"
         )
         if not args.no_report and all_results:
             Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)

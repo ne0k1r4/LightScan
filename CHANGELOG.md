@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### v2.6.0 — Evidence Interoperability and Passive OS Context
+
+#### Added
+- `lightscan/core/nmap_xml.py`: a read-only, bounded Nmap XML importer that rejects DTD/entity declarations, normalizes imported OS matches and open-service observations into LightScan results, and never executes Nmap or sends packets.
+- `lightscan/scan/os_evidence.py`: independently authored, conservative OS-family inference from distinctive service metadata already collected by LightScan or imported from XML; it has no network I/O and does not reproduce third-party fingerprint databases.
+- `tests/test_nmap_xml_import.py`: local-only coverage for IPv4/IPv6 XML import, OS/CPE/service evidence preservation, malformed-input rejection, and DTD/entity rejection.
+- `tests/test_os_evidence.py`: local-only coverage for distinctive evidence inference, generic-product abstention, and per-port signal de-duplication.
+
+#### Changed
+- `lightscan/cli.py`: adds offline `--import-nmap-xml PATH` and no-extra-probe `--os-evidence` controls, including concise help and report integration.
+- `RESEARCH_SOURCES.md`: records official Nmap OS-detection and licensing references and establishes that LightScan does not vendor or copy the Nmap OS database.
+- `README.md`: documents offline Nmap XML interoperability, passive OS evidence, operator examples, and the Nmap Public Source License boundary.
+- `pyproject.toml`, `setup.py`, `lightscan/__init__.py`, `lightscan/banner.py`, and `lightscan/core/reporter.py`: align package, runtime, and XML/HTML report identity at `2.6.0`.
+- `CHANGELOG.md`: records the complete v2.6.0 release change set for atomic Git delivery.
+
+#### Fixed
+- Imported XML is now constrained before parsing so entity declarations and oversized artifacts cannot become an XML-processing hazard.
+- OS inventory context now has an explicit no-extra-packet path rather than requiring active fingerprint probes for every enrichment workflow.
+
 ### v2.5.0 — Advanced Reliability Controls
 
 #### Added

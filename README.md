@@ -1,4 +1,4 @@
-# LightScan v2.5.0
+# LightScan v2.6.0
 
 **LightScan** is an asynchronous network inventory and assessment scanner for systems you own or are explicitly authorized to test. It combines bounded target planning, concurrent TCP discovery, protocol-aware service probing, and structured reports that fit operational workflows.
 
@@ -45,6 +45,14 @@ lightscan --scan -t 192.0.2.10 -p 80,443,8080 \
 # Stream JSON into another tool without mixing progress messages into stdout.
 cat approved-targets.txt | lightscan --scan -t - -p 80,443 --sv \
   --output - --format json | jq '.'
+
+# Import an existing Nmap XML artifact without sending packets, then preserve it
+# in LightScan's report model. The optional OS inference uses only that evidence.
+lightscan --import-nmap-xml approved-nmap.xml --os-evidence \
+  --format json --output reports
+
+# Infer an OS family from service results already collected by --sv; no extra probes.
+lightscan --scan -t 192.0.2.10 -p 22,80,443 --sv --os-evidence --output reports
 ```
 
 | Capability | What it does |
@@ -55,6 +63,8 @@ cat approved-targets.txt | lightscan --scan -t - -p 80,443 --sv \
 | **Incremental results and telemetry** | Streams each open finding to NDJSON without retaining all open ports in memory, writes portable metric snapshots, and records runtime file-descriptor and memory telemetry for repeatable comparisons. |
 | **Constrained Lua checks** | Runs only reviewed, non-destructive Lua checks against confirmed open ports. Lua receives a read-only observation context; filesystem, process, module-loading, and network APIs are unavailable. |
 | **Service version probing** | Uses protocol-specific handshakes for common services and returns normalized service, version, method, and confidence metadata. |
+| **Nmap XML interoperability** | Imports OS matches and open-service observations from a user-provided local Nmap XML artifact without executing Nmap, scanning, or vendoring Nmap fingerprint data. |
+| **Passive OS evidence** | Optionally derives a conservative OS-family observation from distinctive service evidence already collected by LightScan or imported from XML; it sends no additional probes. |
 | **Structured reporting** | Produces JSON, CSV, HTML, minimal text, or Nmap-style XML. JSON preserves the complete result payload, while XML keeps vulnerability findings as script records instead of mislabeling them as ports. |
 | **Safe report rendering** | Escapes untrusted network banners in HTML reports to prevent report-viewer injection. |
 
@@ -79,6 +89,8 @@ cat approved-targets.txt | lightscan --scan -t - -p 80,443 --sv \
 | `--stream-open PATH` | Write each open finding immediately as NDJSON and retain only aggregate scan metrics; use `-` for stdout. |
 | `--metrics-out PATH` | Write a portable `lightscan-performance/v1` snapshot after a scan. |
 | `--compare-metrics BASELINE CANDIDATE` | Compare two v1 metric snapshots offline and exit. |
+| `--import-nmap-xml PATH` | Import OS matches and open-service observations from a local Nmap XML artifact; this is offline and does not invoke Nmap or send packets. |
+| `--os-evidence` | Infer a conservative OS family from existing `--sv` or imported service evidence only; sends no additional probes. |
 | `--go-engine` | Use the optional compiled Go TCP execution engine. |
 | `--go-binary PATH` | Use a specific `lscan` executable instead of automatic discovery. |
 | `--lua-script CHECK` | Run selected constrained Lua checks on confirmed open ports. |
@@ -100,7 +112,7 @@ The **Nmap-style XML** output includes run metadata, host statistics, port state
 
 ## Design scope
 
-LightScan is designed to complement—not claim to replace—mature scanners. Nmap has decades of protocol coverage, raw-packet scan methods, and a broad signature database. LightScan v2.5 focuses on an inspectable Python codebase, predictable target bounds, a bounded streaming scheduler, bracketed-IPv6 normalization, and a compatible optional Go execution engine. Its scheduler classifies temporary local resource pressure separately from filtered outcomes, applies bounded retry jitter to prevent synchronized reattempts, and uses AIMD feedback to reduce concurrency after loss before recovering conservatively. Service identification is inherently probabilistic: a port-number lookup is only a hint, while probe responses provide stronger evidence; Nmap documents the same distinction between table-derived and probe-derived service confidence.[2] Performance is treated as an accuracy problem as well as a throughput problem: Nmap likewise documents that host grouping, timeouts, retries, and rate limits affect scan completeness.[3]
+LightScan is designed to complement—not claim to replace—mature scanners. Nmap has decades of protocol coverage, raw-packet scan methods, and a broad signature database. LightScan v2.6 focuses on an inspectable Python codebase, predictable target bounds, a bounded streaming scheduler, bracketed-IPv6 normalization, and a compatible optional Go execution engine. It now imports user-provided Nmap XML evidence through a read-only bridge, but it does **not** invoke Nmap or vendor the Nmap OS database: Nmap and its data are governed by the Nmap Public Source License, which contains additional conditions beyond GPLv2.[4] LightScan’s passive OS-evidence mode stays conservative by emitting a family-level observation only when existing service information contains distinctive vendor/product signals; it sends no additional packets. Its scheduler classifies temporary local resource pressure separately from filtered outcomes, applies bounded retry jitter to prevent synchronized reattempts, and uses AIMD feedback to reduce concurrency after loss before recovering conservatively. Service identification is inherently probabilistic: a port-number lookup is only a hint, while probe responses provide stronger evidence; Nmap documents the same distinction between table-derived and probe-derived service confidence.[2] Performance is treated as an accuracy problem as well as a throughput problem: Nmap likewise documents that host grouping, timeouts, retries, and rate limits affect scan completeness.[3]
 
 ## Development
 
@@ -109,7 +121,7 @@ python -m pip install -e ".[dev]"
 make test
 ```
 
-The test suite includes local-only regression coverage for target parsing, bracketed IPv6 normalization, port validation, bounded streaming scheduling, transient-aware jittered retries, AIMD behavior, runtime telemetry, retention-free NDJSON results, metric snapshots, constrained Lua checks, rate controls, Go-engine bridging, service probes, report serialization, XML metadata, and HTML escaping. See [PERFORMANCE.md](PERFORMANCE.md), [LUA_CHECKS.md](LUA_CHECKS.md), and [BENCHMARK_65535.md](BENCHMARK_65535.md) for the current architecture, safety contract, and measured local comparison.
+The test suite includes local-only regression coverage for target parsing, bracketed IPv6 normalization, port validation, bounded streaming scheduling, transient-aware jittered retries, AIMD behavior, runtime telemetry, retention-free NDJSON results, metric snapshots, constrained Lua checks, rate controls, Go-engine bridging, service probes, offline Nmap XML import, passive OS-evidence fusion, report serialization, XML metadata, and HTML escaping. See [PERFORMANCE.md](PERFORMANCE.md), [LUA_CHECKS.md](LUA_CHECKS.md), and [BENCHMARK_65535.md](BENCHMARK_65535.md) for the current architecture, safety contract, and measured local comparison.
 
 ## License
 
@@ -120,3 +132,4 @@ Released under the [MIT License](LICENSE).
 [1]: https://nmap.org/book/output-formats-xml-output.html "Nmap XML Output"
 [2]: https://nmap.org/book/man-version-detection.html "Nmap Service and Version Detection"
 [3]: https://nmap.org/book/man-performance.html "Nmap Timing and Performance"
+[4]: https://nmap.org/npsl/ "Nmap Public Source License"
