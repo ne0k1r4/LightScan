@@ -17,7 +17,7 @@
 
 ## Performance Benchmark
 
-![Benchmark Results](benchmark_results/loopback_65535_v26_chart.png)
+![Benchmark Results](https://raw.githubusercontent.com/ne0k1r4/LightScan/main/benchmark_results/loopback_65535_v26_chart.png)
 
 ---
 
