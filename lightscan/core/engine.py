@@ -177,7 +177,7 @@ class PhantomEngine:
         elapsed = time.time() - self._start
         if self._adaptive:
             print(f"\033[38;5;240m[~] adaptive: {self._adaptive.summary()}\033[0m")
-        print(f"\033[38;5;82m[+] PHANTOM COMPLETE:\033[0m {len(self._results)} findings · {len(self._errors)} errors · {elapsed:.2f}s")
+        print(f"\033[38;5;82m[+] LIGHTSCAN COMPLETE:\033[0m {len(self._results)} findings · {len(self._errors)} errors · {elapsed:.2f}s")
         return self._results
 
     def run_sync(self, tasks):

@@ -36,7 +36,8 @@ from lightscan.scan.evasion import parse_timing  # used in multiple branches
 def build_parser():
     p = argparse.ArgumentParser(
         prog="lightscan",
-        description="LightScan v2.6 — Authorized Network Inventory & Assessment Scanner",
+        usage="lightscan -t <target> [options]",
+        description="LightScan v2.6.0 — Fast Async Network Reconnaissance & Assessment Engine",
         formatter_class=argparse.RawTextHelpFormatter,
         add_help=False
     )
@@ -215,7 +216,7 @@ def build_parser():
                      help="Import OS and open-service observations from local Nmap XML; does not scan")
     out.add_argument("--resume",          action="store_true", help="Resume from checkpoint")
     out.add_argument("--clear-checkpoint",action="store_true", help="Clear checkpoint and start fresh")
-    out.add_argument("-v","--verbose",    action="store_true", help="Verbose output")
+    out.add_argument("-v","--verbose",    action="store_true", help="Clean, detailed, animated verbose output with live progress telemetry")
     out.add_argument("-q","--quiet",      action="store_true", help="Quiet mode: suppress banners, status lines, and progress output")
     out.add_argument("--min-severity",    choices=["info", "low", "medium", "high", "critical"], default="info", help="Filter minimum severity of reported findings (default: info)")
     out.add_argument("--no-discovery", action="store_true", help="Skip host discovery")
