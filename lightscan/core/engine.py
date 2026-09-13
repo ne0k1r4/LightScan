@@ -52,8 +52,6 @@ class PhantomEngine:
         self._start      = 0.0
         self._adaptive   = None
 
-        # adaptive=True: concurrency + timeout adjust dynamically based on RTT + loss.
-        # self.concurrency becomes the ceiling; AdaptiveTimingEngine drives the semaphore.
         if adaptive:
             try:
                 from lightscan.scan.adaptive import AdaptiveTimingEngine
@@ -62,7 +60,7 @@ class PhantomEngine:
                     max_concurrency=concurrency,
                 )
             except ImportError:
-                pass  # fall back to static
+                pass
 
     def _progress(self, label=""):
         if not sys.stdout.isatty():
@@ -70,17 +68,14 @@ class PhantomEngine:
         elapsed = time.time() - self._start
         pct = (self._done / self._total * 100) if self._total else 0
         
-        # Smoothly rotating spinner
         spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         spin_char = spinners[int(time.time() * 10) % len(spinners)]
         
-        # Color gradient progress bar (width 12)
         width = 12
         filled = int(round(width * pct / 100))
         bar_chars = []
         for i in range(width):
             if i < filled:
-                # Custom hue sweep (Reds to oranges to yellows)
                 shades = [88, 124, 160, 196, 196, 202, 202, 208, 208, 214, 220, 226]
                 c = shades[min(i, len(shades) - 1)]
                 bar_chars.append(f"\033[38;5;{c}m█\033[0m")
@@ -98,16 +93,6 @@ class PhantomEngine:
 
     @staticmethod
     def _host_from_label(label: str, fallback: str) -> str:
-        # build_scan_tasks() labels are "host:port" (and "udp:host:port" for
-        # udp tasks) - pull the host back out so adaptive stats get
-        # attributed to the actual thing that was connected to, not to
-        # whatever (if anything) got passed into run(target=...). this is
-        # also what fixes run(tasks) being called with no target at all -
-        # that left self._target as "", which is falsy, so record_sent/
-        # record_response/record_timeout never fired and every single scan
-        # printed a static "sent=0 recv=0 loss=100.0%" regardless of what
-        # actually happened - and because of that, current_concurrency
-        # never adjusted off the timing template's raw default either.
         if not label:
             return fallback
         parts = label.split(":")
@@ -120,7 +105,6 @@ class PhantomEngine:
             if self.rate_limit > 0:
                 await asyncio.sleep(self.rate_limit)
 
-            # adaptive timeout: per-target RTT-derived timeout, capped at self.timeout
             timeout = self.timeout
             target  = self._host_from_label(label, getattr(self, "_target", ""))
             if self._adaptive and target:
@@ -135,7 +119,6 @@ class PhantomEngine:
                         self._results.extend(result)
                     else:
                         self._results.append(result)
-                # record RTT for successful completions
                 if self._adaptive and target:
                     await self._adaptive.record_response(target, time.time() - t0)
             except asyncio.TimeoutError:
@@ -151,10 +134,6 @@ class PhantomEngine:
                     self._progress(label)
 
     async def run(self, tasks, target: str = ""):
-        # If adaptive is active, seed the semaphore from the engine's current concurrency.
-        # The semaphore is rebuilt mid-run only conceptually — we poll current_concurrency
-        # to throttle via a secondary gate in _run_one. Rebuilding the actual asyncio.Semaphore
-        # mid-gather is not safe, so we use a soft gate instead.
         init_concurrency = (
             self._adaptive.current_concurrency if self._adaptive else self.concurrency
         )
@@ -167,7 +146,6 @@ class PhantomEngine:
         self._target  = target
         await asyncio.gather(*[self._run_one(c, l) for c, l in tasks])
         
-        # Clear progress line cleanly upon completion
         if sys.stdout.isatty():
             sys.stdout.write("\r\033[K")
             sys.stdout.flush()
@@ -183,9 +161,6 @@ class PhantomEngine:
     def run_sync(self, tasks):
         try:
             loop = asyncio.get_running_loop()
-            # already inside a running event loop (e.g. jupyter / nested call).
-            # asyncio.run() in a thread creates its own loop which is fine here
-            # since PhantomEngine tasks don't reference the outer loop.
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(asyncio.run, self.run(tasks))

@@ -38,8 +38,6 @@ from lightscan.core.engine import ScanResult, Severity
 
 _DB_PATH = Path(__file__).parent.parent / "data" / "os_signatures.json"
 
-# Data model
-
 @dataclass
 class TCPFeatures:
     """Features extracted from a SYN-ACK or probe response."""
@@ -51,7 +49,7 @@ class TCPFeatures:
     timestamps:    bool               = False
     wscale:        Optional[int]      = None
     options_order: list               = field(default_factory=list)
-    flags_str:     str                = ""      # e.g. "SA", "R", "RA"
+    flags_str:     str                = ""
     ip_id:         int                = 0
     raw_options:   list               = field(default_factory=list)
 
@@ -60,13 +58,11 @@ class OSMatch:
     name:       str
     family:     str
     score:      int
-    confidence: str   # HIGH / MEDIUM / LOW
+    confidence: str
     max_score:  int   = 100
 
     def __str__(self):
         return f"{self.name} [{self.family}] score={self.score}/{self.max_score} ({self.confidence})"
-
-# Signature DB
 
 class SignatureDB:
     def __init__(self, path: Path = _DB_PATH):
@@ -81,37 +77,29 @@ class SignatureDB:
         for sig in self._sigs:
             score = 0; max_score = 85
 
-            # TTL — strongest signal (normalise by rounding up to nearest 64/128/255)
             ttl_norm = _normalise_ttl(feat.ttl)
             if ttl_norm == sig["ttl"]:           score += 25
-            elif abs(ttl_norm - sig["ttl"]) <= 5: score += 10  # forwarded hops
+            elif abs(ttl_norm - sig["ttl"]) <= 5: score += 10
 
-            # Window size
             if feat.window == sig["window"]:     score += 20
             elif abs(feat.window - sig["window"]) < 1000: score += 8
 
-            # DF bit
             if feat.df == sig["df"]:             score += 15
 
-            # Options order
             sig_opts = sig.get("options_order", [])
             if sig_opts:
                 if feat.options_order == sig_opts:         score += 15
                 elif set(feat.options_order) == set(sig_opts): score += 10
                 elif any(o in feat.options_order for o in sig_opts): score += 3
 
-            # SACK
             if feat.sack == sig["sack"]:         score += 10
 
-            # WScale
             sig_ws = sig.get("wscale")
             if feat.wscale == sig_ws:            score += 10
             elif sig_ws is None and feat.wscale is None: score += 10
 
-            # Timestamps
             if feat.timestamps == sig["timestamps"]: score += 5
 
-            # T2-T7 probe flags (30 pts extra)
             if probe_flags:
                 max_score = 85 + 30
                 for t_key in ("T2","T3","T4","T5","T6","T7"):
@@ -125,8 +113,6 @@ class SignatureDB:
 
         results.sort(key=lambda x: x.score, reverse=True)
         return results
-
-# Feature extractor (from Scapy packet)
 
 def _normalise_ttl(ttl: int) -> int:
     """Guess the original TTL by rounding up to nearest standard value."""
@@ -196,8 +182,6 @@ def _flags_to_str(flags: int) -> str:
     if flags & 0x80: s += "C"
     return s if s else "0"
 
-# Active T2-T7 probe engine (MultiProbeOSDetector)
-
 class MultiProbeOSDetector:
     """
     Active OS detection engine using multi-probe sequence.
@@ -207,12 +191,12 @@ class MultiProbeOSDetector:
       • Returns LightScan ScanResult objects
       • Closed port auto-discovered if not supplied
     """
-    FLAG_T2 = 0x00           # NULL
-    FLAG_T3 = 0x2B           # SYN|URG|PSH|FIN
-    FLAG_T4 = 0x10           # ACK
-    FLAG_T5 = 0x02           # SYN   (→ closed port)
-    FLAG_T6 = 0x10           # ACK   (→ closed port)
-    FLAG_T7 = 0x29           # FIN|PSH|URG (→ closed port)
+    FLAG_T2 = 0x00
+    FLAG_T3 = 0x2B
+    FLAG_T4 = 0x10
+    FLAG_T5 = 0x02
+    FLAG_T6 = 0x10
+    FLAG_T7 = 0x29
 
     def __init__(self, db: SignatureDB | None = None, timeout=2.0):
         self.db      = db or SignatureDB()
@@ -293,7 +277,6 @@ class MultiProbeOSDetector:
 
         feat = synack_feat
         if feat is None:
-            # Reconstruct minimal features from T5 SYN-ACK if possible
             t5 = raw.get("T5")
             if t5 and "ttl" in t5:
                 feat = TCPFeatures(ttl=t5["ttl"], window=t5.get("window",0),
@@ -302,8 +285,6 @@ class MultiProbeOSDetector:
             feat = TCPFeatures(ttl=0, window=0, df=False)
 
         return self.db.match(feat, probe_flags)
-
-# Passive fingerprinter (no extra packets)
 
 class PassiveFingerprintEngine:
     """
@@ -353,8 +334,6 @@ class PassiveFingerprintEngine:
                           {"os": best.name, "family": best.family,
                            "confidence": best.confidence, "score": best.score})
 
-# Public API
-
 _shared_db  = None
 _shared_pfp = None
 _shared_mpo = None
@@ -385,7 +364,7 @@ async def os_probe_async(target: str, open_port: int,
         None, eng.detect, target, open_port, synack_feat, closed_port)
     if not matches: return []
     results = []
-    for m in matches[:3]:  # top 3 candidates
+    for m in matches[:3]:
         detail = f"{m.name} [{m.family}] confidence={m.confidence} score={m.score}/100"
         results.append(ScanResult("os-detect-active", target, open_port,
             "fingerprinted", Severity.INFO, detail,

@@ -11,7 +11,6 @@ import resource
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-
 @dataclass(frozen=True)
 class RuntimeSnapshot:
     """A point-in-time view of process limits relevant to connection scans."""
@@ -23,7 +22,6 @@ class RuntimeSnapshot:
 
     def to_dict(self) -> dict[str, int | None]:
         return asdict(self)
-
 
 def capture_runtime_snapshot() -> RuntimeSnapshot:
     """Capture best-effort process telemetry without platform-specific failure.
@@ -60,7 +58,6 @@ def capture_runtime_snapshot() -> RuntimeSnapshot:
         fd_hard_limit=hard_limit,
         max_rss_kib=max_rss,
     )
-
 
 def resource_delta(
     started: RuntimeSnapshot,

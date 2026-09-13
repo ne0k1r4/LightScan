@@ -1,8 +1,3 @@
-// LightScan Go Scanner — high-performance TCP connect scanner companion binary.
-//
-// The Go engine is deliberately limited to authorized TCP inventory work. It
-// uses a bounded queue, host-fair scheduling, explicit rate and retry controls,
-// and NDJSON output so the Python CLI can retain one report contract.
 package main
 
 import (
@@ -21,11 +16,10 @@ import (
 	"time"
 )
 
-// Result is emitted as one NDJSON object per scanned port when --json is set.
 type Result struct {
 	Host           string `json:"host"`
 	Port           int    `json:"port"`
-	Status         string `json:"status"` // open | closed | filtered | skipped | error
+	Status         string `json:"status"`
 	Banner         string `json:"banner,omitempty"`
 	Ms             int64  `json:"ms"`
 	Attempts       int    `json:"attempts"`
@@ -160,9 +154,6 @@ func validPort(port int) bool {
 	return port >= 1 && port <= 65535
 }
 
-// parseTargets accepts IPv4 and IPv6 literals, expands bounded IPv4 CIDRs,
-// and accepts IPv6 /128 CIDRs as a literal alias. Broader IPv6 CIDRs remain
-// intentionally rejected to prevent accidental massive expansion.
 func parseTargets(spec string, maxTargets int) ([]string, error) {
 	if maxTargets < 1 {
 		return nil, fmt.Errorf("max targets must be at least 1")
@@ -637,8 +628,6 @@ func main() {
 		}()
 	}
 
-	// Port-major ordering spreads early work across hosts rather than exhausting
-	// one host's entire port list before moving to the next host.
 	for _, port := range ports {
 		for start := 0; start < len(hosts); start += *hostGroup {
 			end := start + *hostGroup

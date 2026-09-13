@@ -19,7 +19,6 @@ from lightscan.core.runtime_telemetry import capture_runtime_snapshot, resource_
 from lightscan.scan.aimd import AimdConcurrencyController
 from lightscan.scan.portscan import CRIT_PORTS, HIGH_PORTS, PROBES, SERVICE_MAP
 
-
 @dataclass(frozen=True)
 class ScanControls:
     """Explicit controls for the streaming connect-scan execution model."""
@@ -51,7 +50,6 @@ class ScanControls:
             raise ValueError("host_group_size must be at least 1")
         if not 0 <= self.timing <= 5:
             raise ValueError("timing must be between 0 and 5")
-
 
 @dataclass
 class ScanMetrics:
@@ -92,12 +90,10 @@ class ScanMetrics:
             "aimd": self.aimd,
         }
 
-
 @dataclass(frozen=True)
 class _Job:
     host: str
     port: int
-
 
 class _RateGate:
     """A monotonic, process-local start-rate limiter for connection attempts."""
@@ -117,7 +113,6 @@ class _RateGate:
         delay = scheduled - now
         if delay > 0:
             await asyncio.sleep(delay)
-
 
 class _AdaptiveWindow:
     """A mutable in-flight limit controlled by measured scan feedback."""
@@ -142,7 +137,6 @@ class _AdaptiveWindow:
         async with self._condition:
             self._limit = max(1, limit)
             self._condition.notify_all()
-
 
 class StreamingTCPScanner:
     """Run a fair, bounded TCP connect scan with retry-aware classification."""
@@ -414,7 +408,6 @@ class StreamingTCPScanner:
             return data.decode("utf-8", errors="replace").strip()[:200]
         except (asyncio.TimeoutError, ConnectionError, OSError):
             return ""
-
 
 def _detect_service(port: int, banner: str) -> str:
     service = SERVICE_MAP.get(port, f"port/{port}")

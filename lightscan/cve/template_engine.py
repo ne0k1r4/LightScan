@@ -53,29 +53,27 @@ SEV_MAP = {
     "info":     Severity.INFO,
 }
 
-# Template data model
-
 @dataclass
 class Matcher:
-    type:        str          = "word"  # word | regex | status
+    type:        str          = "word"
     words:       list         = field(default_factory=list)
     regex:       list         = field(default_factory=list)
     status:      list         = field(default_factory=list)
-    condition:   str          = "or"    # and | or
-    part:        str          = "body"  # body | headers | all
+    condition:   str          = "or"
+    part:        str          = "body"
     negative:    bool         = False
 
 @dataclass
 class TemplateStep:
-    type:               str                    # send | match | extract
+    type:               str
     data:               str          = ""
-    encoding:           str          = "raw"   # raw | hex | base64
+    encoding:           str          = "raw"
     contains:           str          = ""
     not_contains:       str          = ""
     regex:              str          = ""
     status:             list         = field(default_factory=list)
-    part:               str          = "body"  # body | headers | all
-    name:               str          = ""      # for extract steps
+    part:               str          = "body"
+    name:               str          = ""
     group:              int          = 0
     depends_on:         str          = ""
     matchers:           list[Matcher]= field(default_factory=list)
@@ -87,16 +85,16 @@ class Template:
     name:        str
     severity:    Severity
     port:        int
-    protocol:    str          = "tcp"   # tcp | http | https | udp
+    protocol:    str          = "tcp"
     cve:         str          = ""
     tags:        list         = field(default_factory=list)
     steps:       list         = field(default_factory=list)
     description: str          = ""
     remediation: str          = ""
     reference:   str          = ""
-    version:     str          = ""     # optional constraint, e.g. "<6.2.7" or ">=2.0,<3.5"
-    pivot:       list         = field(default_factory=list)   # commands for actual next steps on a hit
-    intrusive:   bool         = False  # true if steps actually do something (rce/read-file/sqli), not just detect
+    version:     str          = ""
+    pivot:       list         = field(default_factory=list)
+    intrusive:   bool         = False
     raw:         dict         = field(default_factory=dict)
 
     @classmethod
@@ -154,8 +152,6 @@ class Template:
         with open(path) as f:
             return cls.from_dict(yaml.safe_load(f))
 
-# Runner
-
 class TemplateRunner:
     """
     Executes one Template against one (host, port).
@@ -177,8 +173,6 @@ class TemplateRunner:
         except Exception as e:
             return None
 
-    # TCP runner
-
     async def _run_tcp(self, tpl: Template, host: str, port: int) -> ScanResult | None:
         try:
             r, w = await asyncio.wait_for(
@@ -188,7 +182,7 @@ class TemplateRunner:
 
         matched = False
         extracted: dict = {}
-        match_results: dict = {}  # step_key → bool
+        match_results: dict = {}
         recv_buf = b""
 
         try:
@@ -213,7 +207,6 @@ class TemplateRunner:
                     if ok:
                         matched = True
                     elif step.contains or step.regex or step.matchers:
-                        # A required match failed — stop
                         break
 
                 elif step.type == "extract":
@@ -229,8 +222,6 @@ class TemplateRunner:
             return None
 
         return self._make_result(tpl, host, port, extracted, recv_buf)
-
-    # HTTP runner
 
     async def _run_http(self, tpl: Template, host: str, port: int) -> ScanResult | None:
         scheme = "https" if tpl.protocol == "https" or port in (443,8443) else "http"
@@ -279,14 +270,11 @@ class TemplateRunner:
         return self._make_result(tpl, host, port, extracted,
                                  last_body.encode()[:200])
 
-    # Helpers
-
     def _decode_payload(self, data: str, encoding: str) -> bytes:
         if encoding == "hex":
             return bytes.fromhex(data.replace(" ","").replace("\\x",""))
         if encoding == "base64":
             return base64.b64decode(data)
-        # raw — handle \r\n \x00 escapes
         return data.encode("utf-8").decode("unicode_escape").encode("latin-1")
 
     def _check_match(self, step: TemplateStep, body: str, status, headers: str = "") -> bool:
@@ -367,7 +355,7 @@ class TemplateRunner:
             try:
                 pivot_cmds.append(cmd.format(host=host, port=port, **extracted))
             except (KeyError, IndexError):
-                pivot_cmds.append(cmd)  # bad placeholder in the template - don't drop the hint over it
+                pivot_cmds.append(cmd)
 
         return ScanResult(
             module   = f"template:{tpl.id}",
@@ -389,13 +377,8 @@ class TemplateRunner:
             }
         )
 
-# Template loader
-
-# version constraint stuff for skipping templates that can't apply to the
-# detected version. not real semver (redis/mongo/whatever don't follow it
-# anyway) — just dotted number groups, compared as tuples.
 def _ver_tuple(v: str) -> tuple:
-    v = v.split("-")[0].split("+")[0]  # drop -rc1 / +build suffixes
+    v = v.split("-")[0].split("+")[0]
     parts = re.findall(r"\d+", v)
     return tuple(int(p) for p in parts)
 
@@ -496,8 +479,6 @@ class TemplateLibrary:
         from collections import Counter
         c = Counter(t.severity.value for t in self._templates)
         return f"{len(self)} templates | " + " ".join(f"{v} {k}" for k,v in c.items())
-
-# Async batch runner
 
 async def run_templates(templates: list[Template], host: str,
                         open_ports: list[int] | None = None,

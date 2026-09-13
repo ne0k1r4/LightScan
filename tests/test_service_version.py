@@ -7,7 +7,6 @@ import pytest
 
 from lightscan.scan.sversion import detect_services, detect_version
 
-
 @pytest.fixture
 async def ssh_banner_server():
     async def handler(reader, writer):
@@ -27,14 +26,12 @@ async def ssh_banner_server():
         server.close()
         await server.wait_closed()
 
-
 async def test_detect_version_reads_an_ssh_banner(ssh_banner_server):
     result = await detect_version("127.0.0.1", ssh_banner_server, timeout=0.5)
 
     assert result["service"] == "SSH"
     assert result["version"].startswith("OpenSSH_9.8p1")
     assert result["protocol"] == "SSH-2.0"
-
 
 async def test_detect_services_returns_common_scan_results(ssh_banner_server):
     findings = await detect_services(

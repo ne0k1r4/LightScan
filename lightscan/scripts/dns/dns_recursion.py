@@ -20,7 +20,6 @@ async def run(host, port, timeout=8.0):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.settimeout(timeout)
-            # Query an external domain — if it resolves, recursion is open
             q = _build_dns_query("scanme.nmap.org")
             s.sendto(q, (host, port))
             resp, _ = s.recvfrom(512)

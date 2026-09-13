@@ -1,12 +1,3 @@
-# tests for the intrusive: true template gate.
-#
-# found while reviewing a real-world run: drupalgeddon2/apache-path-
-# traversal/wordpress-sqli don't just detect, they actually run a
-# command / read a file / inject sql once their (legitimate) detection
-# gate passes. --templates/--cve had no way to know in advance whether
-# a run would stay passive or not - which matters for anything with an
-# explicit "no testing exploits" scope, like scanme.nmap.org's own
-# stated policy.
 import asyncio
 
 import pytest
@@ -15,23 +6,18 @@ from lightscan.cve.template_engine import Template, TemplateLibrary, run_templat
 
 TEMPLATE_DIR = "lightscan/templates"
 
-
 def test_exactly_the_three_known_exploit_templates_are_tagged():
     lib = TemplateLibrary([TEMPLATE_DIR])
     intrusive = sorted(t.id for t in lib if t.intrusive)
     assert intrusive == ["CVE-2018-7600", "CVE-2021-41773", "CVE-2022-21661"]
-
 
 def test_intrusive_defaults_false_for_ordinary_templates():
     lib = TemplateLibrary([TEMPLATE_DIR])
     redis_tpl = next(t for t in lib if t.id == "CVE-2022-0543")
     assert redis_tpl.intrusive is False
 
-
 @pytest.mark.asyncio
 async def test_intrusive_template_sends_nothing_without_the_flag():
-    # the actual gate: without allow_intrusive, the template shouldn't
-    # even get as far as its own passive detection step
     requests_seen = []
 
     async def handle(r, w):
@@ -46,13 +32,11 @@ async def test_intrusive_template_sends_nothing_without_the_flag():
         lib = TemplateLibrary([TEMPLATE_DIR])
         tpls = lib.filter(ids=["CVE-2018-7600"])
         for t in tpls:
-            t.port = 18280  # real port from GetRequest's list isn't needed here,
-                             # open_ports= below is what actually gates dispatch
+            t.port = 18280
         await run_templates(tpls, "127.0.0.1", open_ports=[18280], allow_intrusive=False)
         assert requests_seen == []
     finally:
         srv.close()
-
 
 @pytest.mark.asyncio
 async def test_intrusive_template_actually_sends_the_payload_when_allowed():
@@ -72,11 +56,10 @@ async def test_intrusive_template_actually_sends_the_payload_when_allowed():
         for t in tpls:
             t.port = 18281
         await run_templates(tpls, "127.0.0.1", open_ports=[18281], allow_intrusive=True)
-        assert len(requests_seen) == 2  # detection request + the actual exploit payload
+        assert len(requests_seen) == 2
         assert b"passthru" in requests_seen[1]
     finally:
         srv.close()
-
 
 @pytest.mark.asyncio
 async def test_non_intrusive_template_unaffected_by_the_flag():

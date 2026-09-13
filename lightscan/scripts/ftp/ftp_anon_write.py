@@ -16,7 +16,6 @@ async def run(host, port, timeout=8.0):
             banner = ftp.getwelcome()
             try:
                 ftp.login("anonymous", "lightscan@test.com")
-                # Login succeeded — check write access
                 try:
                     ftp.storbinary("STOR lightscan_test.txt", io.BytesIO(b"lightscan"))
                     ftp.delete("lightscan_test.txt")

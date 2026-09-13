@@ -11,7 +11,6 @@ import pytest
 from lightscan.scan.go_runner import scan_with_go
 from lightscan.scan.streaming import ScanControls, StreamingTCPScanner, _RateGate
 
-
 @pytest.fixture
 async def tcp_banner_server():
     async def handler(reader, writer):
@@ -31,7 +30,6 @@ async def tcp_banner_server():
         server.close()
         await server.wait_closed()
 
-
 def test_scan_controls_reject_invalid_capacity_values():
     with pytest.raises(ValueError, match="concurrency"):
         ScanControls(concurrency=0)
@@ -39,7 +37,6 @@ def test_scan_controls_reject_invalid_capacity_values():
         ScanControls(per_host_concurrency=0)
     with pytest.raises(ValueError, match="retries"):
         ScanControls(retries=-1)
-
 
 def test_job_iterator_interleaves_hosts_before_advancing_to_next_port():
     scanner = StreamingTCPScanner(ScanControls(host_group_size=2), banners=False)
@@ -50,7 +47,6 @@ def test_job_iterator_interleaves_hosts_before_advancing_to_next_port():
         ("a", 80), ("b", 80), ("c", 80),
         ("a", 443), ("b", 443), ("c", 443),
     ]
-
 
 async def test_streaming_scanner_reports_only_open_ports_and_tracks_all_attempts(tcp_banner_server):
     closed_port = tcp_banner_server + 1
@@ -73,7 +69,6 @@ async def test_streaming_scanner_reports_only_open_ports_and_tracks_all_attempts
     assert scanner.adaptive_summary is not None
     assert "sent=2" in scanner.adaptive_summary
 
-
 async def test_rate_gate_spaces_connection_starts():
     gate = _RateGate(max_rate=25)
     started = asyncio.get_running_loop().time()
@@ -82,9 +77,7 @@ async def test_rate_gate_spaces_connection_starts():
     await gate.wait()
     elapsed = asyncio.get_running_loop().time() - started
 
-    # The first permit is immediate; the next two are separated by ~40ms each.
     assert elapsed >= 0.06
-
 
 @pytest.mark.skipif(shutil.which("go") is None, reason="Go toolchain is unavailable")
 async def test_go_engine_streams_open_results_into_common_result_contract(tcp_banner_server, tmp_path):

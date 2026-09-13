@@ -31,19 +31,16 @@ async def run(host, port, timeout=8.0):
     headers, status = await loop.run_in_executor(None, _fetch)
     if not headers: return []
     results = []
-    # Security header analysis
     missing = [h for h in SECURITY_HEADERS if h not in headers]
     if missing:
         results.append(ScanResult("script:http_headers", host, port, "missing_headers",
             Severity.MEDIUM,
             f"Missing security headers: {', '.join(missing[:3])}",
             {"missing": missing, "present": {k:v for k,v in headers.items() if k in SECURITY_HEADERS}}))
-    # Server header disclosure
     server = headers.get("Server", "")
     if server:
         results.append(ScanResult("script:http_headers", host, port, "server_header",
             Severity.LOW, f"Server: {server}", {"server": server}))
-    # Interesting headers
     for hdr in ["X-Powered-By", "X-AspNet-Version", "X-Generator"]:
         if hdr in headers:
             results.append(ScanResult("script:http_headers", host, port, "info_disclosure",

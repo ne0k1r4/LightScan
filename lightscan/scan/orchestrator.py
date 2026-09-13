@@ -39,37 +39,31 @@ from lightscan.core.engine import ScanResult, Severity
 from lightscan.core.target import parse_ports
 from lightscan.scan.active import active_scan, discover_hosts, validate_port, pivot_suggestions
 
-# every stage_* function below prints status with these. used to be
-# redefined locally in a couple places (run_auto, print_compromise_map)
-# and just missing everywhere else, so anything stage_dns/stage_vuln/etc
-# tried to print crashed with NameError the second it found anything.
-C   = "\033[38;5;196m"   # red    — headers / critical
-YEL = "\033[38;5;208m"   # amber  — warnings / medium
-GRN = "\033[38;5;82m"    # green  — success
-BLU = "\033[38;5;117m"   # blue   — info
-DIM = "\033[38;5;240m"   # gray   — muted / secondary text
-R   = "\033[0m"          # reset
-
-# Target context (shared memory across all stages)
+C   = "\033[38;5;196m"
+YEL = "\033[38;5;208m"
+GRN = "\033[38;5;82m"
+BLU = "\033[38;5;117m"
+DIM = "\033[38;5;240m"
+R   = "\033[0m"
 
 @dataclass
 class TargetContext:
     """Accumulates everything discovered about the engagement."""
     domain:         str
-    scope:          List[str]           = field(default_factory=list)   # allowed CIDRs/domains
+    scope:          List[str]           = field(default_factory=list)
     subdomains:     List[str]           = field(default_factory=list)
-    ips:            Dict[str, str]      = field(default_factory=dict)   # subdomain→ip
+    ips:            Dict[str, str]      = field(default_factory=dict)
     live_hosts:     List[str]           = field(default_factory=list)
     open_ports:     Dict[str, List[int]] = field(default_factory=dict)
-    services:       Dict[str, Dict]     = field(default_factory=dict)   # host:port → svc info
-    os_hints:       Dict[str, str]      = field(default_factory=dict)   # host → "windows"/"linux"
+    services:       Dict[str, Dict]     = field(default_factory=dict)
+    os_hints:       Dict[str, str]      = field(default_factory=dict)
     vulns:          List[ScanResult]    = field(default_factory=list)
-    creds:          List[Dict]          = field(default_factory=list)   # {"host","proto","user","pass"}
+    creds:          List[Dict]          = field(default_factory=list)
     pivot_hosts:    List[str]           = field(default_factory=list)
     dc_candidates:  List[str]           = field(default_factory=list)
-    web_targets:    List[str]           = field(default_factory=list)   # http/https URLs
+    web_targets:    List[str]           = field(default_factory=list)
     all_results:    List[ScanResult]    = field(default_factory=list)
-    skipped:        Set[str]            = field(default_factory=set)    # skipped probe types
+    skipped:        Set[str]            = field(default_factory=set)
 
     def add_result(self, r: ScanResult):
         self.all_results.append(r)
@@ -80,13 +74,12 @@ class TargetContext:
     def in_scope(self, host: str) -> bool:
         """Return True if host is within defined scope."""
         if not self.scope:
-            return True  # no scope = unrestricted
+            return True
         for s in self.scope:
             try:
                 if ipaddress.ip_address(host) in ipaddress.ip_network(s, strict=False):
                     return True
             except ValueError:
-                # domain-based scope
                 if host == s or host.endswith("." + s):
                     return True
         return False
@@ -99,8 +92,6 @@ class TargetContext:
 
     def os_is_linux(self, host: str) -> bool:
         return "linux" in self.os_hints.get(host, "").lower()
-
-# Stage helpers
 
 def _stage(n: int, name: str):
     bar = f"\033[38;5;196m╪\033[0m"
@@ -158,7 +149,7 @@ async def _dns_brute(domain: str, wordlist: List[str]) -> List[str]:
 
 async def _axfr(domain: str) -> List[str]:
     """Attempt DNS zone transfer."""
-    import dns_stub as _  # silent import, we implement minimally below
+    import dns_stub as _
     pass
 
 def _infer_os(ttl: int, banner: str) -> str:
@@ -174,27 +165,21 @@ def _infer_os(ttl: int, banner: str) -> str:
         if kw in b: return "linux"
     return ""
 
-# Orchestration stages
-
 async def stage_dns(ctx: TargetContext, timeout: float, stealth: bool):
     """Stage 1: Subdomain enumeration via crt.sh + DNS brute."""
     _stage(1, f"OSINT / DNS enumeration → {ctx.domain}")
 
-    # crt.sh CT logs
     ct_subs = await _crtsh(ctx.domain)
     print(f"  {BLU}crt.sh{R}  {len(ct_subs)} subdomains from CT logs")
     ctx.subdomains.extend(ct_subs)
 
-    # DNS brute
     if not stealth:
         brute_subs = await _dns_brute(ctx.domain, _SUBDOMAIN_WORDLIST)
         new = [s for s in brute_subs if s not in ctx.subdomains]
         print(f"  {BLU}brute{R}   {len(new)} new subdomains via DNS brute")
         ctx.subdomains.extend(new)
 
-    # Deduplicate
     ctx.subdomains = list(dict.fromkeys(ctx.subdomains))
-    # Always include root domain
     if ctx.domain not in ctx.subdomains:
         ctx.subdomains.insert(0, ctx.domain)
 
@@ -215,7 +200,6 @@ async def stage_resolve(ctx: TargetContext, timeout: float):
             ip = await _resolve(host)
             if ip and ctx.in_scope(ip) and ctx.in_scope(host):
                 ctx.ips[host] = ip
-                # CDN detection via PTR / hostname
                 is_cdn = any(cdn in host.lower() for cdn in CDN_CNAMES)
                 if is_cdn:
                     print(f"  {DIM}CDN{R}  {host} → {ip} (CDN — limited scan)")
@@ -241,12 +225,11 @@ async def stage_portscan(ctx: TargetContext, timeout: float,
         concurrency=50 if stealth else 256,
         intensity=intensity,
         verbose=False,
-        skip_discovery=True,  # already have IPs
+        skip_discovery=True,
         mode=mode,
     )
     ctx.extend_results(results)
 
-    # Build open_ports map and OS hints from results
     for r in results:
         if r.module == "portscan" and r.status == "open":
             ctx.open_ports.setdefault(r.target, []).append(r.port)
@@ -263,7 +246,6 @@ async def stage_portscan(ctx: TargetContext, timeout: float,
         elif r.module.startswith("active:") and r.status == "VULN":
             ctx.vulns.append(r)
 
-    # Detect web targets
     for host, plist in ctx.open_ports.items():
         for p in plist:
             scheme = "https" if p in (443,8443,9443) else "http"
@@ -275,7 +257,6 @@ async def stage_portscan(ctx: TargetContext, timeout: float,
 async def stage_vuln(ctx: TargetContext, timeout: float, allow_intrusive: bool = False):
     """Stage 5: Validate vulns not already covered by active_scan."""
     _stage(5, "Extended vulnerability validation")
-    # active_scan already ran vuln validation; this stage adds CVE template checks
     if not ctx.open_ports:
         print(f"  {DIM}No open ports to check{R}")
         return
@@ -329,7 +310,6 @@ async def stage_cred_attack(ctx: TargetContext, timeout: float,
             proto = BRUTE_MAP.get(port)
             if not proto: continue
             if proto not in PROTOCOLS: continue
-            # Skip Windows-only protos on Linux hosts
             if proto in ("rdp","mssql") and ctx.os_is_linux(host): continue
 
             print(f"  {BLU}[BRUTE]{R} {proto.upper()} {host}:{port}")
@@ -356,7 +336,6 @@ async def stage_dc_hunt(ctx: TargetContext, timeout: float):
 
     for host, plist in ctx.open_ports.items():
         port_set = set(plist)
-        # DC fingerprint: Kerberos(88) + LDAP(389) + SMB(445)
         if 88 in port_set and (389 in port_set or 636 in port_set):
             ctx.dc_candidates.append(host)
             os_hint = ctx.os_hints.get(host, "windows")
@@ -372,7 +351,6 @@ async def stage_dc_hunt(ctx: TargetContext, timeout: float):
                      f"impacket-secretsdump domain/user:pass@{host}",
                      f"BloodHound-python -d domain -u user -p pass -ns {host} -c all",
                  ]}))
-        # Pure SMB DC indicator (fallback)
         elif 445 in port_set and 3268 in port_set:
             ctx.dc_candidates.append(host)
             print(f"  {YEL}[DC CANDIDATE]{R} {host} — GlobalCatalog(3268)+SMB")
@@ -392,7 +370,6 @@ async def stage_web(ctx: TargetContext, timeout: float, stealth: bool):
         print(f"  {DIM}web scanner unavailable{R}")
         return
 
-    # Stealth: only scan first 3 targets; normal: all
     targets = ctx.web_targets[:3] if stealth else ctx.web_targets
     for url in targets:
         print(f"  {BLU}[WEB]{R} {url}")
@@ -405,15 +382,12 @@ async def stage_web(ctx: TargetContext, timeout: float, stealth: bool):
         except Exception as e:
             print(f"  {DIM}[!] web scan error {url}: {e}{R}")
 
-# Stage 10: Compromise Map
-
 def build_compromise_map(ctx: TargetContext) -> dict:
     """Build structured JSON compromise narrative."""
     crit_vulns = [r for r in ctx.vulns if r.severity == Severity.CRITICAL]
     high_vulns = [r for r in ctx.vulns if r.severity == Severity.HIGH]
 
     attack_paths = []
-    # Group by host
     host_vulns: Dict[str, List[ScanResult]] = {}
     for v in ctx.vulns:
         host_vulns.setdefault(v.target, []).append(v)
@@ -430,7 +404,6 @@ def build_compromise_map(ctx: TargetContext) -> dict:
             "dc":    host in ctx.dc_candidates,
             "creds": [c for c in ctx.creds if c["host"] == host],
         }
-        # Add next-step from exploit data
         nexts = []
         for v in vlist:
             n = v.data.get("next") or v.data.get("chain") or []
@@ -483,8 +456,6 @@ def print_compromise_map(m: dict):
                 print(f"       {GRN}✔ CREDS{R} {c['proto'].upper()} {c['user']}:{c['pass']}")
     print()
 
-# Main orchestrator entry point
-
 async def run_auto(
     domain:     str,
     scope:      List[str]       = None,
@@ -535,16 +506,11 @@ async def run_auto(
         if not skip_web:
             await stage_web(ctx, timeout, stealth)
 
-    # Stage 10 — Compromise map
     _stage(10, "Building compromise map")
     comp_map = build_compromise_map(ctx)
     print_compromise_map(comp_map)
 
-    # Save JSON
     if output_dir == "-":
-        # stdout is reserved for Reporter's piped report — writing a second
-        # file here would hit Path('-')/... (FileNotFoundError) since '-'
-        # isn't a real directory. comp_map is still returned to the caller.
         print(f"  {DIM}[i] --output - active — compromise map not written to disk, "
               f"returned in-memory only{R}")
     else:

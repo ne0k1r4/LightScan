@@ -17,8 +17,6 @@ LOCKOUT_SIGS = [
 ]
 RATE_SIGS = ["rate limit","too many requests","throttl","429","503","slow down","blocked temporarily"]
 
-# HTTP brute success/failure heuristics
-# Used when handlers don't return a definitive success bool.
 HTTP_FAILURE_SIGS = [
     "invalid password","wrong password","incorrect password","bad credentials",
     "authentication failed","login failed","invalid credentials","access denied",
@@ -28,7 +26,7 @@ HTTP_FAILURE_SIGS = [
 HTTP_SUCCESS_SIGS = [
     "logout","sign out","dashboard","welcome","my account","profile",
     "logged in","authenticated","session","token","api_key","access_token",
-    "200 ok",  # for non-web protocols serialised as text
+    "200 ok",
 ]
 HTTP_SUCCESS_CODES = {200, 201, 202, 301, 302, 303, 307}
 HTTP_FAILURE_CODES = {401, 403, 429, 500}
@@ -45,20 +43,17 @@ def infer_http_success(response: str, status_code: int = 0) -> bool | None:
     """
     rl = response.lower()
 
-    # Explicit failure signals take priority
     if any(sig in rl for sig in HTTP_FAILURE_SIGS):
         return False
     if status_code in HTTP_FAILURE_CODES:
         return False
 
-    # Explicit success signals
     if any(sig in rl for sig in HTTP_SUCCESS_SIGS):
         return True
     if status_code in HTTP_SUCCESS_CODES and status_code not in {301, 302, 303, 307}:
-        # Redirects alone are ambiguous — only count non-redirect 2xx
         return True
 
-    return None  # inconclusive
+    return None
 
 class BruteEngine:
     def __init__(self, concurrency=16, timeout=8.0, jitter=(0.0, 0.0),
@@ -129,8 +124,6 @@ class BruteEngine:
                     success = False
                 if self.checkpoint:
                     self.checkpoint.mark_tried(user, passwd)
-                # If handler returned inconclusive (success=None or False but response
-                # looks like a success), apply HTTP heuristics as a safety net.
                 if not success and isinstance(response, str):
                     inferred = infer_http_success(response)
                     if inferred is True:
@@ -194,7 +187,6 @@ class BruteEngine:
         import concurrent.futures
         try:
             asyncio.get_running_loop()
-            # Already inside a running loop — dispatch to a fresh thread
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(asyncio.run, self.run(*a, **k))
                 return future.result()
@@ -224,5 +216,3 @@ class CredentialSpray:
                     yield user, passwd
             if inter_delay > 0:
                 await asyncio.sleep(inter_delay)
-# timeout fix
-# timeout fix

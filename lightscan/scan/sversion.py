@@ -9,7 +9,6 @@ from lightscan.core.engine import ScanResult, Severity
 
 DEFAULT_TIMEOUT = 3.0
 
-
 async def _probe(host: str, port: int, payload: bytes, timeout: float) -> bytes:
     writer = None
     try:
@@ -30,14 +29,11 @@ async def _probe(host: str, port: int, payload: bytes, timeout: float) -> bytes:
             except (ConnectionError, OSError):
                 pass
 
-
 async def _banner(host: str, port: int, timeout: float) -> bytes:
     return await _probe(host, port, b"", timeout)
 
-
 def _text(data: bytes) -> str:
     return data.decode("utf-8", "replace").strip()
-
 
 async def probe_ssh(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     text = _text(await _banner(host, port, timeout))
@@ -51,7 +47,6 @@ async def probe_ssh(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> d
         "raw": text[:120],
     }
 
-
 async def probe_http(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     payload = f"HEAD / HTTP/1.0\r\nHost: {host}\r\nUser-Agent: LightScan/2\r\n\r\n".encode()
     text = _text(await _probe(host, port, payload, timeout))
@@ -59,7 +54,6 @@ async def probe_http(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> 
     if not match:
         return {}
     return {"service": "HTTP", "version": match.group(1).strip(), "raw": text[:200]}
-
 
 async def probe_https(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     import ssl
@@ -90,12 +84,10 @@ async def probe_https(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) ->
             except (ConnectionError, OSError):
                 pass
 
-
 async def probe_ftp(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     text = _text(await _banner(host, port, timeout))
     match = re.match(r"220[- ](.+)", text)
     return {"service": "FTP", "version": match.group(1).strip()[:80]} if match else {}
-
 
 async def probe_smtp(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     text = _text(await _banner(host, port, timeout))
@@ -108,11 +100,9 @@ async def probe_smtp(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> 
         result["capabilities"] = advertised[:10]
     return result
 
-
 async def probe_pop3(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     text = _text(await _banner(host, port, timeout))
     return {"service": "POP3", "version": text[4:80].strip()} if text.startswith("+OK") else {}
-
 
 async def probe_imap(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     text = _text(await _banner(host, port, timeout))
@@ -120,7 +110,6 @@ async def probe_imap(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> 
         return {}
     product = re.search(r"Dovecot|Courier|Cyrus|Exchange", text, re.IGNORECASE)
     return {"service": "IMAP", "version": (product.group(0) if product else text[5:60]).strip()}
-
 
 async def probe_mysql(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     data = await _banner(host, port, timeout)
@@ -136,7 +125,6 @@ async def probe_mysql(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) ->
         return {"service": "MySQL", "version": "unknown (authentication error)"}
     return {}
 
-
 async def probe_redis(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     text = _text(await _probe(host, port, b"INFO server\r\n", timeout))
     match = re.search(r"redis_version:(.+?)(?:\r|\n)", text)
@@ -147,7 +135,6 @@ async def probe_redis(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) ->
         return {"service": "Redis", "version": "authentication required"}
     return {}
 
-
 async def probe_postgres(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     startup = struct.pack(">II", 0, 196608) + b"user\x00lightscan\x00\x00"
     payload = struct.pack(">I", len(startup) + 4) + startup[4:]
@@ -157,19 +144,16 @@ async def probe_postgres(host: str, port: int, timeout: float = DEFAULT_TIMEOUT)
     match = re.search(r"PostgreSQL ([\d.]+)", _text(data))
     return {"service": "PostgreSQL", "version": match.group(1) if match else "detected"}
 
-
 async def probe_rdp(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     request = bytes([0x03, 0x00, 0x00, 0x13, 0x0E, 0xE0, 0x00, 0x00, 0x00,
                      0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00])
     data = await _probe(host, port, request, timeout)
     return {"service": "RDP", "version": "detected"} if data[:1] == b"\x03" else {}
 
-
 async def probe_memcached(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     text = _text(await _probe(host, port, b"version\r\n", timeout))
     match = re.match(r"VERSION (.+)", text)
     return {"service": "Memcached", "version": match.group(1).strip()} if match else {}
-
 
 async def probe_telnet(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     data = await _banner(host, port, timeout)
@@ -177,7 +161,6 @@ async def probe_telnet(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -
         return {}
     text = re.sub(r"\xff..", "", _text(data)).strip()
     return {"service": "Telnet", "version": text[:80] or "binary negotiation"}
-
 
 PROBE_MAP: dict[int, list] = {
     21: [probe_ftp], 22: [probe_ssh], 23: [probe_telnet], 25: [probe_smtp],
@@ -189,7 +172,6 @@ PROBE_MAP: dict[int, list] = {
 }
 GENERIC_PROBES = [probe_ftp, probe_smtp, probe_ssh, probe_http]
 
-
 async def detect_version(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
     """Identify one confirmed open service using the smallest relevant probe set."""
     for probe in PROBE_MAP.get(port, GENERIC_PROBES):
@@ -197,7 +179,6 @@ async def detect_version(host: str, port: int, timeout: float = DEFAULT_TIMEOUT)
         if result:
             return result
     return {}
-
 
 async def detect_versions_bulk(
     host: str,
@@ -218,7 +199,6 @@ async def detect_versions_bulk(
     await asyncio.gather(*(probe_one(port) for port in ports))
     return results
 
-
 async def detect_services(
     host: str,
     ports: list[int],
@@ -228,7 +208,7 @@ async def detect_services(
     verbose: bool = False,
 ) -> list[ScanResult]:
     """Return probe-derived service results in LightScan's common result model."""
-    del verbose  # Retained for compatibility with existing CLI callers.
+    del verbose
     findings: list[ScanResult] = []
     detected = await detect_versions_bulk(host, ports, concurrency=concurrency, timeout=timeout)
     for port, info in sorted(detected.items()):

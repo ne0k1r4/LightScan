@@ -26,13 +26,12 @@ import time
 
 log = logging.getLogger("lightscan.smb")
 
-# SMB constants
 _SMB_NEG_CMD     = 0x72
 _SMB_SESS_CMD    = 0x73
 _NTLMSSP_NEG     = 0x01
 _NTLMSSP_CHAL    = 0x02
 _NTLMSSP_AUTH    = 0x03
-_NTLM_FLAGS      = 0x00000001 | 0x00000002 | 0x00000200   # Unicode + OEM + NTLM
+_NTLM_FLAGS      = 0x00000001 | 0x00000002 | 0x00000200
 
 _DIALECTS = (
     b'\x02PC NETWORK PROGRAM 1.0\x00'
@@ -44,7 +43,6 @@ _DIALECTS = (
     b'\x02SMB 2.002\x00'
 )
 
-# Core SMB class (from Doc 3, refactored)
 class RawSMBAuth:
     def __init__(self, host: str, port: int = 445, timeout: float = 8.0):
         self.host    = host
@@ -55,7 +53,6 @@ class RawSMBAuth:
         self.uid = 0
         self._mid = 0
 
-    # Transport
     def connect(self) -> bool:
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -91,34 +88,30 @@ class RawSMBAuth:
         except (socket.timeout, OSError):
             return None
 
-    # SMB header builder
     def _smb_header(self, cmd: int, flags: int = 0x18, flags2: int = 0xC801,
                     tid: int = 0, uid: int = 0) -> bytes:
         self._mid += 1
         return (
             b'\xffSMB'
-            + struct.pack('<B', cmd)       # command
-            + struct.pack('<I', 0)         # NTSTATUS
+            + struct.pack('<B', cmd)
+            + struct.pack('<I', 0)
             + struct.pack('<B', flags)
             + struct.pack('<H', flags2)
-            + b'\x00' * 12                 # PID high, sig, reserved, TID, PID
+            + b'\x00' * 12
             + struct.pack('<H', uid)
             + struct.pack('<H', self._mid)
         )
 
-    # Step 1: Negotiate
     def negotiate(self) -> bool:
-        body  = struct.pack('<B', 0)                       # word count
-        body += struct.pack('<H', len(_DIALECTS))          # byte count
+        body  = struct.pack('<B', 0)
+        body += struct.pack('<H', len(_DIALECTS))
         body += _DIALECTS
         self._send(self._smb_header(_SMB_NEG_CMD) + body)
         resp = self._recv()
         if not resp or len(resp) < 36: return False
         if resp[:4] != b'\xffSMB': return False
 
-        # Try to extract NTLMSSP challenge from security blob
         try:
-            # word count tells us parameter size
             wc   = resp[32]
             blob_off = 32 + 1 + wc * 2 + 2
             if blob_off + 2 <= len(resp):
@@ -130,7 +123,6 @@ class RawSMBAuth:
 
         return True
 
-    # Step 1b: Parse NTLMSSP challenge
     def _parse_ntlm_challenge(self, blob: bytes):
         if len(blob) < 32: return
         msg_type = struct.unpack('<I', blob[8:12])[0]
@@ -138,13 +130,11 @@ class RawSMBAuth:
             self.server_challenge = blob[24:32]
             log.debug(f"NTLM challenge: {self.server_challenge.hex()}")
 
-    # Step 2: NTLMv2 response calculation
     @staticmethod
     def _md4(data: bytes) -> bytes:
         try:
             return hashlib.new('md4', data).digest()
         except ValueError:
-            # MD4 not in stdlib — try pycryptodome
             try:
                 from Crypto.Hash import MD4
                 return MD4.new(data).digest()
@@ -157,38 +147,30 @@ class RawSMBAuth:
 
     def _ntlmv2_response(self, username: str, password: str,
                          domain: str, server_challenge: bytes) -> bytes:
-        # NTLM hash = MD4(password UTF-16LE)
         nt_hash = self._md4(password.encode('utf-16-le'))
 
-        # NTLMv2 hash = HMAC-MD5(NT hash, uppercase(user+domain) UTF-16LE)
         ntv2_hash = self._hmac_md5(
             nt_hash,
             (username.upper() + domain).encode('utf-16-le')
         )
 
-        # Client challenge (8 random bytes)
         client_challenge = os.urandom(8)
 
-        # Timestamp: Windows FILETIME (100ns since 1601-01-01)
         ts = int((time.time() + 11644473600) * 10_000_000)
         timestamp = struct.pack('<Q', ts)
 
-        # NTLMv2 blob
         blob = (
-            b'\x01\x01\x00\x00'        # signature + reserved
+            b'\x01\x01\x00\x00'
             + b'\x00\x00\x00\x00'
             + timestamp
             + client_challenge
-            + b'\x00\x00\x00\x00'      # reserved
-            # TargetInfo (empty) — real impl would include domain/server name
+            + b'\x00\x00\x00\x00'
             + b'\x00\x00\x00\x00'
         )
 
-        # Response = HMAC-MD5(NTLMv2 hash, server_challenge + blob) + blob
         ntv2_response = self._hmac_md5(ntv2_hash, server_challenge + blob) + blob
         return ntv2_response
 
-    # Step 3: Session Setup with NTLM auth
     def session_setup(self, username: str, password: str, domain: str = '') -> str:
         """
         Returns: 'success' | 'failure' | 'locked' | 'error:<msg>'
@@ -201,7 +183,6 @@ class RawSMBAuth:
         except Exception as e:
             return f'error:{e}'
 
-        # Build NTLMSSP AUTH blob
         def sec_buf(data: bytes, base_offset: int) -> tuple[bytes, int]:
             hdr = struct.pack('<HHI', len(data), len(data), base_offset)
             return hdr, base_offset + len(data)
@@ -209,10 +190,8 @@ class RawSMBAuth:
         domain_bytes = domain.encode('utf-16-le')
         user_bytes   = username.encode('utf-16-le')
         ws_bytes     = b''
-        lm_bytes     = b'\x00' * 24   # LMv2 placeholder
+        lm_bytes     = b'\x00' * 24
 
-        # Fixed header = 8 (sig+type) + 8 (LM) + 8 (NTLM) + 8 (domain) +
-        # 8 (user) + 8 (ws) + 8 (sesskey) + 4 (flags) + 8 (ver) = 72
         base = 72
         lm_hdr,   base = sec_buf(lm_bytes,     base)
         ntlm_hdr, base = sec_buf(ntlm_resp,    base)
@@ -224,32 +203,30 @@ class RawSMBAuth:
             b'NTLMSSP\x00'
             + struct.pack('<I', _NTLMSSP_AUTH)
             + lm_hdr + ntlm_hdr + dom_hdr + usr_hdr + ws_hdr
-            + struct.pack('<HHI', 0, 0, 0)            # session key (empty)
+            + struct.pack('<HHI', 0, 0, 0)
             + struct.pack('<I', _NTLM_FLAGS)
-            + b'\x06\x01\x00\x00\x00\x00\x00\x0f'   # OS version (Win10)
-            # variable data
+            + b'\x06\x01\x00\x00\x00\x00\x00\x0f'
             + lm_bytes + ntlm_resp + domain_bytes + user_bytes + ws_bytes
         )
 
-        # SMB session setup parameters
         params = (
-            struct.pack('<B', 0xFF)           # no AndX
+            struct.pack('<B', 0xFF)
             + struct.pack('<B', 0)
             + struct.pack('<H', 0)
-            + struct.pack('<H', 0xFFFF)       # max buffer
-            + struct.pack('<H', 2)            # max mpx
-            + struct.pack('<H', 1)            # vc number
-            + struct.pack('<I', 0)            # session key
+            + struct.pack('<H', 0xFFFF)
+            + struct.pack('<H', 2)
+            + struct.pack('<H', 1)
+            + struct.pack('<I', 0)
             + struct.pack('<H', len(auth_blob))
-            + struct.pack('<I', 0)            # reserved
-            + struct.pack('<I', 0x80000054)   # capabilities
+            + struct.pack('<I', 0)
+            + struct.pack('<I', 0x80000054)
         )
 
-        body  = struct.pack('<B', len(params) // 2)  # word count
+        body  = struct.pack('<B', len(params) // 2)
         body += params
         body += struct.pack('<H', len(auth_blob) + 2)
         body += auth_blob
-        body += b'\x00\x00'                          # native OS, native LM
+        body += b'\x00\x00'
 
         hdr = self._smb_header(_SMB_SESS_CMD, uid=self.uid)
         self._send(hdr + body)
@@ -257,37 +234,32 @@ class RawSMBAuth:
 
         if not resp: return 'error:no_response'
 
-        # NTSTATUS is bytes 4–8 of the SMB header
         if len(resp) < 9: return 'error:short_response'
         ntstatus = struct.unpack('<I', resp[4:8])[0]
 
         if ntstatus == 0x00000000:   return 'success'
-        if ntstatus == 0xC000006D:   return 'failure'          # STATUS_LOGON_FAILURE
-        if ntstatus == 0xC0000064:   return 'failure'          # STATUS_NO_SUCH_USER
-        if ntstatus == 0xC0000072:   return 'locked'           # STATUS_ACCOUNT_DISABLED
-        if ntstatus == 0xC0000234:   return 'locked'           # STATUS_ACCOUNT_LOCKED_OUT
-        if ntstatus == 0xC000006E:   return 'locked'           # STATUS_ACCOUNT_RESTRICTION
+        if ntstatus == 0xC000006D:   return 'failure'
+        if ntstatus == 0xC0000064:   return 'failure'
+        if ntstatus == 0xC0000072:   return 'locked'
+        if ntstatus == 0xC0000234:   return 'locked'
+        if ntstatus == 0xC000006E:   return 'locked'
         return f'error:ntstatus=0x{ntstatus:08x}'
 
-    # Full auth flow
     def authenticate(self, username: str, password: str, domain: str = '') -> tuple[bool, str]:
         """Returns (success, message)"""
         if not self.connect():
             return False, 'connection_failed'
         try:
-            # Some SMB servers skip negotiate challenge and require a separate
-            # NTLMSSP_NEGOTIATE packet to receive the challenge. Handle both.
             if not self.negotiate():
                 return False, 'negotiate_failed'
 
-            # If no challenge from negotiate, send explicit NTLMSSP_NEGOTIATE
             if not self.server_challenge:
                 neg_blob = (
                     b'NTLMSSP\x00'
                     + struct.pack('<I', _NTLMSSP_NEG)
                     + struct.pack('<I', _NTLM_FLAGS)
-                    + b'\x00' * 16   # domain + workstation (empty)
-                    + b'\x06\x01\x00\x00\x00\x00\x00\x0f'  # version
+                    + b'\x00' * 16
+                    + b'\x06\x01\x00\x00\x00\x00\x00\x0f'
                 )
                 params = (
                     struct.pack('<B', 0xFF) + struct.pack('<B',0) + struct.pack('<H',0)
@@ -302,7 +274,6 @@ class RawSMBAuth:
                 self._send(hdr + body)
                 resp  = self._recv()
                 if resp and len(resp) > 36:
-                    # Parse the challenge from this response
                     try:
                         wc2 = resp[32]
                         boff = 32 + 1 + wc2 * 2 + 2
@@ -326,14 +297,12 @@ class RawSMBAuth:
         finally:
             self.close()
 
-# LightScan async handler factory
 def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
                           domain: str = '', **kw):
     """
     Returns an async (user, passwd) → (bool, str) handler for BruteEngine.
     Tries impacket first (most reliable), then falls back to RawSMBAuth.
     """
-    # Prefer impacket
     try:
         from impacket.smbconnection import SMBConnection
 
@@ -357,7 +326,6 @@ def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
     except ImportError:
         pass
 
-    # Fall back to RawSMBAuth (Doc 3)
     async def raw_handler(user: str, passwd: str) -> tuple[bool, str]:
         def _try():
             auth = RawSMBAuth(host, port, timeout)
@@ -367,9 +335,6 @@ def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
 
     return raw_handler
 
-# null session + anonymous pre-check (Jun 13)
-# added after i ran a credential brute against a target with anonymous access
-# and wasted 500 attempts. check this first, always.
 async def check_null_session(host: str, port: int = 445,
                               timeout: float = 5.0) -> dict:
     """try SMB null session and anonymous login before brute forcing.

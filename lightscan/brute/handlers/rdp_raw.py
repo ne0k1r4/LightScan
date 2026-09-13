@@ -32,10 +32,9 @@ import logging
 
 log = logging.getLogger("lightscan.rdp_raw")
 
-# RDP / TPKT Constants
 TPKT_VERSION        = 0x03
-TPDU_CR             = 0xE0   # Connection Request
-TPDU_CC             = 0xD0   # Connection Confirm
+TPDU_CR             = 0xE0
+TPDU_CC             = 0xD0
 TPDU_DATA           = 0xF0
 
 RDP_NEG_REQ         = 0x01
@@ -47,21 +46,19 @@ PROTOCOL_SSL        = 0x01
 PROTOCOL_HYBRID     = 0x02
 PROTOCOL_HYBRID_EX  = 0x08
 
-# CredSSP / NTLM
 NTLMSSP_NEGOTIATE_MSG  = 0x01
 NTLMSSP_CHALLENGE_MSG  = 0x02
 NTLMSSP_AUTH_MSG       = 0x03
 
 NTLM_FLAGS = (
-    0x00000001 |   # NTLMSSP_NEGOTIATE_UNICODE
-    0x00000002 |   # NTLMSSP_NEGOTIATE_OEM
-    0x00000200 |   # NTLMSSP_NEGOTIATE_NTLM
-    0x00008000 |   # NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY
-    0x20000000 |   # NTLMSSP_NEGOTIATE_128
-    0x80000000     # NTLMSSP_NEGOTIATE_56
+    0x00000001 |
+    0x00000002 |
+    0x00000200 |
+    0x00008000 |
+    0x20000000 |
+    0x80000000
 )
 
-# NT STATUS codes returned in RDP error PDUs
 STATUS_LOGON_FAILURE     = 0xC000006D
 STATUS_ACCOUNT_LOCKED    = 0xC0000234
 STATUS_PASSWORD_EXPIRED  = 0xC0000071
@@ -78,8 +75,6 @@ FAILURE_REASONS = {
     0x00000006: "SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER",
 }
 
-# TPKT / X.224 framing helpers
-
 def _tpkt(payload: bytes) -> bytes:
     """Wrap payload in TPKT header (RFC 1006) — version=3, reserved=0, length=big-endian"""
     return struct.pack("!BBH", TPKT_VERSION, 0, len(payload) + 4) + payload
@@ -91,7 +86,7 @@ def _x224_cr(rdp_neg_req: bytes = b"") -> bytes:
     """
     cookie  = b"Cookie: mstshash=PHANTOM\r\n"
     payload = cookie + rdp_neg_req
-    li      = 6 + len(payload)    # length indicator = header bytes after LI field
+    li      = 6 + len(payload)
     x224    = struct.pack("BBHHB", li, TPDU_CR, 0, 0x1234, 0) + payload
     return _tpkt(x224)
 
@@ -115,8 +110,6 @@ def _recv_exact(sock, n: int) -> bytes:
         if not chunk: break
         buf += chunk
     return buf
-
-# SPNEGO / NTLM helpers
 
 def _ntlm_negotiate_blob() -> bytes:
     """Minimal NTLMSSP_NEGOTIATE (type 1) message"""
@@ -194,7 +187,7 @@ def _ntlmv2_auth_blob(username: str, password: str, domain: str,
     ws_b          = b""
     key_b         = b""
 
-    base  = 64 + 8   # fixed header + OS version
+    base  = 64 + 8
     off_nt    = base
     off_dom   = off_nt  + len(nt_response)
     off_user  = off_dom + len(domain_b)
@@ -206,14 +199,14 @@ def _ntlmv2_auth_blob(username: str, password: str, domain: str,
     auth = (
         b"NTLMSSP\x00" +
         struct.pack("<I", NTLMSSP_AUTH_MSG) +
-        _f(b"",          0)          +   # LM response (empty)
-        _f(nt_response,  off_nt)     +   # NTLMv2 response
-        _f(domain_b,     off_dom)    +   # domain
-        _f(user_b,       off_user)   +   # username
-        _f(ws_b,         off_ws)     +   # workstation
-        _f(key_b,        off_key)    +   # session key
-        struct.pack("<I", NTLM_FLAGS) +  # flags
-        b"\x06\x00\x70\x17\x00\x00\x00\x0f" +  # OS version (Win10)
+        _f(b"",          0)          +
+        _f(nt_response,  off_nt)     +
+        _f(domain_b,     off_dom)    +
+        _f(user_b,       off_user)   +
+        _f(ws_b,         off_ws)     +
+        _f(key_b,        off_key)    +
+        struct.pack("<I", NTLM_FLAGS) +
+        b"\x06\x00\x70\x17\x00\x00\x00\x0f" +
         nt_response + domain_b + user_b
     )
     return auth
@@ -229,8 +222,6 @@ def _spnego_auth_wrap(ntlm_auth: bytes) -> bytes:
     inner   = bytes([0xa0, 3, 0x0a, 1, 1]) + _asn1(0xa2, token)
     return _asn1(0xa1, inner)
 
-# CredSSP / TSRequest framing (MS-CSSP)
-
 def _ts_request(spnego_token: bytes, version: int = 6) -> bytes:
     """
     Minimal TSRequest ASN.1 DER encoding.
@@ -245,11 +236,8 @@ def _ts_request(spnego_token: bytes, version: int = 6) -> bytes:
         elif len(body) < 256: return bytes([tag, 0x81, len(body)]) + body
         else: return bytes([tag, 0x82]) + struct.pack(">H", len(body)) + body
 
-    # version [0] EXPLICIT INTEGER
     ver_bytes   = _asn1(0xa0, bytes([0x02, 0x01, version]))
 
-    # negoTokens [1] EXPLICIT NegoData — NegoData is SEQUENCE OF NegoDataItem
-    # NegoDataItem ::= SEQUENCE { negoToken [0] OCTET STRING }
     token_field = _asn1(0x04, spnego_token)
     nego_item   = _asn1(0x30, _asn1(0xa0, token_field))
     nego_seq    = _asn1(0x30, nego_item)
@@ -257,8 +245,6 @@ def _ts_request(spnego_token: bytes, version: int = 6) -> bytes:
 
     ts_body     = ver_bytes + nego_tokens
     return _asn1(0x30, ts_body)
-
-# Main RDP Handler
 
 class RawRDPHandler:
     """
@@ -274,8 +260,6 @@ class RawRDPHandler:
         self.ssl_sock= None
         self.negotiated_protocol: int | None = None
         self.server_cert = None
-
-    # Transport
 
     def connect(self) -> bool:
         try:
@@ -301,8 +285,6 @@ class RawRDPHandler:
     def _recv_tpkt(self) -> bytes | None:
         return _recv_tpkt(self._active_sock())
 
-    # Step 1: X.224 + RDP Negotiation
-
     def negotiate(self, preferred: int = PROTOCOL_HYBRID) -> bool:
         """
         X.224 CR + RDP_NEG_REQ → X.224 CC + RDP_NEG_RSP.
@@ -314,11 +296,8 @@ class RawRDPHandler:
             resp = _recv_tpkt(self.sock)
             if not resp: continue
 
-            # Find RDP_NEG_RSP / FAILURE inside X.224 CC
-            # Skip X.224 CC header (7 bytes) to reach RDP_NEG_* structure
             neg_offset = 7
             if len(resp) < neg_offset + 8:
-                # No RDP negotiation data — server accepts classic RDP
                 self.negotiated_protocol = PROTOCOL_RDP
                 log.debug("RDP classic (no neg data)")
                 return True
@@ -331,7 +310,6 @@ class RawRDPHandler:
             elif neg_type == RDP_NEG_FAILURE:
                 code = struct.unpack("<I", resp[neg_offset+4:neg_offset+8])[0]
                 log.debug(f"neg failure: {FAILURE_REASONS.get(code,'?')} — trying next protocol")
-                # Reconnect for next attempt
                 self.close()
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.sock.settimeout(self.timeout)
@@ -339,8 +317,6 @@ class RawRDPHandler:
                 continue
 
         return False
-
-    # Step 2: TLS upgrade
 
     def setup_tls(self) -> bool:
         """Upgrade raw socket to TLS (SSL/HYBRID/HYBRID_EX all go over TLS)"""
@@ -356,8 +332,6 @@ class RawRDPHandler:
         except Exception as e:
             log.debug(f"TLS failed: {e}"); return False
 
-    # Step 3: CredSSP / NLA (PROTOCOL_HYBRID)
-
     def credssp_auth(self, username: str, password: str, domain: str = "") -> tuple[bool, str]:
         """
         CredSSP/NLA authentication over TLS (MS-CSSP).
@@ -366,7 +340,6 @@ class RawRDPHandler:
               TSRequest(SPNEGO/NTLM authenticate)
         Returns (success, status_string)
         """
-        # Round 1: send NTLM Negotiate
         ntlm_neg  = _ntlm_negotiate_blob()
         spnego1   = _spnego_wrap(ntlm_neg)
         ts1       = _ts_request(spnego1, version=6)
@@ -375,7 +348,6 @@ class RawRDPHandler:
         except Exception as e:
             return False, f"send_neg_failed:{e}"
 
-        # Round 2: receive server SPNEGO / NTLM challenge
         try:
             raw = self.ssl_sock.recv(65535)
         except Exception as e:
@@ -383,7 +355,6 @@ class RawRDPHandler:
 
         ntlm_blob = _extract_ntlm_from_spnego(raw)
         if not ntlm_blob:
-            # Server may have sent TPKT-wrapped response
             idx = raw.find(b"NTLMSSP\x00")
             ntlm_blob = raw[idx:] if idx >= 0 else None
         if not ntlm_blob:
@@ -393,7 +364,6 @@ class RawRDPHandler:
         if not server_challenge:
             return False, "invalid_challenge"
 
-        # Round 3: send NTLM Authenticate
         ntlm_auth = _ntlmv2_auth_blob(username, password, domain, server_challenge)
         spnego3   = _spnego_auth_wrap(ntlm_auth)
         ts3       = _ts_request(spnego3, version=6)
@@ -402,20 +372,16 @@ class RawRDPHandler:
         except Exception as e:
             return False, f"send_auth_failed:{e}"
 
-        # Round 4: read server response (access granted / denied)
         try:
             resp = self.ssl_sock.recv(65535)
         except ssl.SSLError:
-            # SSL teardown right after auth = NLA rejected
             return False, "auth_failed_ssl_reset"
         except socket.timeout:
-            # Timeout after auth often means SUCCESS — MCS connect takes time
             return True, "SUCCESS_timeout_heuristic"
         except Exception as e:
             return False, f"recv_result_failed:{e}"
 
-        # Decode NT_STATUS if present
-        status_idx = resp.find(b"\x3e\x00\x09\x00")  # MCS error PDU marker
+        status_idx = resp.find(b"\x3e\x00\x09\x00")
         if status_idx >= 0 and len(resp) > status_idx + 8:
             raw_status = struct.unpack("<I", resp[status_idx+4:status_idx+8])[0]
             if raw_status == STATUS_LOGON_FAILURE:
@@ -427,13 +393,10 @@ class RawRDPHandler:
             if raw_status == STATUS_SUCCESS:
                 return True, "SUCCESS"
 
-        # Heuristic: if server sent a lot back and no error marker → probable success
         if len(resp) > 50 and b"NTLMSSP" not in resp:
             return True, f"SUCCESS_mcs_init len={len(resp)}"
 
         return False, f"auth_failed_unknown len={len(resp)}"
-
-    # Full Authentication Flow
 
     def authenticate(self, username: str = "", password: str = "",
                      domain: str = "") -> tuple[bool, str]:
@@ -456,11 +419,8 @@ class RawRDPHandler:
                 return self.credssp_auth(username, password, domain)
 
             if proto == PROTOCOL_SSL:
-                # SSL-only (no NLA) — server doesn't enforce NLA
-                # Send minimal MCS connect and check for logon PDU
                 return self._rdp_classic_probe(username, password)
 
-            # Pure RDP (no encryption) — rare on modern systems
             return False, "rdp_classic_no_auth_impl"
 
         except Exception as e:
@@ -475,13 +435,11 @@ class RawRDPHandler:
         returns reachable status with a note.
         """
         try:
-            # Minimal MCS Connect-Initial
             mcs_ci = bytes([
-                0x65, 0x82, 0x01, 0xbe,  # BER: Application tag, length
-                0x04, 0x01, 0x01,         # callingDomainSelector
-                0x04, 0x01, 0x01,         # calledDomainSelector
-                0xff, 0x01, 0x01,         # upwardFlag = TRUE
-                # minimal domain params
+                0x65, 0x82, 0x01, 0xbe,
+                0x04, 0x01, 0x01,
+                0x04, 0x01, 0x01,
+                0xff, 0x01, 0x01,
                 0x30, 0x19, 0x02,0x01,0x22, 0x02,0x01,0x02,
                 0x02,0x01,0x00, 0x02,0x01,0x01, 0x02,0x01,0x00,
                 0x02,0x01,0x01, 0x02,0x02,0xff,0xff, 0x02,0x01,0x02,
@@ -531,8 +489,6 @@ class RawRDPHandler:
             return "reachable", info
         finally:
             self.close()
-
-# Async LightScan handler factory
 
 def make_rdp_handler(host: str, port: int = 3389, timeout: float = 10.0,
                      domain: str = "", **kw):

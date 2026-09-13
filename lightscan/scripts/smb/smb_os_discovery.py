@@ -20,7 +20,6 @@ async def run(host, port, timeout=8.0):
         resp = await asyncio.wait_for(r.read(1024), timeout=timeout)
         w.close()
         if len(resp) < 36: return []
-        # Parse SMB response for OS string
         if resp[4:8] != b"\xff\x53\x4d\x42": return []
         os_info = resp[73:].decode("utf-16-le", errors="replace").rstrip("\x00")
         parts = [p.strip() for p in os_info.split("\x00") if p.strip()]

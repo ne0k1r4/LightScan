@@ -20,7 +20,6 @@ def _wrap(fn) -> Callable:
         return await loop.run_in_executor(None, fn, user, passwd)
     return wrapper
 
-# SSH
 def make_ssh_handler(host, port=22, timeout=8.0, **kw):
     try:
         import paramiko
@@ -61,7 +60,6 @@ def make_ssh_handler(host, port=22, timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install paramiko  (SSH brute needs it)\033[0m")
         return fallback
 
-# FTP
 def make_ftp_handler(host, port=21, timeout=8.0, **kw):
     def _try(user, passwd):
         try:
@@ -76,7 +74,6 @@ def make_ftp_handler(host, port=21, timeout=8.0, **kw):
             return False, str(e)
     return _wrap(_try)
 
-# SMTP
 def make_smtp_handler(host, port=587, timeout=8.0, **kw):
     def _try(user, passwd):
         try:
@@ -97,7 +94,6 @@ def make_smtp_handler(host, port=587, timeout=8.0, **kw):
             return False, str(e)
     return _wrap(_try)
 
-# HTTP
 def make_http_handler(host, port=80, url="", user_field="username",
                       pass_field="password", success_text="", failure_text="",
                       basic_auth=False, timeout=10.0, **kw):
@@ -109,7 +105,6 @@ def make_http_handler(host, port=80, url="", user_field="username",
         "Accept": "text/html,application/xhtml+xml,*/*",
     }
 
-    # CSRF token fetcher
     def _fetch_csrf(session_cookie: str = "") -> tuple[dict, str]:
         """
         GET the login page, extract any hidden form fields (CSRF tokens),
@@ -137,7 +132,6 @@ def make_http_handler(host, port=80, url="", user_field="username",
             with urllib.request.urlopen(req, timeout=timeout, **_kw) as r:
                 body     = r.read(65536).decode("utf-8", "replace")
                 cookie   = r.headers.get("Set-Cookie", "")
-            # Parse hidden inputs
             extra = {}
             for m in re.finditer(
                 r'<input[^>]+type=["\']hidden["\'][^>]*name=["\']([^"\']+)["\'][^>]*value=["\']([^"\']*)["\']',
@@ -146,7 +140,6 @@ def make_http_handler(host, port=80, url="", user_field="username",
                 name, val = m.group(1), m.group(2)
                 if name.lower() in {n.lower() for n in CSRF_NAMES}:
                     extra[name] = val
-            # Also catch value-before-name ordering
             for m in re.finditer(
                 r'<input[^>]+type=["\']hidden["\'][^>]*value=["\']([^"\']*)["\'][^>]*name=["\']([^"\']+)["\']',
                 body, re.I
@@ -173,17 +166,14 @@ def make_http_handler(host, port=80, url="", user_field="username",
                 except Exception as e:
                     return False, str(e)
             else:
-                # Step 1: fetch login page to get CSRF token + session cookie
                 csrf_fields, set_cookie = _fetch_csrf()
 
-                # Step 2: build POST data with CSRF fields included
                 post_data = {user_field: user, pass_field: passwd, "Login": "Login"}
-                post_data.update(csrf_fields)  # merge in user_token etc.
+                post_data.update(csrf_fields)
 
                 data = urllib.parse.urlencode(post_data).encode()
                 hdrs = dict(_hdrs)
                 if set_cookie:
-                    # Forward the session cookie so CSRF validation passes
                     cookie_parts = []
                     for part in set_cookie.split(";"):
                         part = part.strip()
@@ -223,7 +213,6 @@ def make_http_handler(host, port=80, url="", user_field="username",
         return await asyncio.get_running_loop().run_in_executor(None, _try)
     return handler
 
-# MySQL
 def make_mysql_handler(host, port=3306, timeout=8.0, **kw):
     try:
         import pymysql
@@ -239,7 +228,6 @@ def make_mysql_handler(host, port=3306, timeout=8.0, **kw):
                 return False, str(e)
         return _wrap(_try)
     except ImportError:
-        # Raw MySQL auth via handshake
         async def mysql_raw(user, passwd):
             try:
                 r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -276,7 +264,6 @@ def make_mysql_handler(host, port=3306, timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install pymysql  (raw fallback active)\033[0m")
         return mysql_raw
 
-# PostgreSQL
 def make_postgres_handler(host, port=5432, timeout=8.0, **kw):
     try:
         import psycopg2
@@ -311,7 +298,6 @@ def make_postgres_handler(host, port=5432, timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install psycopg2-binary  (raw PG fallback active)\033[0m")
         return pg_raw
 
-# MSSQL
 def make_mssql_handler(host, port=1433, timeout=8.0, **kw):
     try:
         import pymssql
@@ -344,7 +330,6 @@ def make_mssql_handler(host, port=1433, timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install pymssql  (TDS probe only)\033[0m")
         return tds_probe
 
-# Telnet
 def make_telnet_handler(host, port=23, timeout=8.0, **kw):
     async def handler(user, passwd):
         try:
@@ -357,7 +342,6 @@ def make_telnet_handler(host, port=23, timeout=8.0, **kw):
                         chunk = await asyncio.wait_for(r.read(256), timeout=0.5)
                         if not chunk:
                             break
-                        # Strip IAC negotiation bytes
                         i = 0
                         clean = b""
                         while i < len(chunk):
@@ -388,7 +372,6 @@ def make_telnet_handler(host, port=23, timeout=8.0, **kw):
             return False, str(e)
     return handler
 
-# VNC
 def make_vnc_handler(host, port=5900, timeout=8.0, **kw):
     async def handler(user, passwd):
         try:
@@ -433,7 +416,6 @@ def make_vnc_handler(host, port=5900, timeout=8.0, **kw):
             return False, str(e)
     return handler
 
-# SMB (Raw NTLMv2 — no impacket needed)
 def make_smb_handler(host, port=445, timeout=8.0, domain='', **kw):
     """Raw NTLMv2 SMB brute — impacket optional fallback"""
     from lightscan.brute.handlers.smb_raw import make_smb_raw_handler
@@ -458,13 +440,11 @@ def make_smb_handler(host, port=445, timeout=8.0, domain='', **kw):
         return ok, msg
     return handler
 
-# RDP (Raw CredSSP/NLA — no impacket needed)
 def make_rdp_handler(host, port=3389, timeout=10.0, domain='', **kw):
     """Full RDP brute: X.224 negotiate → TLS → CredSSP NTLMv2 (raw)"""
     from lightscan.brute.handlers.rdp_raw import make_rdp_handler as _raw
     return _raw(host, port, timeout, domain)
 
-# LDAP
 def make_ldap_handler(host, port=389, base_dn="", timeout=8.0, **kw):
     try:
         import ldap3
@@ -508,7 +488,6 @@ def make_ldap_handler(host, port=389, base_dn="", timeout=8.0, **kw):
         print("\033[38;5;240m[!] pip install ldap3  (raw LDAP fallback active)\033[0m")
         return ldap_raw
 
-# Registry
 PROTOCOLS: dict = {
     "ssh":      (make_ssh_handler,      22),
     "ftp":      (make_ftp_handler,      21),

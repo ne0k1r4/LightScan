@@ -26,10 +26,8 @@ TOP_100 = sorted(
 DEFAULT_MAX_TARGETS = 65_536
 _RANGE_RE = re.compile(r"^(\d+\.\d+\.\d+\.)(\d+)-(\d+)$")
 
-
 class TargetSpecError(ValueError):
     """Raised when a target or port specification is invalid or unsafe."""
-
 
 def parse_targets(spec: str, *, max_targets: int = DEFAULT_MAX_TARGETS) -> list[str]:
     """Expand *spec* into unique targets while enforcing a workload ceiling.
@@ -46,7 +44,6 @@ def parse_targets(spec: str, *, max_targets: int = DEFAULT_MAX_TARGETS) -> list[
     if not unique:
         raise TargetSpecError("target specification did not contain any targets")
     return unique
-
 
 def _parse_target_spec(spec: str, *, max_targets: int) -> list[str]:
     spec = (spec or "").strip()
@@ -74,8 +71,6 @@ def _parse_target_spec(spec: str, *, max_targets: int) -> list[str]:
         try:
             network = ipaddress.ip_network(spec, strict=False)
         except ValueError:
-            # A hostname may legally include a slash only in an invalid input;
-            # make the failure explicit rather than passing it to the scanner.
             raise TargetSpecError(f"invalid CIDR target: {spec!r}") from None
         count = _host_count(network)
         _ensure_limit(count, max_targets, spec)
@@ -97,7 +92,6 @@ def _parse_target_spec(spec: str, *, max_targets: int) -> list[str]:
             raise TargetSpecError(f"invalid hostname target: {spec!r}")
         return [spec]
 
-
 def _parse_target_lines(lines, *, source: str, max_targets: int) -> list[str]:
     targets: list[str] = []
     for line_number, raw_line in enumerate(lines, start=1):
@@ -116,19 +110,16 @@ def _parse_target_lines(lines, *, source: str, max_targets: int) -> list[str]:
     _ensure_limit(len(targets), max_targets, source)
     return targets
 
-
 def _host_count(network: ipaddress.IPv4Network | ipaddress.IPv6Network) -> int:
     if network.version == 4 and network.prefixlen <= 30:
         return max(network.num_addresses - 2, 0)
     return network.num_addresses
-
 
 def _ensure_limit(count: int, maximum: int, source: str) -> None:
     if count > maximum:
         raise TargetSpecError(
             f"{source!r} expands to {count:,} targets, above the {maximum:,} target limit"
         )
-
 
 def parse_ports(spec: str) -> list[int]:
     """Parse a comma-separated port list and reject invalid or empty input."""
@@ -164,11 +155,9 @@ def parse_ports(spec: str) -> list[int]:
         raise TargetSpecError("port specification did not contain any ports")
     return sorted(ports)
 
-
 def _validate_port(port: int) -> None:
     if not 1 <= port <= 65_535:
         raise TargetSpecError(f"port must be between 1 and 65535, got {port}")
-
 
 def resolve(host: str) -> str | None:
     """Resolve a hostname to IPv4 without raising for an unavailable name."""

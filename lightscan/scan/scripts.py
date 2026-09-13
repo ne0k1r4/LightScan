@@ -37,8 +37,6 @@ from typing import Dict, List, Optional
 
 from lightscan.core.engine import ScanResult, Severity
 
-# Script registry
-
 class ScriptRegistry:
     """Discovers and loads scripts from the scripts directory."""
 
@@ -46,7 +44,6 @@ class ScriptRegistry:
         self._scripts: Dict[str, object] = {}
         pkg_scripts  = Path(__file__).parent.parent / "scripts"
         home_scripts = Path.home() / ".lightscan" / "scripts"
-        # Always scan both pkg and home dirs
         default_dirs = [str(pkg_scripts), str(home_scripts)]
         dirs = script_dirs or default_dirs
         for d in dirs:
@@ -167,11 +164,8 @@ async def run_scripts(
         await asyncio.gather(*tasks)
     return results
 
-# Built-in scripts — written inline, saved to scripts/ on first run
-
 BUILTIN_SCRIPTS = {}
 
-# http_headers
 BUILTIN_SCRIPTS["http_headers"] = '''"""Grab and analyse HTTP response headers."""
 import asyncio, ssl, urllib.request, urllib.error
 SCRIPT_NAME  = "http_headers"
@@ -225,7 +219,6 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# http_methods
 BUILTIN_SCRIPTS["http_methods"] = '''"""Test which HTTP methods are allowed on the server."""
 import asyncio, ssl
 SCRIPT_NAME  = "http_methods"
@@ -268,7 +261,6 @@ async def run(host, port, timeout=8.0):
         {"allowed": allowed, "dangerous": dangerous})]
 '''
 
-# tls_cert_info
 BUILTIN_SCRIPTS["tls_cert_info"] = '''"""Extract TLS certificate info and check expiry."""
 import asyncio, ssl, socket
 from datetime import datetime
@@ -324,7 +316,6 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# ssh_algorithms
 BUILTIN_SCRIPTS["ssh_algorithms"] = '''"""Extract SSH supported algorithms and flag weak ones."""
 import asyncio, socket
 SCRIPT_NAME  = "ssh_algorithms"
@@ -391,7 +382,6 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# smb_os_discovery
 BUILTIN_SCRIPTS["smb_os_discovery"] = '''"""Enumerate OS and hostname via SMB negotiate."""
 import asyncio, struct, socket
 SCRIPT_NAME  = "smb_os_discovery"
@@ -426,7 +416,6 @@ async def run(host, port, timeout=8.0):
         return []
 '''
 
-# dns_recursion
 BUILTIN_SCRIPTS["dns_recursion"] = '''"""Test if DNS server allows open recursion."""
 import asyncio, struct, socket, time
 SCRIPT_NAME  = "dns_recursion"
@@ -467,7 +456,6 @@ async def run(host, port, timeout=8.0):
         Severity.INFO, "DNS recursion disabled", {"recursive": False})]
 '''
 
-# ssl_weak_ciphers
 BUILTIN_SCRIPTS["ssl_weak_ciphers"] = '''"""Detect weak SSL/TLS ciphers and protocols."""
 import asyncio, ssl, socket
 SCRIPT_NAME  = "ssl_weak_ciphers"
@@ -521,7 +509,6 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# http_auth_detect
 BUILTIN_SCRIPTS["http_auth_detect"] = '''"""Detect HTTP authentication mechanisms."""
 import asyncio, ssl, urllib.request, urllib.error, base64
 SCRIPT_NAME  = "http_auth_detect"
@@ -577,7 +564,6 @@ async def run(host, port, timeout=8.0):
     return results
 '''
 
-# ftp_anon_write
 BUILTIN_SCRIPTS["ftp_anon_write"] = '''"""Test FTP anonymous login and write access."""
 import asyncio, ftplib, io
 SCRIPT_NAME  = "ftp_anon_write"
@@ -623,7 +609,6 @@ async def run(host, port, timeout=8.0):
     return out
 '''
 
-# smb_signing
 BUILTIN_SCRIPTS["smb_signing"] = '''"""Check if SMB signing is required."""
 import asyncio, socket, struct
 SCRIPT_NAME  = "smb_signing"
@@ -672,7 +657,6 @@ async def run(host, port, timeout=8.0):
         {"signing_required": True, "signing_enabled": True})]
 '''
 
-# http_cors_check
 BUILTIN_SCRIPTS["http_cors_check"] = '''"""Check for CORS misconfiguration."""
 import asyncio, ssl, urllib.request, urllib.error
 SCRIPT_NAME  = "http_cors_check"
@@ -730,7 +714,6 @@ async def run(host, port, timeout=8.0):
     return out
 '''
 
-# http_tech_detect
 BUILTIN_SCRIPTS["http_tech_detect"] = '''"""Detect web technologies from headers and body."""
 import asyncio, ssl, urllib.request, urllib.error, re
 SCRIPT_NAME  = "http_tech_detect"
@@ -811,7 +794,6 @@ def install_builtin_scripts(script_dir: Optional[str] = None) -> str:
     if script_dir:
         base = Path(script_dir)
     else:
-        # Try package dir first, fall back to ~/.lightscan/scripts
         pkg_scripts = Path(__file__).parent.parent / "scripts"
         try:
             pkg_scripts.mkdir(parents=True, exist_ok=True)

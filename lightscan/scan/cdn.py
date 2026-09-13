@@ -1,22 +1,5 @@
-# cdn.py — is this ip actually a cdn/waf edge, not the real origin
 
-# naabu does the same check before deciding whether a full port sweep is
-# worth it. scanning a cloudflare or fastly IP for 1000 ports is mostly
-# scanning cloudflare/fastly's own infra, not the client's - slow, and a
-# good way to get flagged by someone else's abuse detection for a target
-# that was never actually in scope to begin with.
 
-# ranges pulled straight from each provider's own published list (not a
-# third-party aggregator) as of when this was written:
-# cloudflare: https://www.cloudflare.com/ips/
-# fastly:     https://api.fastly.com/public-ip-list
-
-# deliberately NOT trying to cover every CDN out there - akamai doesn't
-# publish a clean official range list the same way, and AWS CloudFront's
-# ranges are buried in their huge shared ip-ranges.json across every AWS
-# service, not CloudFront-specific. cloudflare + fastly alone already
-# covers a big chunk of what actually shows up in real engagements.
-# add more providers here as their own dict entry if needed later.
 import ipaddress
 
 CDN_RANGES: dict[str, list[str]] = {
@@ -41,8 +24,6 @@ CDN_RANGES: dict[str, list[str]] = {
     ],
 }
 
-# parse once at import time instead of re-parsing every string on every
-# lookup - this runs per-target, not just once per scan
 _PARSED: list[tuple] = []
 for _provider, _cidrs in CDN_RANGES.items():
     for _cidr in _cidrs:
@@ -53,7 +34,7 @@ def is_cdn_ip(ip: str) -> tuple[bool, str]:
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
-        return False, ""  # hostname slipped through unresolved, or garbage input
+        return False, ""
     for net, provider in _PARSED:
         if addr in net:
             return True, provider

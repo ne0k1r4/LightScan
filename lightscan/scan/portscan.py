@@ -62,7 +62,6 @@ async def tcp_scan(host, port, timeout=2.0, grab_banner=True):
     except Exception:
         pass
 
-    # auto-detect from banner
     if service.startswith("port/") and banner:
         bl = banner.lower()
         if "ssh" in bl:
@@ -131,14 +130,3 @@ def build_scan_tasks(hosts, ports, timeout=2.0, udp=False, banners=True):
                 if p in ports:
                     tasks.append((udp_scan(h, p, timeout), f"udp:{h}:{p}"))
     return tasks
-# timeout guard on banner read
-# latin-1 decode
-# ftp timeout
-# timeout guard on banner read
-# latin-1 decode
-# ftp timeout
-# redis mongo
-# timeout guard on banner read
-# latin-1 decode
-# ftp timeout
-# redis mongo

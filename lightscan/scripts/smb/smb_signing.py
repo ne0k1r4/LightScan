@@ -12,7 +12,6 @@ async def run(host, port, timeout=8.0):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(timeout)
             s.connect((host, port))
-            # SMB1 negotiate request
             pkt = (b"\x00\x00\x00\x54" + b"\xffSMB" + b"\x72"
                    + b"\x00" * 4 + b"\x08\x00" + b"\x00" * 6
                    + b"\xff\xff\xff\xff" + b"\x00" * 10

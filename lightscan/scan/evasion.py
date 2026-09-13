@@ -30,26 +30,22 @@ from typing import Callable, List, Optional
 @dataclass
 class EvasionConfig:
     """Full evasion configuration passed to scanners."""
-    # Timing
-    timing:         int   = 4       # T0-T5
-    min_rate:       float = 0.0     # override packets/sec min (0=use template)
-    max_rate:       float = 0.0     # override packets/sec max (0=use template)
+    timing:         int   = 4
+    min_rate:       float = 0.0
+    max_rate:       float = 0.0
 
-    # Packet-level evasion
-    ttl:            int   = 64      # IP TTL (64=Linux, 128=Windows, 255=router)
-    fragment:       bool  = False   # IP fragmentation
-    bad_checksum:   bool  = False   # invalid TCP checksum (firewall probe)
-    data_length:    int   = 0       # append N random bytes to payload (0=off)
-    source_port:    int   = 0       # fixed source port (0=random, 53=DNS bypass)
+    ttl:            int   = 64
+    fragment:       bool  = False
+    bad_checksum:   bool  = False
+    data_length:    int   = 0
+    source_port:    int   = 0
 
-    # Scan-level evasion
-    decoys:         int   = 0       # number of random decoy IPs
-    decoy_ips:      List[str] = field(default_factory=list)  # explicit decoy IPs
-    randomize:      bool  = True    # randomise port order
-    randomize_hosts:bool  = False   # randomise host order in multi-target scans
+    decoys:         int   = 0
+    decoy_ips:      List[str] = field(default_factory=list)
+    randomize:      bool  = True
+    randomize_hosts:bool  = False
 
-    # Timing jitter (adds randomness to inter-packet delays)
-    jitter_pct:     float = 0.0     # 0.0-1.0, % of base delay to jitter
+    jitter_pct:     float = 0.0
 
     def effective_interval(self, base_interval: float) -> float:
         """Return inter-packet delay with optional jitter applied."""
@@ -70,8 +66,8 @@ class RateLimiter:
     Enforces min/max rate from timing template.
     """
     def __init__(self, rate: float):
-        self._rate      = rate          # tokens per second
-        self._tokens    = rate          # start full
+        self._rate      = rate
+        self._tokens    = rate
         self._last      = time.monotonic()
         self._interval  = 1.0 / rate if rate > 0 else 0.0
 
@@ -111,7 +107,6 @@ class ScanScheduler:
         self.evasion = evasion
         self.tmpl    = TIMING[evasion.timing]
 
-        # Use override rates if provided, else template
         rate = evasion.max_rate if evasion.max_rate > 0 else self.tmpl.max_rate
         self.limiter = RateLimiter(rate)
         self._sem    = asyncio.Semaphore(self.tmpl.parallelism)
@@ -163,7 +158,7 @@ def parse_timing(spec: str) -> int:
         v = int(spec.lstrip("T"))
         return max(0, min(5, v))
     except ValueError:
-        return 4  # default T4
+        return 4
 
 def build_evasion(
     timing:          int   = 4,
@@ -189,8 +184,6 @@ def build_evasion(
         randomize_hosts=randomize_hosts, jitter_pct=jitter,
         min_rate=min_rate, max_rate=max_rate,
     )
-
-# CLI helpers
 
 def timing_summary(t: int) -> str:
     from lightscan.scan.rawscan import TIMING

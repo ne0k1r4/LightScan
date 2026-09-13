@@ -1,6 +1,3 @@
-# scan/smb_enum.py — SMB enumeration: null session, share listing, RPC endpoints
-# Light (Neok1ra)
-# requires impacket
 from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
@@ -44,7 +41,6 @@ def smb_enumerate(host: str, timeout: float = 5.0) -> SMBInfo:
         info.smb_version = _DIALECTS.get(conn.getDialect(), "SMB 1.x")
         info.signing     = bool(conn.isSigningRequired())
 
-        # try null session
         try:
             conn.login("", "")
             info.null_session = True
@@ -63,12 +59,10 @@ def smb_enumerate(host: str, timeout: float = 5.0) -> SMBInfo:
 
     except Exception as e:
         info.errors.append(str(e))
-        # common: port closed, auth issues, SMBv1 only
 
-    # RPC endpoint mapper
     try:
         rpc = transport.DCERPCTransportFactory(f"ncacn_ip_tcp:{host}[135]")
-        rpc.set_connect_timeout(min(int(timeout), 3))  # cap — was hanging 30s+
+        rpc.set_connect_timeout(min(int(timeout), 3))
         dce = rpc.get_dce_rpc(); dce.connect()
         dce.bind(epm.MSRPC_UUID_PORTMAP)
         for entry in epm.hept_lookup(None, dce=dce):

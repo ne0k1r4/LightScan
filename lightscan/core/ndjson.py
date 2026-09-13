@@ -8,7 +8,6 @@ from typing import TextIO
 from lightscan.core.engine import ScanResult
 from lightscan.core.reporter import Reporter
 
-
 class NDJSONResultWriter:
     """Write results as newline-delimited events without retaining a result list."""
 

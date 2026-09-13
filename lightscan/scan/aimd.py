@@ -9,10 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 LOSS_STATUSES = frozenset({"filtered", "transient"})
 SUCCESS_STATUSES = frozenset({"open", "closed"})
-
 
 @dataclass
 class AimdConcurrencyController:

@@ -1,15 +1,10 @@
-# scan/snmp.py — SNMP v1/v2c enumeration (pure stdlib, no pysnmp)
-# Light (Neok1ra)
 
-# hand-rolled BER/ASN.1 encoding. learned more about SNMP wire format
-# doing this than i ever wanted to know.
-# tested against NET-SNMP, Cisco IOS, Windows SNMP service.
 from __future__ import annotations
 import asyncio, random, socket, struct
 from dataclasses import dataclass, field
 from lightscan.core.engine import ScanResult, Severity
 
-def _checksum_dummy(): pass  # placeholder so file isn't just defs
+def _checksum_dummy(): pass
 
 def _tlv(tag: int, value: bytes) -> bytes:
     n = len(value)
@@ -51,7 +46,6 @@ def _parse(data: bytes) -> tuple[str, str]:
         if not data or data[0] != 0x30: return "", ""
         i = 2
         if data[1] & 0x80: i += data[1] & 0x7f
-        # skip to response PDU (0xa2)
         while i < len(data)-1:
             if data[i] == 0xa2: i += 2; break
             tag = data[i]; i += 1
@@ -61,11 +55,9 @@ def _parse(data: bytes) -> tuple[str, str]:
                 i += 1 + ll + ln
             else:
                 i += 1 + data[i]
-        # skip request-id, error-status, error-index
         for _ in range(3):
             if i >= len(data): return "", ""
             i += 2 + data[i+1]
-        # varbinds
         if i < len(data) and data[i] == 0x30: i += 2
         if i < len(data) and data[i] == 0x30: i += 2
         if i >= len(data) or data[i] != 0x06: return "", ""
@@ -142,7 +134,7 @@ async def snmp_enumerate(host: str, port: int = 161,
         if val:
             community = c
             sys_descr = val
-            break  # stop on first hit — no need to try remaining
+            break
 
     if not community:
         return results
@@ -151,7 +143,6 @@ async def snmp_enumerate(host: str, port: int = 161,
     results.append(ScanResult("snmp", host, port, "SNMP", sev,
         f"community='{community}' | {sys_descr[:120]}"))
 
-    # grab remaining system OIDs
     extras = []
     for name, oid in list(SYSTEM_OIDS.items())[1:]:
         _, val = await snmp_get(host, oid, community, port, timeout)

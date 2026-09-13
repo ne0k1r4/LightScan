@@ -19,7 +19,6 @@ from lightscan.scan.tcpflags import (
     ICMP_DEST_UNREACHABLE, ICMP_TTL_EXCEEDED,
 )
 
-# Scapy imports verification
 try:
     import logging
     logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
@@ -193,8 +192,6 @@ class SYNScanner:
                 seen_hosts.add(r.target)
                 results.append(r)
         return results
-
-# C SYN Scanner (compiled at runtime for high-performance scanning)
 
 _C_SRC = r"""
 # include <stdio.h>

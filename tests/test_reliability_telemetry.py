@@ -8,7 +8,6 @@ import pytest
 from lightscan.core.runtime_telemetry import capture_runtime_snapshot, resource_delta
 from lightscan.scan.streaming import ScanControls, StreamingTCPScanner, _Job
 
-
 @pytest.fixture
 async def tcp_banner_server():
     async def handler(reader, writer):
@@ -26,7 +25,6 @@ async def tcp_banner_server():
         server.close()
         await server.wait_closed()
 
-
 def test_runtime_snapshot_is_best_effort_and_serializable():
     snapshot = capture_runtime_snapshot()
     payload = snapshot.to_dict()
@@ -40,7 +38,6 @@ def test_runtime_snapshot_is_best_effort_and_serializable():
     assert all(value is None or isinstance(value, int) for value in payload.values())
     assert resource_delta(snapshot, capture_runtime_snapshot())["fd_soft_limit"] == snapshot.fd_soft_limit
 
-
 def test_retry_jitter_is_bounded_and_can_be_disabled_for_reproducibility():
     deterministic = StreamingTCPScanner(
         ScanControls(retry_jitter=0), banners=False
@@ -52,7 +49,6 @@ def test_retry_jitter_is_bounded_and_can_be_disabled_for_reproducibility():
     samples = [jittered._retry_delay(2) for _ in range(20)]
     assert all(0.08 <= delay <= 0.12 for delay in samples)
 
-
 async def test_transient_outcomes_receive_a_bounded_retry_with_telemetry():
     scanner = StreamingTCPScanner(
         ScanControls(retries=1, retry_jitter=0), banners=False
@@ -62,7 +58,7 @@ async def test_transient_outcomes_receive_a_bounded_retry_with_telemetry():
     async def fake_connect(host: str, port: int):
         return next(outcomes)
 
-    scanner._connect_once = fake_connect  # type: ignore[method-assign]
+    scanner._connect_once = fake_connect
     result = await scanner._scan_with_retries(_Job("127.0.0.1", 9))
 
     assert result is None
@@ -71,7 +67,6 @@ async def test_transient_outcomes_receive_a_bounded_retry_with_telemetry():
     assert scanner.metrics.retry_filtered == 0
     assert scanner.metrics.closed == 1
     assert scanner.metrics.retry_delay_seconds == pytest.approx(0.05)
-
 
 async def test_completed_scan_records_runtime_telemetry(tcp_banner_server):
     scanner = StreamingTCPScanner(

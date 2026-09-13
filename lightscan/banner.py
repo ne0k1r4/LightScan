@@ -73,11 +73,10 @@ def print_banner(no_quote: bool = False) -> None:
     is_tty = sys.stdout.isatty()
 
     if is_tty and not no_quote:
-        # Cyberpunk glitchy decrypt animation
         import time
         glitch_chars = "01$#@%&?!=[]{}<>+/\\*^~X"
         steps = 8
-        sys.stdout.write("\033[?25l")  # Hide cursor
+        sys.stdout.write("\033[?25l")
         sys.stdout.flush()
         try:
             for step in range(steps):
@@ -86,7 +85,6 @@ def print_banner(no_quote: bool = False) -> None:
                     sys.stdout.write(f"\033[{len(lines) + 1}A")
                 sys.stdout.write("\n")
                 for idx, line in enumerate(lines):
-                    # Higher step = higher probability of correct character
                     real_ratio = step / (steps - 1)
                     animated_line = []
                     for char in line:
@@ -97,7 +95,6 @@ def print_banner(no_quote: bool = False) -> None:
                         else:
                             animated_line.append(random.choice(glitch_chars))
                     
-                    # Gradient color progression (grey -> deep red -> neon red)
                     if step < 2:
                         color = 236
                     elif step < 4:
@@ -110,10 +107,9 @@ def print_banner(no_quote: bool = False) -> None:
                     sys.stdout.write(f"\033[38;5;{color}m" + "".join(animated_line) + "\033[0m\n")
                 sys.stdout.flush()
                 time.sleep(0.04)
-            # Pull cursor back up to redraw the static banner cleanly
             sys.stdout.write(f"\033[{len(lines) + 1}A")
         finally:
-            sys.stdout.write("\033[?25h")  # Show cursor
+            sys.stdout.write("\033[?25h")
             sys.stdout.flush()
 
     print(_ART)

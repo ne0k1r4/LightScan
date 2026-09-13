@@ -8,7 +8,6 @@ import pytest
 
 from lightscan.scan.lua_checks import LuaCheckError, LuaCheckRegistry, run_lua_checks
 
-
 @pytest.fixture
 async def http_server():
     async def handler(reader, writer):
@@ -31,10 +30,8 @@ async def http_server():
         server.close()
         await server.wait_closed()
 
-
 def builtin_lua_root() -> Path:
     return Path(__file__).resolve().parents[1] / "lightscan" / "lua_scripts"
-
 
 def test_registry_discovers_only_safe_bundled_lua_checks():
     registry = LuaCheckRegistry([str(builtin_lua_root())])
@@ -48,7 +45,6 @@ def test_registry_discovers_only_safe_bundled_lua_checks():
     ]
     assert all("safe" in check["categories"] for check in checks)
 
-
 def test_registry_rejects_forbidden_lua_capability_reference(tmp_path):
     unsafe = tmp_path / "unsafe.lua"
     unsafe.write_text(
@@ -60,7 +56,6 @@ def test_registry_rejects_forbidden_lua_capability_reference(tmp_path):
 
     with pytest.raises(LuaCheckError, match="forbidden"):
         registry.discover()
-
 
 async def test_http_lua_check_uses_read_only_observation_context(http_server):
     registry = LuaCheckRegistry([str(builtin_lua_root())])
@@ -81,7 +76,6 @@ async def test_http_lua_check_uses_read_only_observation_context(http_server):
         "Content-Security-Policy",
         "X-Content-Type-Options",
     }
-
 
 async def test_lua_check_timeout_is_reported_as_a_controlled_error(tmp_path, http_server):
     looping = tmp_path / "looping.lua"

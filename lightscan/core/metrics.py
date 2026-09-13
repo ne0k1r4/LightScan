@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 COUNTERS = (
     "scheduled",
     "attempts",
@@ -16,7 +15,6 @@ COUNTERS = (
     "skipped",
     "elapsed",
 )
-
 
 def build_snapshot(performance: dict, meta: dict) -> dict:
     """Create a stable telemetry document from a completed scan performance block."""
@@ -43,7 +41,6 @@ def build_snapshot(performance: dict, meta: dict) -> dict:
         },
     }
 
-
 def write_snapshot(path: str, performance: dict, meta: dict) -> str:
     """Write a formatted performance snapshot and return the destination path."""
     destination = Path(path).expanduser()
@@ -53,14 +50,12 @@ def write_snapshot(path: str, performance: dict, meta: dict) -> str:
         handle.write("\n")
     return str(destination)
 
-
 def load_snapshot(path: str) -> dict:
     with Path(path).expanduser().open(encoding="utf-8") as handle:
         document = json.load(handle)
     if document.get("schema") != "lightscan-performance/v1":
         raise ValueError(f"{path} is not a LightScan performance snapshot")
     return document
-
 
 def compare_snapshots(baseline_path: str, candidate_path: str) -> dict:
     """Compare two compatible snapshots using absolute and relative deltas."""

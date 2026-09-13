@@ -7,7 +7,6 @@ import xml.etree.ElementTree as ET
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.core.reporter import Reporter
 
-
 def _sample_results() -> list[ScanResult]:
     return [
         ScanResult(
@@ -39,7 +38,6 @@ def _sample_results() -> list[ScanResult]:
         ),
     ]
 
-
 def test_json_report_preserves_result_data(tmp_path):
     path = tmp_path / "report.json"
     Reporter()._write_json(str(path), _sample_results(), {"timestamp": 1})
@@ -47,7 +45,6 @@ def test_json_report_preserves_result_data(tmp_path):
     document = json.loads(path.read_text())
     assert document["results"][1]["data"]["method"] == "probed"
     assert document["results"][2]["status"] == "open"
-
 
 def test_nmap_xml_prefers_probe_service_metadata_and_keeps_findings_as_scripts(tmp_path):
     path = tmp_path / "report.xml"
@@ -65,7 +62,6 @@ def test_nmap_xml_prefers_probe_service_metadata_and_keeps_findings_as_scripts(t
     assert script is not None
     assert script.attrib["id"] == "weak-configuration"
     assert root.find("./runstats/hosts").attrib["up"] == "1"
-
 
 def test_html_report_escapes_untrusted_banner_text(tmp_path):
     path = tmp_path / "report.html"

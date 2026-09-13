@@ -11,7 +11,6 @@ from lightscan.core.metrics import build_snapshot, compare_snapshots, write_snap
 from lightscan.core.ndjson import NDJSONResultWriter
 from lightscan.scan.streaming import ScanControls, StreamingTCPScanner
 
-
 @pytest.fixture
 async def tcp_banner_server():
     async def handler(reader, writer):
@@ -30,7 +29,6 @@ async def tcp_banner_server():
     finally:
         server.close()
         await server.wait_closed()
-
 
 def test_ndjson_writer_emits_results_then_a_summary(tmp_path):
     path = tmp_path / "open.ndjson"
@@ -53,7 +51,6 @@ def test_ndjson_writer_emits_results_then_a_summary(tmp_path):
     assert events[0]["result"]["host"] == "192.0.2.10"
     assert events[1]["performance"]["metrics"]["open"] == 1
 
-
 async def test_streaming_scan_can_emit_without_retaining_results(tcp_banner_server):
     emitted = []
     scanner = StreamingTCPScanner(
@@ -68,7 +65,6 @@ async def test_streaming_scan_can_emit_without_retaining_results(tcp_banner_serv
     assert len(emitted) == 1
     assert emitted[0].port == tcp_banner_server
     assert scanner.metrics.open == 1
-
 
 def test_metric_snapshots_capture_derived_rates_and_compare(tmp_path):
     baseline_performance = {

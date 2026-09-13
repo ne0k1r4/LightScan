@@ -32,17 +32,16 @@ from typing import Dict, List, Optional, Set, Tuple
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.scan.portscan import SERVICE_MAP, CRIT_PORTS, HIGH_PORTS, PROBES
 
-# Timing templates (nmap-compatible)
 @dataclass
 class TimingTemplate:
     name:           str
-    min_rate:       float   # packets/sec minimum
-    max_rate:       float   # packets/sec maximum
-    inter_packet:   float   # seconds between packets (base)
-    timeout:        float   # per-port timeout seconds
-    retries:        int     # SYN retransmissions
-    scan_delay:     float   # host-level inter-probe delay
-    parallelism:    int     # max simultaneous outstanding probes
+    min_rate:       float
+    max_rate:       float
+    inter_packet:   float
+    timeout:        float
+    retries:        int
+    scan_delay:     float
+    parallelism:    int
 
 TIMING = {
     0: TimingTemplate("Paranoid",    0.05,   1.0,   15.0,  300.0, 1,  15.0,  1),
@@ -52,8 +51,6 @@ TIMING = {
     4: TimingTemplate("Aggressive", 200.0, 2000.0,   0.01,   1.5, 2,   0.01,512),
     5: TimingTemplate("Insane",    1000.0,10000.0,   0.001,  0.5, 1,   0.0, 1000),
 }
-
-# IP/TCP packet helpers
 
 def _checksum(data: bytes) -> int:
     if len(data) % 2:
@@ -70,22 +67,19 @@ def _build_ipv4_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
     ip_saddr = socket.inet_aton(src_ip)
     ip_daddr = socket.inet_aton(dst_ip)
 
-    # TCP header
-    tcp_flags = 0x02  # SYN
+    tcp_flags = 0x02
     tcp_win   = socket.htons(random.choice([1024, 2048, 4096, 8192, 16384, 65535]))
     tcp_hdr   = struct.pack("!HHLLBBHHH",
         src_port, dst_port, seq, 0,
         (5 << 4), tcp_flags, tcp_win, 0, 0)
 
-    # TCP checksum via pseudo-header
     pseudo = struct.pack("!4s4sBBH", ip_saddr, ip_daddr, 0, socket.IPPROTO_TCP, len(tcp_hdr))
     tcp_chk = 0 if bad_checksum else _checksum(pseudo + tcp_hdr)
     tcp_hdr = struct.pack("!HHLLBBHHH",
         src_port, dst_port, seq, 0,
         (5 << 4), tcp_flags, tcp_win, tcp_chk, 0)
 
-    # IP header
-    frag_off = 0x2000 if fragment else 0  # More Fragments bit
+    frag_off = 0x2000 if fragment else 0
     ip_id = random.randint(1, 65535)
     ip_hdr = struct.pack("!BBHHHBBH4s4s",
         (4 << 4) | 5, 0, 0,
@@ -107,20 +101,17 @@ def _build_ipv4_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
     ip_saddr = socket.inet_aton(src_ip)
     ip_daddr = socket.inet_aton(dst_ip)
 
-    # TCP header
-    tcp_flags = 0x04  # RST
+    tcp_flags = 0x04
     tcp_hdr = struct.pack("!HHLLBBHHH",
         src_port, dst_port, ack_seq, 0,
         (5 << 4), tcp_flags, 0, 0, 0)
 
-    # TCP checksum via pseudo-header
     pseudo = struct.pack("!4s4sBBH", ip_saddr, ip_daddr, 0, socket.IPPROTO_TCP, len(tcp_hdr))
     tcp_chk = _checksum(pseudo + tcp_hdr)
     tcp_hdr = struct.pack("!HHLLBBHHH",
         src_port, dst_port, ack_seq, 0,
         (5 << 4), tcp_flags, 0, tcp_chk, 0)
 
-    # IP header
     ip_id = random.randint(1, 65535)
     ip_hdr = struct.pack("!BBHHHBBH4s4s",
         (4 << 4) | 5, 0, 0,
@@ -148,14 +139,13 @@ def _build_ipv6_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
         src_port, dst_port, seq, 0,
         (5 << 4), tcp_flags, tcp_win, 0, 0)
 
-    # IPv6 pseudo-header for TCP checksum
     pseudo = src + dst + struct.pack("!I", len(tcp_hdr)) + b"\x00\x00\x00" + bytes([6])
     tcp_chk = _checksum(pseudo + tcp_hdr)
     tcp_hdr = struct.pack("!HHLLBBHHH",
         src_port, dst_port, seq, 0,
         (5 << 4), tcp_flags, tcp_win, tcp_chk, 0)
 
-    return tcp_hdr  # IPv6 kernel prepends IP header automatically
+    return tcp_hdr
 
 def _build_ipv6_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     ack_seq: int) -> bytes:
@@ -163,12 +153,11 @@ def _build_ipv6_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
     src = socket.inet_pton(socket.AF_INET6, src_ip)
     dst = socket.inet_pton(socket.AF_INET6, dst_ip)
 
-    tcp_flags = 0x04  # RST
+    tcp_flags = 0x04
     tcp_hdr = struct.pack("!HHLLBBHHH",
         src_port, dst_port, ack_seq, 0,
         (5 << 4), tcp_flags, 0, 0, 0)
 
-    # IPv6 pseudo-header for TCP checksum
     pseudo = src + dst + struct.pack("!I", len(tcp_hdr)) + b"\x00\x00\x00" + bytes([6])
     tcp_chk = _checksum(pseudo + tcp_hdr)
     tcp_hdr = struct.pack("!HHLLBBHHH",
@@ -195,39 +184,33 @@ def _parse_tcp_response(data: bytes, expected_dst_ip: str,
     """
     try:
         if ipv6:
-            # Kernel strips IPv6 header for AF_INET6 SOCK_RAW
             if len(data) < 20: return None
             ihl = 0
-            proto_offset = 6  # next header
-            # Check next header is TCP (6)
-            # For simplicity, parse first 40 bytes as IPv6 + TCP
-            # Actually kernel gives us just TCP for IPPROTO_TCP raw
+            proto_offset = 6
             tcp = data
         else:
             if len(data) < 40: return None
             ihl = (data[0] & 0x0F) * 4
             src_ip = socket.inet_ntoa(data[12:16])
             if src_ip != expected_dst_ip: return None
-            if data[9] != 6: return None  # not TCP
+            if data[9] != 6: return None
             tcp = data[ihl:]
 
         if len(tcp) < 14: return None
-        dst_port_resp = struct.unpack("!H", tcp[0:2])[0]   # their src = our src_port
-        src_port_resp = struct.unpack("!H", tcp[2:4])[0]   # their dst = target port
+        dst_port_resp = struct.unpack("!H", tcp[0:2])[0]
+        src_port_resp = struct.unpack("!H", tcp[2:4])[0]
         flags = tcp[13]
 
         target_port = port_map.get(dst_port_resp)
         if target_port is None: return None
 
-        if flags & 0x12 == 0x12:   # SYN+ACK → open
+        if flags & 0x12 == 0x12:
             return (target_port, "open")
-        elif flags & 0x04:          # RST → closed
+        elif flags & 0x04:
             return (target_port, "closed")
         return None
     except Exception:
         return None
-
-# Evasion: Decoy packets
 
 def _random_ip() -> str:
     while True:
@@ -246,8 +229,6 @@ def _send_decoys(send_sock, dst_ip: str, dst_port: int, src_port: int,
         except Exception:
             pass
 
-# Core scanner
-
 class RawAsyncScanner:
     """
     epoll-based raw TCP SYN scanner.
@@ -262,11 +243,11 @@ class RawAsyncScanner:
         self,
         target:       str,
         ports:        List[int],
-        timing:       int   = 4,        # T4 default (aggressive)
+        timing:       int   = 4,
         ttl:          int   = 64,
-        decoys:       int   = 0,        # number of random decoy IPs (0=disabled)
-        fragment:     bool  = False,    # IP fragmentation evasion
-        randomize:    bool  = True,     # randomise port scan order
+        decoys:       int   = 0,
+        fragment:     bool  = False,
+        randomize:    bool  = True,
         grab_banner:  bool  = True,
         verbose:      bool  = False,
         ipv6:         bool  = False,
@@ -337,7 +318,6 @@ class RawAsyncScanner:
         if os.geteuid() != 0:
             raise PermissionError("Raw scan requires root")
 
-        # Resolve target
         try:
             if self.ipv6:
                 info = socket.getaddrinfo(self.target, None, socket.AF_INET6)
@@ -349,17 +329,14 @@ class RawAsyncScanner:
 
         self._src_ip = _get_src_ip(self._dst_ip, self.ipv6)
 
-        # Decoy IPs
         decoy_ips = [_random_ip() for _ in range(self.decoys)]
 
-        # Port order
         scan_ports = list(self.ports)
         if self.randomize:
             random.shuffle(scan_ports)
 
-        # src_port → dst_port mapping for response matching
         port_map: Dict[int, int] = {}
-        src_ports: Dict[int, int] = {}  # dst_port → src_port
+        src_ports: Dict[int, int] = {}
 
         t0 = time.time()
         tmpl = self.tmpl
@@ -371,7 +348,6 @@ class RawAsyncScanner:
               f"{'frag ' if self.fragment else ''}"
               f"src={self._src_ip}")
 
-        # Create sockets
         send_sock = None
         recv_sock = None
         ep = None
@@ -388,12 +364,11 @@ class RawAsyncScanner:
             except PermissionError:
                 raise PermissionError("Raw socket requires root")
 
-            # epoll for non-blocking receive
             ep = select.epoll()
             ep.register(recv_sock.fileno(), select.EPOLLIN)
 
             responded: Set[int] = set()
-            outstanding: Dict[int, float] = {}  # dst_port → time sent
+            outstanding: Dict[int, float] = {}
 
             def _flush_responses(deadline: float):
                 """Drain epoll responses until deadline."""
@@ -415,9 +390,7 @@ class RawAsyncScanner:
                                     sport = src_ports.get(dport, 0)
                                     if state == "open":
                                         self._open.append(dport)
-                                        # Send RST immediately
                                         try:
-                                            # Extract ack from packet
                                             if not self.ipv6:
                                                 ihl = (data[0] & 0x0F) * 4
                                                 tcp = data[ihl:]
@@ -434,10 +407,8 @@ class RawAsyncScanner:
                         except Exception:
                             break
 
-            # Rate control
             interval = 1.0 / min(tmpl.max_rate, 10000)
 
-            # Send loop
             used_sports: Set[int] = set()
             for i, port in enumerate(scan_ports):
                 while True:
@@ -450,7 +421,6 @@ class RawAsyncScanner:
                 port_map[sport] = port
                 src_ports[port] = sport
 
-                # Build + send SYN
                 try:
                     if self.ipv6:
                         pkt = _build_ipv6_syn(self._src_ip, self._dst_ip, sport, port,
@@ -463,7 +433,6 @@ class RawAsyncScanner:
                             ttl=self.ttl, fragment=self.fragment)
                         send_sock.sendto(pkt, (self._dst_ip, 0))
 
-                    # Send decoys
                     if decoy_ips:
                         _send_decoys(send_sock, self._dst_ip, port, sport,
                                      decoy_ips, self.ttl)
@@ -477,22 +446,18 @@ class RawAsyncScanner:
                 if not self.verbose and self._sent % 50 == 0:
                     self._progress()
 
-                # Flush responses + rate control
                 _flush_responses(time.time() + interval * 0.5)
                 time.sleep(max(0, interval - 0.001))
 
-                # Scan delay (T0/T1 only)
                 if tmpl.scan_delay > 0.1 and i % 10 == 0:
                     time.sleep(tmpl.scan_delay)
 
             self._progress()
 
-            # Wait for stragglers
             straggler_deadline = time.time() + tmpl.timeout
             print(f"\n\033[38;5;240m[+] Probes sent — waiting {tmpl.timeout:.1f}s for responses...\033[0m")
             _flush_responses(straggler_deadline)
 
-            # Retransmit non-responded ports
             if tmpl.retries > 0:
                 retry_ports = [p for p in scan_ports if p not in responded]
                 if retry_ports and self.verbose:
@@ -518,7 +483,6 @@ class RawAsyncScanner:
                 try: recv_sock.close()
                 except Exception: pass
 
-        # Classify non-responded as filtered
         for port in scan_ports:
             if port not in responded:
                 self._filtered.append(port)
@@ -528,7 +492,6 @@ class RawAsyncScanner:
               f"open=\033[38;5;196m{len(self._open)}\033[0m  "
               f"closed={len(self._closed)}  filtered={len(self._filtered)}")
 
-        # Banner grab open ports
         if self.grab_banner and self._open:
             print(f"\033[38;5;240m[+] Banner grabbing {len(self._open)} open ports...\033[0m")
             loop = asyncio.new_event_loop()
@@ -553,7 +516,6 @@ class RawAsyncScanner:
                    else Severity.HIGH if port in HIGH_PORTS
                    else Severity.INFO)
             banner = self._banners.get(port, "")
-            # Auto-detect service from banner
             if svc.startswith("port/") and banner:
                 bl = banner.lower()
                 if "ssh" in bl: svc = "SSH"
@@ -587,7 +549,6 @@ async def async_raw_scan(
 ) -> List[ScanResult]:
     """Async wrapper — runs raw scan in executor."""
     if os.geteuid() != 0:
-        # Fall back to async connect scan
         from lightscan.scan.portscan import tcp_scan
         import concurrent.futures
         sem = asyncio.Semaphore(TIMING[timing].parallelism)
@@ -602,5 +563,3 @@ async def async_raw_scan(
         target, ports, timing, ttl, decoys, fragment,
         randomize, grab_banner, verbose, ipv6)
     return await loop.run_in_executor(None, scanner.scan)
-# scapy optional
-# scapy optional

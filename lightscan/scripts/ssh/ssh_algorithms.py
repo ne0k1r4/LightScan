@@ -14,11 +14,8 @@ async def run(host, port, timeout=8.0):
         try:
             s = socket.create_connection((host, port), timeout=timeout)
             s.settimeout(timeout)
-            # Read banner
             banner = s.recv(256).decode("utf-8","replace").strip()
-            # Send our banner
             s.send(b"SSH-2.0-LightScan_2.0_scanner\r\n")
-            # Read KEX_INIT packet
             raw = b""
             while len(raw) < 4:
                 raw += s.recv(4 - len(raw))
@@ -27,11 +24,9 @@ async def run(host, port, timeout=8.0):
             while len(payload) < pkt_len:
                 payload += s.recv(pkt_len - len(payload))
             s.close()
-            # Parse KEX_INIT (skip padding and message type)
             pad_len = payload[0]
             msg = payload[1:]
-            if msg[0] != 20: return banner, {}  # not KEXINIT
-            # Skip cookie (16 bytes) + message type
+            if msg[0] != 20: return banner, {}
             pos = 17
             lists = {}
             names = ["kex_algos","server_host_key_algos","enc_c2s","enc_s2c",

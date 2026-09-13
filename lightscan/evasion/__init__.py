@@ -112,8 +112,6 @@ class ProxyChain:
                     })
         return ProxyChain(proxies)
 
-# JA3/JA4 TLS Fingerprint Spoofing
-
 CHROME_CIPHERS = (
     "ECDHE-ECDSA-AES128-GCM-SHA256:"
     "ECDHE-RSA-AES128-GCM-SHA256:"
@@ -158,10 +156,8 @@ def get_spoofed_ssl_context(browser: str = "chrome") -> ssl.SSLContext:
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     
-    # Modern TLS standards
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     
-    # Configure custom ciphers
     ciphers = {
         "chrome": CHROME_CIPHERS,
         "firefox": FIREFOX_CIPHERS,
@@ -181,7 +177,6 @@ def get_spoofed_ssl_context(browser: str = "chrome") -> ssl.SSLContext:
     context.options |= ssl.OP_CIPHER_SERVER_PREFERENCE
     return context
 
-# Pair each browser UA with its corresponding JA3 context
 UA_PROFILES = [
     ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36", "chrome"),
     ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36", "chrome"),

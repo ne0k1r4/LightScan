@@ -1,19 +1,5 @@
-# scan/discovery.py — host discovery before port scan
-# Light (ne0k1r4)
 
-# two modes:
-# ARP sweep  — local subnet only, L2, doesn't cross routers
-# ICMP sweep — works across subnets, needs root/CAP_NET_RAW
 
-# why bother? on a /24 with 200 dead hosts, port scanning all of them
-# burns 200*port_count timeout slots. discovery prunes the list first.
-# on my lab /24: cuts scan time from ~8 min → ~45 sec.
-
-# fallback chain: ICMP (root) → TCP connect (no root) → assume alive
-
-# ARP is authoritative on LAN — if host exists it MUST respond to ARP
-# (can't filter it, it's L2). ICMP can be firewalled. on local nets,
-# always prefer ARP. ICMP for remote targets.
 from __future__ import annotations
 
 import asyncio
@@ -26,17 +12,15 @@ from typing import Optional
 
 try:
     from scapy.all import ARP, Ether, srp, conf as scapy_conf
-    scapy_conf.verb = 0          # silence scapy's noisy output
+    scapy_conf.verb = 0
     HAS_SCAPY = True
 except ImportError:
     HAS_SCAPY = False
 
-# ICMP checksum (RFC 1071)
-
 def _checksum(data: bytes) -> int:
     """one's complement checksum — standard for ICMP/IP headers."""
     if len(data) % 2:
-        data += b"\x00"          # pad to even length
+        data += b"\x00"
     s = sum((data[i] << 8) + data[i + 1] for i in range(0, len(data), 2))
     s  = (s >> 16) + (s & 0xFFFF)
     s += s >> 16
@@ -44,14 +28,10 @@ def _checksum(data: bytes) -> int:
 
 def _build_icmp_echo(icmp_id: int, seq: int = 1) -> bytes:
     """build a valid ICMP echo request packet."""
-    # type=8 (echo), code=0, checksum=0 (placeholder), id, seq
     header  = struct.pack("!BBHHH", 8, 0, 0, icmp_id, seq)
-    payload = b"ne0k1ra-lightscan"   # arbitrary payload
+    payload = b"ne0k1ra-lightscan"
     chk     = _checksum(header + payload)
-    # rebuild with real checksum
     return struct.pack("!BBHHH", 8, 0, chk, icmp_id, seq) + payload
-
-# per-host probe functions
 
 async def icmp_ping(host: str, timeout: float = 1.0) -> bool:
     """
@@ -78,11 +58,9 @@ async def icmp_ping(host: str, timeout: float = 1.0) -> bool:
                         loop.run_in_executor(None, sock.recv, 1024),
                         timeout=remaining,
                     )
-                    # IP header is 20 bytes; ICMP starts at offset 20
                     if len(data) >= 28:
                         icmp_type = data[20]
                         recv_id   = struct.unpack("!H", data[24:26])[0]
-                        # type 0 = echo reply, id must match ours
                         if icmp_type == 0 and recv_id == icmp_id:
                             return True
                 except (asyncio.TimeoutError, OSError):
@@ -91,7 +69,6 @@ async def icmp_ping(host: str, timeout: float = 1.0) -> bool:
             sock.close()
 
     except PermissionError:
-        # no raw socket — fall back to TCP
         return await _tcp_probe(host, timeout)
     except Exception:
         pass
@@ -114,12 +91,10 @@ async def _tcp_probe(host: str, timeout: float) -> bool:
                 await writer.wait_closed()
             except Exception:
                 pass
-            return True    # got a connection — host is alive
+            return True
         except (OSError, asyncio.TimeoutError):
-            continue       # port closed/filtered — try next
+            continue
     return False
-
-# ARP sweep (LAN only, requires scapy)
 
 def arp_sweep(network: str, timeout: float = 2.0) -> list[str]:
     """
@@ -136,17 +111,14 @@ def arp_sweep(network: str, timeout: float = 2.0) -> list[str]:
     if not HAS_SCAPY:
         return []
     try:
-        # srp = send/receive packet (L2) — blocks until timeout
         ans, _ = srp(
             Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=network),
             timeout=timeout,
             verbose=False,
         )
-        return [rcv.psrc for _, rcv in ans]   # extract IPs from replies
+        return [rcv.psrc for _, rcv in ans]
     except Exception:
         return []
-
-# main discovery entry point
 
 async def discover_hosts(
     targets: list[str],
@@ -165,7 +137,6 @@ async def discover_hosts(
     Returns sorted list of live IPs.
     Performance: 256 concurrent pings → ~1s for a /24 on LAN.
     """
-    # skip discovery for single targets — overhead not worth it
     if len(targets) <= 1:
         return targets
 
@@ -187,13 +158,12 @@ async def discover_hosts(
             if up:
                 live.append(host)
             if verbose:
-                # \r overwrites same line — cleaner than flooding stdout
                 print(f"\r[DISCOVER] {done}/{len(targets)}  up={len(live)}", end="", flush=True)
 
     await asyncio.gather(*[_check(h) for h in targets])
 
     if verbose:
-        print()   # newline after the \r line
+        print()
 
     print(f"[DISCOVER] {len(live)}/{len(targets)} hosts responded")
     return sorted(live)
@@ -208,8 +178,6 @@ def expand_targets(target: str) -> list[str]:
         net = ipaddress.ip_network(target, strict=False)
         if net.num_addresses == 1:
             return [str(net.network_address)]
-        # hosts() skips network address and broadcast — correct for scanning
         return [str(h) for h in net.hosts()]
     except ValueError:
-        # not an IP/CIDR — treat as hostname, let resolver handle it
         return [target]

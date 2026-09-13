@@ -6,12 +6,10 @@ import pytest
 
 from lightscan.core.nmap_xml import NmapXMLImportError, import_nmap_xml
 
-
 def write_xml(tmp_path: Path, text: str) -> Path:
     path = tmp_path / "inventory.xml"
     path.write_text(text, encoding="utf-8")
     return path
-
 
 def test_import_nmap_xml_preserves_os_and_open_service_evidence(tmp_path: Path) -> None:
     source = write_xml(
@@ -67,7 +65,6 @@ def test_import_nmap_xml_preserves_os_and_open_service_evidence(tmp_path: Path) 
     assert results[1].data["name"] == "ssh"
     assert results[1].data["cpes"] == ["cpe:/a:openbsd:openssh:9.6"]
 
-
 def test_import_nmap_xml_supports_ipv6_when_ipv4_is_absent(tmp_path: Path) -> None:
     source = write_xml(
         tmp_path,
@@ -82,7 +79,6 @@ def test_import_nmap_xml_supports_ipv6_when_ipv4_is_absent(tmp_path: Path) -> No
     assert len(results) == 1
     assert results[0].target == "2001:db8::20"
     assert results[0].status == "open|filtered"
-
 
 @pytest.mark.parametrize(
     "document, message",

@@ -54,12 +54,10 @@ async def test_csrf_state(auth_url, client_id, redirect_uri, timeout=8.0):
     results=[]
     base=(f"{auth_url}?response_type=code&client_id={urllib.parse.quote(client_id)}"
           f"&redirect_uri={urllib.parse.quote(redirect_uri)}&scope=openid")
-    # No state
     status,body,_=await _afetch(base,timeout=timeout)
     if status in (200,302) and "error" not in body.lower():
         results.append(ScanResult("oauth-csrf-state",auth_url,443,"VULNERABLE",Severity.MEDIUM,
             "Request accepted WITHOUT state parameter — CSRF risk",{"missing":"state"}))
-    # Predictable states
     for sv in ("1","0","test","null","undefined","12345"):
         s,b,_=await _afetch(base+f"&state={sv}",timeout=timeout)
         if s in (200,302) and "invalid_state" not in b.lower() and "error" not in b.lower():
@@ -75,13 +73,11 @@ async def test_pkce_downgrade(auth_url, client_id, redirect_uri, timeout=8.0):
     challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     base=(f"{auth_url}?response_type=code&client_id={urllib.parse.quote(client_id)}"
           f"&redirect_uri={urllib.parse.quote(redirect_uri)}&scope=openid&state={_rand()}")
-    # plain method
     url_plain=base+f"&code_challenge={verifier}&code_challenge_method=plain"
     s,b,_=await _afetch(url_plain,timeout=timeout)
     if s in (200,302) and "error" not in b.lower():
         results.append(ScanResult("oauth-pkce-downgrade",auth_url,443,"VULNERABLE",Severity.HIGH,
             "PKCE downgrade: 'plain' method accepted (S256 not enforced)"))
-    # No PKCE
     s2,b2,_=await _afetch(base,timeout=timeout)
     if s2 in (200,302) and "invalid_request" not in b2.lower():
         results.append(ScanResult("oauth-pkce-downgrade",auth_url,443,"pkce_not_required",Severity.MEDIUM,

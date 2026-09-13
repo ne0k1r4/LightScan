@@ -17,9 +17,6 @@ import json
 import sys
 import time
 
-# only truly core imports at top level — everything else is lazy-loaded inside
-# the relevant branch. this way a missing optional dep (scapy, paramiko, etc.)
-# doesn't crash the CLI before it even prints the banner or --help.
 from lightscan.banner import print_banner
 from lightscan.core.engine import PhantomEngine, ScanResult, Severity
 from lightscan.core.target import (
@@ -31,7 +28,7 @@ from lightscan.core.target import (
 )
 from lightscan.core.checkpoint import Checkpoint
 from lightscan.core.reporter import Reporter
-from lightscan.scan.evasion import parse_timing  # used in multiple branches
+from lightscan.scan.evasion import parse_timing
 
 def build_parser():
     p = argparse.ArgumentParser(
@@ -41,7 +38,6 @@ def build_parser():
         formatter_class=argparse.RawTextHelpFormatter,
         add_help=False
     )
-    # Target
     tg = p.add_argument_group("Target")
     tg.add_argument("-t","--target", help="IP / CIDR / range / hostname / file:path.txt")
     tg.add_argument(
@@ -93,7 +89,6 @@ def build_parser():
     tg.add_argument("--no-adaptive", action="store_false", dest="adaptive",
                     help="Use fixed timeout and concurrency controls for reproducible runs")
 
-    # Autonomous / Active
     aa = p.add_argument_group("Autonomous Red-Team")
     aa.add_argument("--auto",        metavar="DOMAIN",
                     help="AUTONOMOUS mode: domain→subdomain→scan→exploit→pivot→DC compromise map")
@@ -110,7 +105,6 @@ def build_parser():
     aa.add_argument("--mode",        choices=["sweep", "deep"], default="deep",
                     help="Scan mode: sweep (fast recon/ports only) or deep (full audit) [default: deep]")
 
-    # Modules
     m = p.add_argument_group("Modules")
     m.add_argument("--scan",         action="store_true", help="Bounded streaming TCP connect scan")
     m.add_argument("--go-engine",    action="store_true", help="Use the optional compiled Go TCP engine")
@@ -162,7 +156,6 @@ def build_parser():
     m.add_argument("--diff",         nargs=2, metavar=("OLD.json","NEW.json"), help="Diff two scan JSONs")
     m.add_argument("--traceroute",   metavar="HOST",      help="TCP traceroute to HOST")
 
-    # Brute force
     bf = p.add_argument_group("Brute Force")
     try:
         from lightscan.brute.handlers import PROTOCOLS as _P
@@ -180,7 +173,6 @@ def build_parser():
     bf.add_argument("--stop-first",  action="store_true",  help="Stop after first credential found")
     bf.add_argument("--jitter",      nargs=2,type=float,metavar=("MIN","MAX"),help="Brute jitter: --jitter 0.5 3.0")
 
-    # HTTP brute
     hb = p.add_argument_group("HTTP Brute (--brute http)")
     hb.add_argument("--http-url",        help="Login form URL")
     hb.add_argument("--http-user-field", default="username")
@@ -189,18 +181,15 @@ def build_parser():
     hb.add_argument("--http-failure",    default="", help="Text on failed login")
     hb.add_argument("--http-basic",      action="store_true", help="HTTP Basic Auth mode")
 
-    # Engine
     en = p.add_argument_group("Engine")
     en.add_argument("--concurrency", type=int,   default=None,  help="Scan concurrency (default: auto-tuned from ulimit, usually 256)")
     en.add_argument("--timeout",     type=float, default=3.0,  help="Connection timeout (default:3.0)")
     en.add_argument("--exclude-cdn", "-ec", action="store_true", default=False,
                      help="Known Cloudflare/Fastly IPs get scanned for 80,443 only, not the full port list")
 
-    # Evasion
     ev = p.add_argument_group("Evasion")
     ev.add_argument("--proxy-file",  help="SOCKS5 proxy file (socks5://host:port per line)")
 
-    # Output
     out = p.add_argument_group("Output")
     out.add_argument("-o","--output",     default=".", help="Output directory (default: .)")
     out.add_argument("--basename",        default="lightscan_report")
@@ -230,7 +219,6 @@ def _targets(args) -> list[str]:
     """Expand the CLI target input once per scan stage with an explicit ceiling."""
     return parse_targets(args.target, max_targets=args.max_targets)
 
-
 def parse_userlist(spec):
     if not spec:
         return ["admin","root","administrator","user","test","guest","service","operator"]
@@ -252,8 +240,6 @@ def parse_passwdlist(spec, users=None, target_info=None, mutate=False):
     return base
 
 async def async_main(args):
-    # flag conflict validation
-    # catch obvious mistakes before we get deep into the scan and fail weirdly
     scan_modes = [
         args.scan,
         args.syn,
@@ -277,7 +263,7 @@ async def async_main(args):
                       "Re-run with sudo or use --scan for connect-scan.\033[0m")
                 sys.exit(1)
         except AttributeError:
-            pass  # windows — let it fail naturally
+            pass
 
     if getattr(args, 'brute', None) and not args.target:
         print("\033[38;5;208m[!] --brute requires -t / --target\033[0m")
@@ -327,7 +313,6 @@ async def async_main(args):
     if not getattr(args, 'no_banner', False):
         print_banner()
     t_start=time.time(); all_results=[]; open_ports={}
-    # Build target string — prefer --target, fall back to --web-scan URL
     _target = args.target or getattr(args, 'web_scan', None) or ""
     meta={"target":_target,"timestamp":t_start,"duration":0,"command":" ".join(sys.argv)}
 
@@ -338,36 +323,30 @@ async def async_main(args):
     try:
         return await _run_main_body(args, cp, t_start, all_results, open_ports, meta)
     finally:
-        # ctrl+c during a brute run shouldn't lose progress — main() prints
-        # "checkpoint saved" on KeyboardInterrupt so this needs to actually
-        # be true, not just true on the happy path
         cp.flush()
 
 async def run_search(query: str):
     print(f"\033[38;5;196m[SEARCH]\033[0m Searching scripts and templates for: \033[38;5;220m{query!r}\033[0m\n")
     
-    # Search CVE templates
     from lightscan.cve.template_engine import TemplateLibrary
     from pathlib import Path
     dirs = [str(Path(__file__).parent / "templates")]
     lib = TemplateLibrary(dirs)
     matching_templates = lib.search(query)
     
-    # Search NSE scripts
     from lightscan.scan.scripts import ScriptRegistry, install_builtin_scripts
     script_base = install_builtin_scripts()
     registry = ScriptRegistry([script_base])
     matching_scripts = registry.search(query)
     
     SEV_COLORS = {
-        "CRITICAL": "\033[38;5;196;1m",  # bold red
-        "HIGH": "\033[38;5;202;1m",      # bold orange
-        "MEDIUM": "\033[38;5;220;1m",    # bold yellow
-        "LOW": "\033[38;5;82;1m",        # bold green
-        "INFO": "\033[38;5;39;1m"        # bold blue
+        "CRITICAL": "\033[38;5;196;1m",
+        "HIGH": "\033[38;5;202;1m",
+        "MEDIUM": "\033[38;5;220;1m",
+        "LOW": "\033[38;5;82;1m",
+        "INFO": "\033[38;5;39;1m"
     }
     
-    # Print templates
     if matching_templates:
         title = f"VULNERABILITY TEMPLATES ({len(matching_templates)} matches)"
         rem = max(2, 76 - 5 - len(title))
@@ -383,7 +362,6 @@ async def run_search(query: str):
             ))
         print(f"\033[38;5;196m└" + "─" * 76 + "\033[0m\n")
         
-    # Print scripts
     if matching_scripts:
         title = f"RECON & DETECTION SCRIPTS ({len(matching_scripts)} matches)"
         rem = max(2, 76 - 5 - len(title))
@@ -469,7 +447,6 @@ def run_update_templates(repo_spec: str):
         print(f"\033[38;5;196m[!] Error updating templates: {e}\033[0m")
 
 async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
-    # Nmap XML import is offline and consumes only user-provided evidence.
     if getattr(args, "import_nmap_xml", None):
         from lightscan.core.nmap_xml import NmapXMLImportError, import_nmap_xml
 
@@ -497,7 +474,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
         return all_results
 
-    # Performance snapshot comparison is offline and does not require a target.
     if getattr(args, "compare_metrics", None):
         from lightscan.core.metrics import compare_snapshots
 
@@ -510,17 +486,14 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         print(json.dumps(comparison, indent=2, sort_keys=True))
         return all_results
 
-    # Search option
     if getattr(args, 'search', None):
         await run_search(args.search)
         return all_results
 
-    # Update templates option
     if getattr(args, 'update_templates', None):
         run_update_templates(args.update_templates)
         return all_results
 
-    # Autonomous mode (--auto domain.com)
     if getattr(args, 'auto', None):
         from lightscan.scan.orchestrator import run_auto
         scope     = getattr(args, 'scope', None) or []
@@ -549,7 +522,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
         return all_results
 
-    # Active red-team scan (--active -t target)
     if getattr(args, 'active', False) and args.target:
         from lightscan.scan.active import active_scan
         hosts     = _targets(args)
@@ -605,7 +577,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             Reporter(args.output).save(all_results, meta, args.basename, fmt=args.format)
         return all_results
 
-    # Diff
     if args.diff:
         from lightscan.scan.diff import diff_scans
         old_f,new_f=args.diff
@@ -613,20 +584,17 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         print(f"\033[38;5;196m[DIFF]\033[0m {summary}")
         all_results.extend(results)
 
-    # DNS
     if args.dns:
         from lightscan.scan.dns import full_dns_enum
         r=await full_dns_enum(args.dns,axfr=not args.no_axfr,
             brute=not args.no_brute_dns,use_crtsh=not args.no_crtsh)
         all_results.extend(r)
 
-    # Active OS Fingerprinting (T2-T7 multi-probe)
     if getattr(args, 'os_probe', False) and args.target:
         from lightscan.scan.os_detect import os_probe_async
         hosts = _targets(args)
         print(f"\033[38;5;196m[OS-PROBE]\033[0m Active fingerprinting {len(hosts)} host(s)")
         for host in hosts:
-            # Use first known open port, or fall back to 80
             probe_port = getattr(args, 'os_port', None)
             if not probe_port:
                 probe_port = open_ports.get(host, [80])[0] if open_ports.get(host) else 80
@@ -635,12 +603,10 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 print(f"  \033[38;5;196m[OS]\033[0m {r.target} → {r.detail}")
             all_results.extend(os_results)
 
-    # Passive OS detection standalone (--os-passive without --syn)
     if getattr(args, 'os_passive', False) and not (args.syn or getattr(args,'syn_c',False)) and args.target:
         print(f"\033[38;5;240m[!] --os-passive works best with --syn (reads SYN-ACK packets)\033[0m")
         print(f"\033[38;5;240m    Without --syn, TTL-only estimation will be LOW confidence\033[0m")
 
-    # Web Application Scan
     if getattr(args, 'web_scan', None):
         from lightscan.web.scanner import web_scan_async
         print(f"\033[38;5;196m[WEB-SCAN]\033[0m {args.web_scan}")
@@ -661,7 +627,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         )
         print(f"  \033[38;5;196m[WEB-SCAN DONE]\033[0m {len(web_results)} findings — {summary}")
 
-        # Grouped terminal summary
         from lightscan.core.reporter import _group_results
         raw_dicts = [r.to_dict() for r in web_results]
         grouped   = _group_results(raw_dicts)
@@ -678,7 +643,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             for url in r.get("urls",[])[:5]:
                 print(f"      \033[38;5;240m↳ {url}\033[0m")
 
-    # RDP Probe
     if getattr(args, 'rdp_probe', None):
         from lightscan.brute.handlers.rdp_raw import make_rdp_probe, RawRDPHandler
         print(f"\033[38;5;196m[RDP-PROBE]\033[0m {args.rdp_probe}")
@@ -691,14 +655,12 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             f"RDP proto={info.get('protocol','?')} NLA={info.get('nla_required','?')}",
             info))
 
-    # Traceroute
     if args.traceroute:
         from lightscan.scan.traceroute import tcp_traceroute
         tr=await tcp_traceroute(args.traceroute,timeout=args.timeout)
         for hop in tr: print(f"  {hop.detail}")
         all_results.extend(tr)
 
-    # SYN Scan (half-open, raw socket)
     if (args.syn or getattr(args, 'syn_c', False)) and args.target:
         from lightscan.scan.syn import syn_scan_auto
         hosts = _targets(args); ports = parse_ports(args.ports)
@@ -714,7 +676,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                     print(f"  \033[38;5;196mOPEN\033[0m  {res.target}:{res.port:<6} {res.detail}")
         all_results.extend(syn_results)
 
-    # UDP Scan (dedicated module with ICMP classification)
     if args.udp and args.target:
         from lightscan.scan.udp import udp_scan
         udp_ports_default = [53, 67, 68, 69, 111, 123, 137, 161, 162,
@@ -732,7 +693,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                   f"{res.target}:{res.port:<6} {res.detail}")
         all_results.extend(udp_results)
 
-    # Raw async SYN scan (epoll, nmap speed)
     if getattr(args, 'raw', False) and args.target:
         from lightscan.scan.rawscan import async_raw_scan
         hosts  = _targets(args)
@@ -755,7 +715,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                     open_ports.setdefault(res.target, []).append(res.port)
                     print(f"  \033[38;5;196mOPEN\033[0m  {res.target}:{res.port:<6} {res.detail}")
 
-    # IPv6 scan
     if getattr(args, 'ipv6', False) and args.target and not getattr(args, 'raw', False):
         from lightscan.scan.ipv6scan import scan_ipv6, dual_stack_scan
         hosts = _targets(args)
@@ -773,7 +732,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                     open_ports.setdefault(res.target, []).append(res.port)
                     print(f"  \033[38;5;196mOPEN\033[0m  {res.target}:{res.port:<6} {res.detail}")
 
-    # OS fingerprint v2
     if getattr(args, 'os_v2', False) and args.target:
         from lightscan.scan.osdb import probe_os
         hosts = _targets(args)
@@ -785,7 +743,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             for res in r:
                 print(f"  \033[38;5;196m[OS]\033[0m {res.target} → {res.detail}")
 
-    # AF_PACKET / stealth scan
     _do_packet = getattr(args, 'packet_scan', False) or getattr(args, 'stealth_scan', False)
     if _do_packet and args.target:
         from lightscan.scan.packetscan import async_packet_scan
@@ -808,7 +765,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 elif res.status == "firewall":
                     print(f"  \033[38;5;208mFIREWALL\033[0m {res.target}:{res.port:<6} {res.detail}")
 
-    # Script engine
     if getattr(args, 'list_scripts', False):
         from lightscan.scan.scripts import ScriptRegistry, install_builtin_scripts
         script_base = install_builtin_scripts()
@@ -847,7 +803,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 timeout=args.timeout, verbose=args.verbose)
             all_results.extend(r)
 
-    # Service version detection (-sV)
     if getattr(args, 'sv', False) and args.target and not getattr(args, 'scan', False):
         from lightscan.scan.sversion import detect_services
         hosts = _targets(args)
@@ -867,7 +822,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             for res in r:
                 print(f"  \033[38;5;196m[{res.port}]\033[0m {res.detail}")
 
-    # Passive fingerprinting
     if getattr(args, 'passive', False) and args.target:
         from lightscan.scan.passive import passive_fingerprint
         hosts = _targets(args)
@@ -880,7 +834,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             for res in r:
                 print(f"  \033[38;5;196m[{res.module}]\033[0m {res.detail}")
 
-    # Port Scan
     if args.scan and args.target:
         from lightscan.scan.streaming import ScanControls, StreamingTCPScanner
 
@@ -984,8 +937,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 open_ports.setdefault(r.target, []).append(r.port)
                 print(f"  \033[38;5;196mOPEN  {r.target}:{r.port:<6} {r.detail}\033[0m")
 
-        # Version probes operate on confirmed-open ports when --scan and --sv
-        # are combined, avoiding unnecessary application traffic on closed ports.
         if getattr(args, "sv", False) and open_ports:
             from lightscan.scan.sversion import detect_services
 
@@ -1002,8 +953,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 for result in version_results:
                     print(f"  \033[38;5;196m[{result.port}]\033[0m {result.detail}")
 
-    # Constrained Lua check engine. Lua receives only a read-only observation
-    # collected by LightScan; scripts cannot create sockets, access files, or run commands.
     if getattr(args, "list_lua_scripts", False) or (
         (getattr(args, "lua_script", None) or getattr(args, "lua_script_tags", None))
         and args.target
@@ -1056,7 +1005,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             if getattr(args, "list_lua_scripts", False):
                 return all_results
 
-    # List templates
     if getattr(args, 'list_templates', False):
         from lightscan.cve.template_engine import TemplateLibrary
         from pathlib import Path
@@ -1079,7 +1027,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             print(f"  {tmpl.severity.value:<8} {tmpl.id:<35}{cve:<22} [{tags}]  port={tmpl.port}")
         return all_results
 
-    # CVE + Templates
     run_cve       = args.cve
     run_templates = getattr(args, 'templates', False)
     if (run_cve or run_templates) and args.target:
@@ -1090,8 +1037,8 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         t_tags     = getattr(args, 'template_tags', None)
         t_ids      = getattr(args, 'template_ids', None)
         cb         = args.log4shell_callback or ""
-        use_legacy = run_cve  # legacy checks only with --cve, not --templates alone
-        versions   = versions_from_results(all_results)  # from --active's deep_probe, if it ran
+        use_legacy = run_cve
+        versions   = versions_from_results(all_results)
         allow_exploit = getattr(args, 'allow_exploit', False)
 
         if allow_exploit:
@@ -1124,14 +1071,12 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                     print(f"  \033[38;5;196m[{res.severity.value}]\033[0m "
                           f"{res.module} @ {res.target}:{res.port} — {res.detail[:80]}")
 
-    # OAuth
     if args.oauth:
         cid=args.oauth_client or "00000000-0000-0000-0000-000000000000"
         red=args.oauth_redirect or "https://localhost/callback"
         scanner=OAuthScanner(args.oauth,cid,red,args.timeout)
         all_results.extend(await scanner.scan_all())
 
-    # Brute
     if args.brute and args.target:
         from lightscan.brute.engine import BruteEngine, CredentialSpray
         from lightscan.brute.handlers import get_handler, PROTOCOLS
@@ -1168,7 +1113,6 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 r=await brute.run(handler,users,passwords,host,actual_port,proto,args.stop_first)
             all_results.extend(r)
 
-    # Optional OS evidence fusion runs strictly on results already collected above.
     if getattr(args, "os_evidence", False):
         from lightscan.scan.os_evidence import infer_os_from_results
 
@@ -1177,13 +1121,11 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
         if os_evidence and not getattr(args, "quiet", False):
             print(f"\033[38;5;240m[i] Added {len(os_evidence)} OS-evidence observation(s) without extra probes\033[0m")
 
-    # Minimum severity filter & Quiet mode handling
     SEV_MAP = {"info": 1, "low": 2, "medium": 3, "high": 4, "critical": 5}
     min_rank = SEV_MAP.get(getattr(args, "min_severity", "info").lower(), 1)
     if min_rank > 1:
         all_results = [r for r in all_results if hasattr(r, "severity") and SEV_MAP.get(r.severity.value.lower(), 1) >= min_rank]
 
-    # Summary
     elapsed=time.time()-t_start; meta["duration"]=elapsed
     crit=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="CRITICAL")
     high=sum(1 for r in all_results if hasattr(r,"severity") and r.severity.value=="HIGH")
@@ -1280,7 +1222,7 @@ def print_minimal_help() -> None:
             time.sleep(0.012)
 
 _DEFAULT_CONCURRENCY = 256
-_FD_SAFETY_MARGIN    = 100  # stdout/stderr/log files/etc eat fds too, not just scan sockets
+_FD_SAFETY_MARGIN    = 100
 
 def _tune_concurrency(requested: int | None) -> int:
     """
@@ -1329,7 +1271,7 @@ def _split_cdn_hosts(hosts: list[str]) -> tuple[list[str], list[str]]:
     from lightscan.scan.cdn import is_cdn_ip
     normal, cdn = [], []
     for h in hosts:
-        ip = resolve(h) or h  # resolve() returns None on failure, fall back to raw string
+        ip = resolve(h) or h
         matched, provider = is_cdn_ip(ip)
         if matched:
             cdn.append(h)
@@ -1340,18 +1282,15 @@ def _split_cdn_hosts(hosts: list[str]) -> tuple[list[str], list[str]]:
     return normal, cdn
 
 def main():
-    # Auto-tune system limits (ulimit -n) to prevent socket limit crashes under high concurrency
     if sys.platform != "win32":
         try:
             import resource
             soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
             if soft < hard:
-                # Attempt to raise to maximum hard limit
                 resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
         except Exception:
             pass
 
-    # no-arg invocation — short usage hint, not full --help wall
     if len(sys.argv) == 1:
         print_banner()
         print("  Usage: lightscan -t <target> [options]")
@@ -1359,7 +1298,6 @@ def main():
         print(f"\n  \033[38;5;196mlightscan -h\033[0m  for help\n")
         sys.exit(0)
 
-    # intercept help commands
     if any(h in sys.argv for h in ("-h", "--help", "-ha", "--help-all")):
         no_banner = "--no-banner" in sys.argv
         if not no_banner:
@@ -1371,7 +1309,6 @@ def main():
     args = p.parse_args()
     args.concurrency = _tune_concurrency(args.concurrency)
 
-    # Stdin Auto-detect check: only trigger if stdin is not a tty and a scanning action is requested
     target_actions = [
         getattr(args, 'scan', False),
         getattr(args, 'active', False),
@@ -1385,14 +1322,11 @@ def main():
     if not getattr(args, 'target', None) and not sys.stdin.isatty() and any(target_actions):
         args.target = "-"
 
-    # Stdout redirection to stderr when output is requested on stdout via "-"
     if getattr(args, 'output', None) == "-":
         from lightscan.core.reporter import Reporter
         Reporter.stdout_override = sys.stdout
         sys.stdout = sys.stderr
 
-    # asyncio.run() is fine on Linux/Mac; on Windows Python<3.12 the default
-    # ProactorEventLoop breaks some socket operations — set SelectorEventLoop.
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 

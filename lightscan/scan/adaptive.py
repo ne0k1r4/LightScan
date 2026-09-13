@@ -50,7 +50,6 @@ class HostStats:
 
     def record_rtt(self, rtt: float):
         self.rtts.append(rtt)
-        # Keep rolling window of last 50 RTTs
         if len(self.rtts) > 50:
             self.rtts.pop(0)
         self.responded += 1
@@ -116,15 +115,12 @@ class AdaptiveTimingEngine:
         global_loss = 1.0 - (self._global_recv / max(1, self._global_sent))
 
         if global_loss > 0.30:
-            # Severe loss — cut rate by 50%
             self._rate = max(self.tmpl.min_rate, self._rate * 0.5)
             self._concurrency = max(4, self._concurrency // 2)
         elif global_loss > 0.10:
-            # Moderate loss — reduce by 25%
             self._rate = max(self.tmpl.min_rate, self._rate * 0.75)
             self._concurrency = max(8, int(self._concurrency * 0.8))
         elif global_loss < 0.02:
-            # Low loss — increase by 10% (capped at template max)
             self._rate = min(self.tmpl.max_rate, self._rate * 1.10)
             self._concurrency = min(self.max_concurrency,
                                     int(self._concurrency * 1.05))
@@ -142,7 +138,6 @@ class AdaptiveTimingEngine:
         stats = self.get_stats(host)
         if not stats.rtts:
             return self.tmpl.timeout
-        # RTT + 2 standard deviations + base overhead
         timeout = stats.avg_rtt + 2 * stats.rtt_stddev + 0.1
         return max(0.5, min(self.tmpl.timeout, timeout))
 
@@ -163,11 +158,6 @@ class AdaptiveTimingEngine:
                 f"recv={self._global_recv}  "
                 f"loss={loss:.1%}")
 
-# drop-rate detector (Jun 13)
-# RTT-based backoff (existing) handles slow responses.
-# this handles something different: target actively DROPPING packets.
-# IDS rate limiting, iptables connlimit, whatever — when responses stop
-# coming we need to back off hard before we get banned.
 import collections as _col
 import time as _t
 

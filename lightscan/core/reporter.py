@@ -14,7 +14,6 @@ from xml.dom import minidom
 
 from lightscan.core.engine import ScanResult, Severity
 
-
 class Reporter:
     """Write scan findings to JSON, Nmap-style XML, HTML, CSV, or text."""
 

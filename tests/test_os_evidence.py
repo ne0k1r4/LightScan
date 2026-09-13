@@ -3,7 +3,6 @@ from __future__ import annotations
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.scan.os_evidence import infer_os_from_results
 
-
 def service_result(target: str, port: int, version: str, *, raw: str = "") -> ScanResult:
     return ScanResult(
         "service-version",
@@ -14,7 +13,6 @@ def service_result(target: str, port: int, version: str, *, raw: str = "") -> Sc
         version,
         {"service": "SSH", "version": version, "raw": raw},
     )
-
 
 def test_os_evidence_uses_distinctive_existing_service_signals() -> None:
     results = [
@@ -42,7 +40,6 @@ def test_os_evidence_uses_distinctive_existing_service_signals() -> None:
     assert finding.data["score"] == 85
     assert [item["port"] for item in finding.data["evidence"]] == [22, 443]
 
-
 def test_os_evidence_does_not_infer_from_generic_products() -> None:
     results = [
         service_result("192.0.2.11", 22, "OpenSSH_9.6p1"),
@@ -58,7 +55,6 @@ def test_os_evidence_does_not_infer_from_generic_products() -> None:
     ]
 
     assert infer_os_from_results(results) == []
-
 
 def test_os_evidence_caps_duplicate_signals_on_one_port() -> None:
     results = [

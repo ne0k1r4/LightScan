@@ -1,19 +1,11 @@
-# scan/ipv6scan.py — reliable IPv6 scanning
-# Light (Neok1ra)
 
-# previous version was broken — just AF_INET6 on a connect scanner.
-# rewrote with actual IPv6-specific enumeration:
-# ICMPv6 neighbor discovery (find link-local hosts)
-# dual-stack detection (does IPv4 host also have IPv6?)
-# SLAAC prediction from MAC (EUI-64 address derivation)
-# link-local zone ID stripping (fe80:: addresses need %iface)
 from __future__ import annotations
 import asyncio, ipaddress, socket
 from dataclasses import dataclass, field
 from lightscan.core.engine import ScanResult, Severity
 
 async def tcp6_connect(host: str, port: int, timeout: float = 2.0) -> bool:
-    clean = host.split("%")[0]  # strip zone ID — was failing on fe80::
+    clean = host.split("%")[0]
     try:
         _, w = await asyncio.wait_for(
             asyncio.open_connection(clean, port, family=socket.AF_INET6),
@@ -43,7 +35,6 @@ async def check_dual_stack(hostname: str) -> dict:
             if af == socket.AF_INET  and addr not in result["ipv4"]:
                 result["ipv4"].append(addr)
             elif af == socket.AF_INET6 and addr not in result["ipv6"]:
-                # skip loopback and link-local — we want global unicast only
                 if not addr.startswith("fe80") and addr not in ("::1", "::"):
                     result["ipv6"].append(addr)
         result["dual_stack"] = bool(result["ipv4"] and result["ipv6"])
@@ -55,7 +46,7 @@ def mac_to_eui64(mac: str) -> str:
     """MAC → EUI-64 interface ID for SLAAC prediction"""
     try:
         parts    = [int(x, 16) for x in mac.replace("-", ":").split(":")]
-        parts[0] ^= 0x02  # flip 7th bit (universal/local) per RFC 4291
+        parts[0] ^= 0x02
         eui64    = parts[:3] + [0xff, 0xfe] + parts[3:]
         groups   = [f"{eui64[i]:02x}{eui64[i+1]:02x}" for i in range(0, 8, 2)]
         return ":".join(groups)

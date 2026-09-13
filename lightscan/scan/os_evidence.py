@@ -13,7 +13,6 @@ from typing import Iterable
 
 from lightscan.core.engine import ScanResult, Severity
 
-
 @dataclass(frozen=True)
 class _EvidenceRule:
     family: str
@@ -21,9 +20,6 @@ class _EvidenceRule:
     weight: int
     label: str
 
-
-# Each rule is intentionally specific. Generic products such as Apache and nginx
-# are excluded because they do not safely identify the operating-system family.
 _RULES: tuple[_EvidenceRule, ...] = (
     _EvidenceRule("Windows", "openssh_for_windows", 85, "OpenSSH for Windows"),
     _EvidenceRule("Windows", "microsoft-iis", 80, "Microsoft IIS"),
@@ -47,7 +43,6 @@ _RULES: tuple[_EvidenceRule, ...] = (
     _EvidenceRule("Juniper Junos", "juniper junos", 85, "Juniper Junos"),
 )
 
-
 def _candidate_text(result: ScanResult) -> str:
     """Join only existing textual evidence fields from one result."""
     values = [result.detail]
@@ -57,7 +52,6 @@ def _candidate_text(result: ScanResult) -> str:
             values.append(value)
     return " ".join(values).casefold()
 
-
 def _result_source(result: ScanResult) -> str:
     if result.module == "nmap-service-import":
         return "Nmap XML service evidence"
@@ -65,14 +59,12 @@ def _result_source(result: ScanResult) -> str:
         return "LightScan service probe"
     return result.module
 
-
 def _confidence(score: int, source_count: int) -> str:
     if score >= 85 and source_count >= 2:
         return "HIGH"
     if score >= 70:
         return "MEDIUM"
     return "LOW"
-
 
 def infer_os_from_results(results: Iterable[ScanResult]) -> list[ScanResult]:
     """Infer one conservative OS-family result per target from existing evidence.
@@ -105,8 +97,6 @@ def infer_os_from_results(results: Iterable[ScanResult]) -> list[ScanResult]:
 
         candidates: list[dict[str, object]] = []
         for family, observations in matched.items():
-            # De-duplicate by port/signal so a raw banner and normalized product
-            # on the same service cannot inflate confidence.
             unique: dict[tuple[int, str], dict[str, object]] = {}
             for observation in observations:
                 unique[(int(observation["port"]), str(observation["signal"]))] = observation

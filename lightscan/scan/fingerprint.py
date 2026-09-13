@@ -1,26 +1,5 @@
-# fingerprint.py — parses the real nmap-service-probes file and matches
-# response bytes against it.
 
-# deep_probe() used to have 9 hardcoded regexes (openssh, apache, nginx,
-# iis, vsftpd, mysql, redis, mongo, plus a generic \d+\.\d+\.\d+ fallback).
-# this is nmap's actual database - ~1200 probes' worth of match/softmatch
-# signatures, product names, versions, os hints, device types. same file
-# nmap -sV runs on, pulled straight from nmap/nmap on github, not rebuilt
-# from scratch or guessed at.
 
-# doesn't try to replicate nmap's full probe-then-match staging (only try
-# probe X's matches if you actually sent probe X's exact payload).
-# deep_probe() sends its own smaller probe set, not nmap's exact strings,
-# so there's no clean way to know which probe "should" apply. instead
-# this just tests the response against every match pattern in the whole
-# database and takes the first hard match (soft matches as a fallback).
-# most patterns are specific enough (anchored, distinctive magic bytes)
-# that cross-probe false positives are rare in practice, and matching
-# nothing instead of trying is strictly worse. worst case this costs
-# ~1.3s the first time it runs cold (compiling every pattern across the
-# whole db) - but that's a one-time cost for the life of the process,
-# every regex gets cached on its Match object once compiled, so every
-# port after the first pays close to nothing.
 from __future__ import annotations
 import re
 from dataclasses import dataclass, field
@@ -31,11 +10,6 @@ _DB_PATH = Path(__file__).parent.parent / "data" / "nmap-service-probes"
 _ESCAPES = {"0": 0x00, "r": 0x0D, "n": 0x0A, "t": 0x09, "\\": 0x5C, "a": 0x07,
             "f": 0x0C, "v": 0x0B}
 
-# possessive quantifiers (X++, X*+, X?+, X{n,m}+) aren't supported by
-# python's re at all, on any version. dropping the trailing + makes them
-# plain greedy quantifiers instead - functionally fine for matching a
-# handful of kb of scan response, we're not worried about catastrophic
-# backtracking here the way nmap has to be for arbitrary attacker input.
 _POSSESSIVE = re.compile(r'([*+?]|\{\d+(?:,\d*)?\})\+')
 
 def _decode_probe_string(s: str) -> bytes:
@@ -56,10 +30,10 @@ def _decode_probe_string(s: str) -> bytes:
                 out.append(_ESCAPES[nc])
                 i += 2
                 continue
-            out.append(ord(nc))  # unrecognized escape, take the literal char
+            out.append(ord(nc))
             i += 2
             continue
-        out.append(ord(c) if ord(c) < 256 else 0x3F)  # '?' for anything non-latin1
+        out.append(ord(c) if ord(c) < 256 else 0x3F)
         i += 1
     return bytes(out)
 
@@ -77,7 +51,7 @@ def _split_delimited(s: str, start: int) -> tuple[str, int]:
             return "".join(buf), i + 1
         buf.append(s[i])
         i += 1
-    return "".join(buf), i  # unterminated, shouldn't happen in a well-formed file
+    return "".join(buf), i
 
 @dataclass
 class Match:
@@ -103,7 +77,7 @@ class Match:
                 return self._compiled
             except re.error:
                 continue
-        self._compiled = False  # tried both, still broken - stop retrying this one
+        self._compiled = False
         return None
 
     def try_match(self, data: bytes) -> "ServiceInfo | None":
@@ -188,8 +162,6 @@ def _parse_version_fields(rest: str) -> dict:
             out[field_names[c]] = content
             continue
         if rest[i:i + 4] == "cpe:":
-            # cpe:/a:vendor:product:version/[a] - we don't use cpe today,
-            # just skip cleanly past it so it doesn't get mistaken for junk
             j = i + 4
             if j < len(rest) and rest[j] in "|/=%":
                 _, j = _split_delimited(rest, j)
@@ -201,7 +173,6 @@ def _parse_version_fields(rest: str) -> dict:
     return out
 
 def _parse_match_line(line: str, is_soft: bool) -> "Match | None":
-    # match <service> m<delim><pattern><delim><flags> [fields...]
     parts = line.split(None, 2)
     if len(parts) < 3:
         return None
@@ -259,8 +230,6 @@ class ServiceProbeDB:
                 current.ports |= _parse_port_list(line[len("ports "):])
             elif line.startswith("sslports "):
                 current.sslports |= _parse_port_list(line[len("sslports "):])
-            # rarity/totalwaitms/fallback/tcpwrappedms parsed structurally
-            # but not acted on - not used by this matching strategy
 
     def _candidate_probes(self, port: int, ssl: bool = False) -> list:
         self._ensure_loaded()

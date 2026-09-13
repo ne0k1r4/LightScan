@@ -24,7 +24,6 @@ async def run(host, port, timeout=8.0):
     cert, version, cipher = await loop.run_in_executor(None, _get_cert)
     if not cert: return []
     results = []
-    # Expiry check
     exp_str = cert.get("notAfter","")
     if exp_str:
         try:
@@ -35,12 +34,10 @@ async def run(host, port, timeout=8.0):
                 sev, f"TLS cert expires in {days_left} days ({exp_str})",
                 {"days_left": days_left, "expiry": exp_str, "version": version}))
         except Exception: pass
-    # Weak TLS version
     if version in ("SSLv2", "SSLv3", "TLSv1", "TLSv1.1"):
         results.append(ScanResult("script:tls_cert_info", host, port, "weak_tls",
             Severity.HIGH, f"Weak TLS version: {version}",
             {"version": version}))
-    # Subject info
     subject = {}
     for field in cert.get("subject", []):
         for k, v in field: subject[k] = v

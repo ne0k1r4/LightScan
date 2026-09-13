@@ -13,10 +13,8 @@ from lightscan.core.engine import ScanResult, Severity
 from lightscan.scan.portscan import CRIT_PORTS, HIGH_PORTS, SERVICE_MAP
 from lightscan.scan.streaming import ScanControls
 
-
 class GoScannerError(RuntimeError):
     """Raised when the optional Go scanner cannot complete a requested run."""
-
 
 def find_go_scanner(explicit_path: str | None = None) -> str | None:
     """Locate an explicitly supplied binary, a PATH entry, or the bundled build."""
@@ -35,7 +33,6 @@ def find_go_scanner(explicit_path: str | None = None) -> str | None:
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
     return None
-
 
 async def scan_with_go(
     hosts: Sequence[str],

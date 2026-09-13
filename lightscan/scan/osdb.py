@@ -26,25 +26,22 @@ from typing import Dict, List, Optional, Tuple
 
 from lightscan.core.engine import ScanResult, Severity
 
-# Fingerprint signature database
 @dataclass
 class OSSig:
     name:       str
     os_family:  str
-    ttl:        int           # typical initial TTL
-    ttl_range:  Tuple[int,int] # acceptable TTL range (accounts for hops)
-    window:     int           # TCP window size (0 = any)
-    window_set: List[int]     # set of known window sizes
-    df:         int           # DF bit: 0=off, 1=on, -1=any
-    mss:        int           # TCP MSS option (0=any)
-    wscale:     int           # Window scale option (-1=not present, 0=any)
-    sack:       bool          # SACK permitted option
-    ts:         bool          # Timestamps option
-    weight:     int           # confidence weight (higher = more specific)
+    ttl:        int
+    ttl_range:  Tuple[int,int]
+    window:     int
+    window_set: List[int]
+    df:         int
+    mss:        int
+    wscale:     int
+    sack:       bool
+    ts:         bool
+    weight:     int
 
-# Real OS signatures from nmap-os-db analysis
 OS_DB: List[OSSig] = [
-    # Linux
     OSSig("Linux 6.x (Ubuntu 22.04+)",    "Linux",   64,  (50,64),  65535, [65535,64240,29200], 1, 1460, 7,  True,  True,  100),
     OSSig("Linux 5.x (Ubuntu 20.04)",     "Linux",   64,  (50,64),  64240, [64240,65535,29200], 1, 1460, 7,  True,  True,  100),
     OSSig("Linux 4.x",                    "Linux",   64,  (50,64),  29200, [29200,65535,64240], 1, 1460, 7,  True,  True,   95),
@@ -54,7 +51,6 @@ OS_DB: List[OSSig] = [
     OSSig("Linux (Android 10+)",          "Linux",   64,  (50,64),  65535, [65535,64240],        1, 1460, 7,  True,  True,   90),
     OSSig("Linux (Android 8-9)",          "Linux",   64,  (50,64),  65535, [65535,87380],        1, 1460, 6,  True,  True,   85),
 
-    # Windows
     OSSig("Windows 11 (22H2+)",           "Windows", 128, (110,128), 65535, [65535,64240],       1, 1460, 8,  True,  True,  100),
     OSSig("Windows 10 (1903+)",           "Windows", 128, (110,128), 65535, [65535,64240,8192],  1, 1460, 8,  True,  True,  100),
     OSSig("Windows 10 (1507-1809)",       "Windows", 128, (110,128), 65535, [65535,8192],        1, 1460, 8,  True,  True,   95),
@@ -69,7 +65,6 @@ OS_DB: List[OSSig] = [
     OSSig("Windows XP SP1/SP2",           "Windows", 128, (110,128), 65535, [65535,16384],       0, 1460, -1, False, False,  65),
     OSSig("Windows 2000",                 "Windows", 128, (110,128), 16616, [16616,65535],       0, 1460, -1, False, False,  60),
 
-    # macOS / Darwin
     OSSig("macOS 14 Sonoma",              "macOS",   64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,  100),
     OSSig("macOS 13 Ventura",             "macOS",   64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,  100),
     OSSig("macOS 12 Monterey",            "macOS",   64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   98),
@@ -80,36 +75,29 @@ OS_DB: List[OSSig] = [
     OSSig("iOS 17 (iPhone)",              "iOS",     64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   95),
     OSSig("iOS 16 (iPhone)",              "iOS",     64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   90),
 
-    # FreeBSD
     OSSig("FreeBSD 14.x",                 "FreeBSD", 64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   95),
     OSSig("FreeBSD 13.x",                 "FreeBSD", 64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   93),
     OSSig("FreeBSD 12.x",                 "FreeBSD", 64,  (50,64),  65535, [65535],             1, 1460, 6,  True,  True,   90),
     OSSig("FreeBSD 11.x",                 "FreeBSD", 64,  (50,64),  65535, [65535,32768],       1, 1460, 6,  True,  True,   85),
     OSSig("FreeBSD 10.x",                 "FreeBSD", 64,  (50,64),  65535, [65535,32768],       1, 1460, 6,  True,  True,   80),
 
-    # OpenBSD
     OSSig("OpenBSD 7.x",                  "OpenBSD", 255, (230,255), 16384, [16384,32768],      1, 1452, -1, True,  True,   95),
     OSSig("OpenBSD 6.x",                  "OpenBSD", 255, (230,255), 16384, [16384],            1, 1452, -1, True,  True,   90),
     OSSig("OpenBSD 5.x",                  "OpenBSD", 255, (230,255), 16384, [16384,32768],      1, 1460, -1, True,  True,   85),
 
-    # NetBSD
     OSSig("NetBSD 10.x",                  "NetBSD",  64,  (50,64),  65535, [65535,32768],       1, 1460, 3,  True,  True,   90),
     OSSig("NetBSD 9.x",                   "NetBSD",  64,  (50,64),  65535, [65535,32768],       1, 1460, 3,  True,  True,   85),
 
-    # Solaris / illumos
     OSSig("Oracle Solaris 11.4",          "Solaris", 255, (230,255), 49152, [49152,65535],      1, 1460, 4,  True,  True,   90),
     OSSig("Oracle Solaris 10",            "Solaris", 255, (230,255), 49152, [49152],            1, 1460, -1, True,  False,  80),
     OSSig("illumos / OmniOS",             "Solaris", 255, (230,255), 49152, [49152,65535],      1, 1460, 4,  True,  True,   85),
 
-    # HP-UX
     OSSig("HP-UX 11.31",                  "HP-UX",  255, (230,255), 32768, [32768,65535],      0, 1460, -1, False, False,  75),
     OSSig("HP-UX 11.11",                  "HP-UX",  255, (230,255), 32768, [32768],            0, 1460, -1, False, False,  70),
 
-    # AIX
     OSSig("IBM AIX 7.x",                  "AIX",    255, (230,255), 65535, [65535,32767],      1, 1460, -1, True,  False,  80),
     OSSig("IBM AIX 6.x",                  "AIX",    255, (230,255), 65535, [65535],            1, 1460, -1, False, False,  75),
 
-    # Network devices
     OSSig("Cisco IOS 15.x+",              "Cisco",  255, (230,255), 4128,  [4128,8192,16384],  1, 1460, -1, False, False,  90),
     OSSig("Cisco IOS 12.x",               "Cisco",  255, (230,255), 4096,  [4096,4128],        0, 1460, -1, False, False,  85),
     OSSig("Cisco IOS-XE",                 "Cisco",  255, (230,255), 16384, [16384,65535],      1, 1460, -1, True,  False,  88),
@@ -120,27 +108,23 @@ OS_DB: List[OSSig] = [
     OSSig("MikroTik RouterOS",            "MikroTik",64,(50,64),   65535, [65535,16384],       1, 1460, 5,  True,  True,   80),
     OSSig("pfSense / OPNsense",           "FreeBSD", 64,(50,64),   65535, [65535],             1, 1460, 6,  True,  True,   80),
 
-    # Embedded / IoT
     OSSig("Embedded Linux (BusyBox)",     "Linux",   64,  (50,64),   5840, [5840,5792,2920],   0, 536,  -1, False, False,  70),
     OSSig("VxWorks 6.x",                  "VxWorks",255, (230,255), 8192,  [8192,4096,2048],   0, 536,  -1, False, False,  75),
     OSSig("QNX 7.x",                      "QNX",    255, (230,255), 65535, [65535,16384],      1, 1460, -1, True,  False,  75),
 
-    # Containers / VMs
     OSSig("Linux (Docker/container)",     "Linux",   64,  (50,64),  65535, [65535,64240],       1, 1500, 7,  True,  True,   80),
     OSSig("Linux (WSL2)",                 "Linux",   128, (110,128), 65535, [65535,64240],       1, 1460, 8,  True,  True,   75),
 
-    # Printers / special
     OSSig("HP JetDirect (printer)",       "HP",     255, (230,255),  4096, [4096,8192],         0, 1460, -1, False, False,  70),
     OSSig("Canon printer",                "Canon",  255, (230,255),  8192, [8192,4096],         0, 1460, -1, False, False,  65),
     OSSig("VMware ESXi",                  "VMware",  64,  (50,64),  65535, [65535,64240],       1, 1460, 7,  True,  True,   90),
 ]
 
-# Observed fingerprint from a live probe
 @dataclass
 class LiveFingerprint:
     ttl:      int   = 0
     window:   int   = 0
-    df:       int   = -1  # -1=unknown
+    df:       int   = -1
     mss:      int   = 0
     wscale:   int   = -1
     sack:     bool  = False
@@ -153,9 +137,9 @@ def _parse_tcp_options(opts_bytes: bytes) -> Dict[str, int]:
     i = 0
     while i < len(opts_bytes):
         kind = opts_bytes[i]
-        if kind == 0:   # EOL
+        if kind == 0:
             break
-        if kind == 1:   # NOP
+        if kind == 1:
             i += 1
             continue
         if i + 1 >= len(opts_bytes):
@@ -164,13 +148,13 @@ def _parse_tcp_options(opts_bytes: bytes) -> Dict[str, int]:
         if length < 2 or i + length > len(opts_bytes):
             break
         data = opts_bytes[i+2:i+length]
-        if kind == 2 and len(data) >= 2:    # MSS
+        if kind == 2 and len(data) >= 2:
             opts["mss"] = struct.unpack("!H", data[:2])[0]
-        elif kind == 3 and len(data) >= 1:  # Window Scale
+        elif kind == 3 and len(data) >= 1:
             opts["wscale"] = data[0]
-        elif kind == 4:                      # SACK permitted
+        elif kind == 4:
             opts["sack"] = 1
-        elif kind == 8:                      # Timestamps
+        elif kind == 8:
             opts["ts"] = 1
         i += length
     return opts
@@ -184,10 +168,9 @@ def fingerprint_from_synack(packet: bytes, ipv6: bool = False) -> Optional[LiveF
         fp = LiveFingerprint()
 
         if ipv6:
-            # IPv6: fixed 40-byte header
             if len(packet) < 60: return None
-            fp.ttl = packet[7]   # Hop limit
-            fp.df = 1            # IPv6 always DF-equivalent
+            fp.ttl = packet[7]
+            fp.df = 1
             tcp = packet[40:]
         else:
             if len(packet) < 40: return None
@@ -199,15 +182,12 @@ def fingerprint_from_synack(packet: bytes, ipv6: bool = False) -> Optional[LiveF
 
         if len(tcp) < 20: return None
 
-        # TCP flags check — must be SYN+ACK
         tcp_flags = tcp[13]
         if tcp_flags & 0x12 != 0x12: return None
         fp.syn_ack = True
 
-        # Window size
         fp.window = struct.unpack("!H", tcp[14:16])[0]
 
-        # TCP data offset → options
         data_offset = (tcp[12] >> 4) * 4
         if data_offset > 20 and len(tcp) >= data_offset:
             opts = _parse_tcp_options(tcp[20:data_offset])
@@ -224,31 +204,25 @@ def _score_signature(fp: LiveFingerprint, sig: OSSig) -> int:
     """Score how well a live fingerprint matches a signature. Higher = better."""
     score = 0
 
-    # TTL match (most important — 30 points)
     if sig.ttl_range[0] <= fp.ttl <= sig.ttl_range[1]:
         score += 30
     elif abs(fp.ttl - sig.ttl) <= 5:
         score += 15
 
-    # Window size (25 points)
     if fp.window in sig.window_set:
         score += 25
     elif sig.window > 0 and abs(fp.window - sig.window) < 512:
         score += 10
 
-    # DF bit (10 points)
     if sig.df == -1 or sig.df == fp.df:
         score += 10
 
-    # MSS (10 points)
     if sig.mss == 0 or sig.mss == fp.mss:
         score += 10
     elif fp.mss > 0 and abs(fp.mss - sig.mss) <= 40:
         score += 5
 
-    # Window scale (8 points)
     if sig.wscale == -1:
-        # Signature doesn't use wscale — penalise if we see it
         if fp.wscale == -1:
             score += 8
         else:
@@ -258,15 +232,12 @@ def _score_signature(fp: LiveFingerprint, sig: OSSig) -> int:
     elif fp.wscale == -1 and sig.wscale >= 0:
         score -= 10
 
-    # SACK (5 points)
     if fp.sack == sig.sack:
         score += 5
 
-    # Timestamps (5 points)
     if fp.ts == sig.ts:
         score += 5
 
-    # Apply signature weight bonus
     score = int(score * (sig.weight / 100))
 
     return max(0, score)
@@ -283,7 +254,7 @@ def identify_os(fp: LiveFingerprint, top_n: int = 3) -> List[Dict]:
     Match a LiveFingerprint against the OS database.
     Returns top_n matches sorted by score descending.
     """
-    MAX_SCORE = 93  # theoretical max from _score_signature
+    MAX_SCORE = 93
 
     scored = []
     for sig in OS_DB:
@@ -320,8 +291,6 @@ def build_os_result(target: str, port: int, matches: List[Dict]) -> List[ScanRes
         ))
     return results
 
-# Active probing
-
 async def probe_os(target: str, port: int = 0,
                    timeout: float = 3.0) -> List[ScanResult]:
     """
@@ -331,7 +300,6 @@ async def probe_os(target: str, port: int = 0,
     import asyncio
     import os as _os
 
-    # Auto-detect open port if not given
     if port == 0:
         for p in [22, 80, 443, 8080, 21, 25, 3306, 3389]:
             try:
@@ -345,7 +313,6 @@ async def probe_os(target: str, port: int = 0,
         if port == 0:
             return []
 
-    # IPv6 detection
     ipv6 = ":" in target
     try:
         if ipv6:
@@ -423,11 +390,8 @@ async def _probe_noroot(target: str, dst_ip: str, port: int,
     """No-root mode: TTL-only fingerprint via connect + ICMP TTL in IP header."""
     import asyncio
 
-    # Use a raw recv socket to grab the SYN-ACK TTL
-    # If we can't (no root), use heuristic from banner
     fp = LiveFingerprint()
 
-    # Attempt connection to get banner/response info
     try:
         r, w = await asyncio.wait_for(
             asyncio.open_connection(dst_ip, port), timeout=timeout)
@@ -441,7 +405,6 @@ async def _probe_noroot(target: str, dst_ip: str, port: int,
         except Exception:
             pass
 
-        # Heuristic from banner
         if "openssh" in banner or "ssh-2.0" in banner:
             if "ubuntu" in banner or "debian" in banner:
                 fp.ttl = 64
@@ -457,13 +420,11 @@ async def _probe_noroot(target: str, dst_ip: str, port: int,
     except Exception:
         pass
 
-    # Without root we can't get real TTL — use defaults
     if fp.ttl == 0:
-        fp.ttl = 64  # assume Linux
+        fp.ttl = 64
 
     matches = identify_os(fp, top_n=2)
     if matches:
-        # Mark as LOW confidence since we didn't get real packet data
         for m in matches:
             m["confidence"] = "LOW (no-root)"
     return build_os_result(target, port, matches)

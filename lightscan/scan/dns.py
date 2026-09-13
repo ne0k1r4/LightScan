@@ -66,7 +66,6 @@ def _parse(data, qtype):
         if not ancount:
             return []
         pos = 12
-        # Skip question section
         while pos < len(data) and data[pos] != 0:
             if data[pos] & 0xC0 == 0xC0:
                 pos += 2
@@ -103,12 +102,12 @@ def _parse(data, qtype):
                     txts.append(rd[p2:p2+l].decode("utf-8", "replace"))
                     p2 += l
                 results.append(" ".join(txts))
-            elif rtype in (2, 15):  # NS, MX
+            elif rtype in (2, 15):
                 try:
                     name = []
                     p2 = 0
                     if rtype == 15:
-                        p2 = 2  # skip preference
+                        p2 = 2
                     while p2 < len(rd) and rd[p2] != 0:
                         if rd[p2] & 0xC0 == 0xC0:
                             break
@@ -172,11 +171,6 @@ async def full_dns_enum(domain, ns="8.8.8.8", axfr=True, brute=True, use_crtsh=T
                     pass
 
     if axfr and ns_ips:
-        # AXFR over TCP is length-prefixed: each DNS message is preceded by a
-        # 2-byte big-endian length field. A single read(65535) returns partial
-        # data on large zones and concatenated messages on fast servers.
-        # Correct approach: readexactly(2) → readexactly(n) per message,
-        # loop until SOA repeat (AXFR terminator) or connection closes.
         async def _read_dns_tcp_msg(reader):
             """Read one length-prefixed DNS message from a TCP stream."""
             length_bytes = await asyncio.wait_for(reader.readexactly(2), timeout=5.0)
@@ -194,7 +188,6 @@ async def full_dns_enum(domain, ns="8.8.8.8", axfr=True, brute=True, use_crtsh=T
                 writer.write(struct.pack("!H", len(q)) + q)
                 await writer.drain()
 
-                # Read all AXFR messages until connection closes or SOA seen twice
                 soa_count = 0
                 while True:
                     try:
@@ -203,10 +196,7 @@ async def full_dns_enum(domain, ns="8.8.8.8", axfr=True, brute=True, use_crtsh=T
                         break
                     if not msg:
                         break
-                    # Count SOA records (AXFR terminates on second SOA)
-                    # SOA type = 0x0006
                     if len(msg) > 12 and struct.unpack("!H", msg[2:4])[0] > 0:
-                        # crude SOA scan — type field is in answer RRs at offset 12+
                         if b"\x00\x06" in msg[12:]:
                             soa_count += 1
                     for m in re.finditer(
@@ -239,7 +229,6 @@ async def full_dns_enum(domain, ns="8.8.8.8", axfr=True, brute=True, use_crtsh=T
     print(f"\033[38;5;196m[DNS]\033[0m {domain}: {len(results)} records found")
     return results
 
-# CT log + email security extensions (Jun 13)
 import json
 import urllib.request
 
@@ -263,7 +252,7 @@ def _crtsh_lookup(domain: str, timeout: float = 10.0) -> list[str]:
                     subs.add(sub)
         return sorted(subs)
     except Exception as e:
-        return []  # timeout, json error, rate limit — all recoverable
+        return []
 
 async def ct_log_enum(domain: str, timeout: float = 10.0) -> list[str]:
     loop = asyncio.get_running_loop()
@@ -272,7 +261,7 @@ async def ct_log_enum(domain: str, timeout: float = 10.0) -> list[str]:
             loop.run_in_executor(None, _crtsh_lookup, domain, timeout),
             timeout=timeout + 2)
     except Exception as e:
-        return []  # timeout, json error, rate limit — all recoverable
+        return []
 
 DKIM_SELECTORS = [
     "default", "google", "k1", "k2", "mail", "email", "dkim",
@@ -319,5 +308,3 @@ async def full_dns_enum_v2(domain: str, axfr: bool = True, ct_logs: bool = True,
         results.append(ScanResult("dns-email", domain, 0, "DKIM", sev, msg))
 
     return results
-# wildcard dns
-# wildcard dns

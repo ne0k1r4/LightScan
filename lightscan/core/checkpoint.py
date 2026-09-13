@@ -92,7 +92,6 @@ class Checkpoint:
         self._save()
 
     def clear(self):
-        # needs the lock — concurrent mark_tried() calls can race the set reset
         with self._lock:
             self._state = {
                 "tried": [],

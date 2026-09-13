@@ -13,7 +13,7 @@ setup(
     packages=find_packages(),
     python_requires=">=3.10",
     entry_points={"console_scripts": ["lightscan=lightscan.cli:main"]},
-    install_requires=["PyYAML==6.0.1"],  # Required by the bundled template engine
+    install_requires=["PyYAML==6.0.1"],
     extras_require={
         "full": [
             "paramiko==3.4.0",
@@ -39,5 +39,3 @@ setup(
         "Environment :: Console",
     ],
 )
-# python pin
-# python pin

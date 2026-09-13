@@ -57,9 +57,7 @@ from lightscan.scan.tcpflags import (
 ETH_HDR_LEN = 14
 IP_PROTO_TCP  = 6
 IP_PROTO_ICMP = 1
-RST_PKT_LEN   = 40   # IP(20) + TCP(20), no options — must be explicit for AF_PACKET
-
-# Interface helpers (fixed auto-selection)
+RST_PKT_LEN   = 40
 
 def _iface_is_up(iface: str) -> bool:
     """Return True if the interface operstate is up or unknown."""
@@ -67,7 +65,7 @@ def _iface_is_up(iface: str) -> bool:
         state = open(f"/sys/class/net/{iface}/operstate").read().strip()
         return state in ("up", "unknown")
     except Exception:
-        return True   # can't read → assume OK
+        return True
 
 def _get_default_iface() -> str:
     """
@@ -94,7 +92,6 @@ def _get_default_iface() -> str:
         if _iface_is_up(iface):
             return iface
 
-    # No default-route interface is up — scan all interfaces
     try:
         for iface in sorted(os.listdir("/sys/class/net")):
             if iface == "lo":
@@ -115,18 +112,13 @@ def _iface_for_src_ip(src_ip: str) -> str:
         with open("/proc/net/fib_trie") as f:
             content = f.read()
         import re
-        # fib_trie lists local addresses; find the one matching src_ip
-        # then trace back to the interface name from /proc/net/fib_triestat isn't helpful;
-        # use /proc/net/if_inet6 for IPv6 and sysfs for IPv4
         pass
     except Exception:
         pass
-    # IPv4: check /proc/net/arp or sysfs
     try:
         for iface in os.listdir("/sys/class/net"):
             addr_file = f"/sys/class/net/{iface}/address"
             try:
-                # Read IPv4 address via ioctl (fastest)
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                     import fcntl
                     import struct as _struct
@@ -162,8 +154,6 @@ def _get_gateway_mac(iface: str, gateway_ip: str) -> bytes:
         pass
     return b"\xff" * 6
 
-# Kernel RST suppression [true half-open]
-
 @contextlib.contextmanager
 def _suppress_kernel_rst(sport_lo: int, sport_hi: int):
     """
@@ -188,8 +178,6 @@ def _suppress_kernel_rst(sport_lo: int, sport_hi: int):
         if installed:
             subprocess.run(rem, capture_output=True)
 
-# Packet builders
-
 def _build_rst(src_ip: str, dst_ip: str, sport: int, dport: int, seq: int) -> bytes:
     """
     Build RST to abort a half-open connection.
@@ -213,8 +201,6 @@ def _build_rst(src_ip: str, dst_ip: str, sport: int, dport: int, seq: int) -> by
     iph = struct.pack("!BBHHHBBH4s4s", 0x45, 0, RST_PKT_LEN, ip_id, 0, 64, 6, 0, ip_s, ip_d)
     iph = struct.pack("!BBHHHBBH4s4s", 0x45, 0, RST_PKT_LEN, ip_id, 0, 64, 6, _checksum(iph), ip_s, ip_d)
     return iph + tcp
-
-# AF_PACKET frame parser [full ICMP table + TCP flag parser]
 
 def _parse_af_packet(
     data:     bytes,
@@ -249,7 +235,6 @@ def _parse_af_packet(
         proto = ip[9]
         ihl   = (ip[0] & 0x0F) * 4
 
-        # TCP
         if proto == IP_PROTO_TCP:
             tcp = ip[ihl:]
             if len(tcp) < 14:
@@ -277,7 +262,6 @@ def _parse_af_packet(
             rst_seq = ack_field if state == 'open' else 0
             return (target_port, state, rst_seq, meta)
 
-        # ICMP
         elif proto == IP_PROTO_ICMP:
             icmp = ip[ihl:]
             if len(icmp) < 8:
@@ -286,7 +270,6 @@ def _parse_af_packet(
             icmp_type = icmp[0]
             icmp_code = icmp[1]
 
-            # TTL exceeded → filtered (probe hit a hop limit / firewall)
             if icmp_type == ICMP_TTL_EXCEEDED:
                 orig_ip  = icmp[8:]
                 if len(orig_ip) < 24:
@@ -303,7 +286,6 @@ def _parse_af_packet(
             if icmp_type != ICMP_DEST_UNREACHABLE:
                 return None
 
-            # Extract original TCP header from ICMP payload
             orig_ip = icmp[8:]
             if len(orig_ip) < 24:
                 return None
@@ -329,8 +311,6 @@ def _parse_af_packet(
         return None
     except Exception:
         return None
-
-# Half-open SYN scanner
 
 class PacketScanner:
     """
@@ -363,9 +343,9 @@ class PacketScanner:
         grab_banner:  bool = True,
         verbose:      bool = False,
         iface:        str  = "",
-        stealth:      bool = False,    # IDS-evasion mode
-        spoof_sport:  int  = 0,        # fixed source port (0=random)
-        jitter:       float = 0.0,     # extra inter-packet jitter fraction
+        stealth:      bool = False,
+        spoof_sport:  int  = 0,
+        jitter:       float = 0.0,
     ):
         self.target      = target
         self.ports       = list(ports)
@@ -379,13 +359,12 @@ class PacketScanner:
         self.spoof_sport = spoof_sport
         self.jitter      = jitter
 
-        # Stealth mode: cap at T1, add base jitter
         tmpl = TIMING[max(0, min(5, timing))]
         if stealth and list(TIMING.values()).index(tmpl) > 1:
             tmpl = TIMING[1]
         self.tmpl = tmpl
         if stealth and jitter == 0.0:
-            self.jitter = 0.15   # 15 % default jitter in stealth mode
+            self.jitter = 0.15
 
         self._open:     List[int]      = []
         self._closed:   List[int]      = []
@@ -396,7 +375,6 @@ class PacketScanner:
         self._total     = len(ports)
         self._sent      = 0
 
-        # Interface: if not specified, find the one that owns our src IP
         self._iface_override = iface
 
     def _progress(self):
@@ -429,7 +407,6 @@ class PacketScanner:
             self._dst_ip = self.target
         self._src_ip = _get_src_ip(self._dst_ip)
 
-        # Interface auto-selection (fixed)
         if self._iface_override:
             iface = self._iface_override
         else:
@@ -446,7 +423,6 @@ class PacketScanner:
                             struct.pack("<L", int(fields[2], 16)))
                         break
                 if not gateway_ip:
-                    # iface might not be default route interface (VPN etc.) — use first default
                     f.seek(0)
                     for line in f.readlines()[1:]:
                         fields = line.strip().split()
@@ -466,7 +442,6 @@ class PacketScanner:
         if self.randomize:
             random.shuffle(scan_order)
 
-        # Sockets
         try:
             send_sock = socket.socket(
                 socket.AF_PACKET, socket.SOCK_RAW, socket.htons(0x0800))
@@ -535,7 +510,6 @@ class PacketScanner:
                             if use_af_packet:
                                 r = _parse_af_packet(data, self._dst_ip, port_map)
                             else:
-                                # AF_INET fallback — build synthetic meta
                                 from lightscan.scan.rawscan import _parse_tcp_response
                                 from lightscan.scan.tcpflags import flags_str as _fstr
                                 raw = _parse_tcp_response(data, self._dst_ip, port_map)
@@ -586,7 +560,6 @@ class PacketScanner:
                     print(f"\033[38;5;240m[~] {s}\033[0m")
     
                 for port in scan_order:
-                    # Source port: fixed (spoof) or random
                     if self.spoof_sport:
                         sport = self.spoof_sport
                     else:
@@ -706,8 +679,6 @@ class PacketScanner:
                 {"service": svc, "method": method, "icmp_reason": reason}))
 
         return results
-
-# Async wrapper
 
 async def async_packet_scan(
     target:      str,

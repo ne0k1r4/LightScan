@@ -65,7 +65,6 @@ async def run_all_checks(host: str, open_ports: list[int],
         if key in seen: return False
         seen.add(key); return True
 
-    # Template engine
     dirs = [str(Path(__file__).parent.parent / "templates")]
     if template_dirs: dirs.extend(template_dirs)
     lib = TemplateLibrary(dirs)
@@ -80,10 +79,8 @@ async def run_all_checks(host: str, open_ports: list[int],
     for r in tpl_results:
         if _dedup(r): results.append(r)
 
-    # Legacy hardcoded checks
     if use_legacy:
         checker = CVEChecker(timeout=timeout)
-        # check_all() takes host + ports and dispatches to the right functions
         legacy_results = await checker.check_all(host, ports=open_ports)
         for r in legacy_results:
             if r and _dedup(r): results.append(r)

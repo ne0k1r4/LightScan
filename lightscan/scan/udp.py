@@ -25,35 +25,33 @@ from typing import List, Optional
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.scan.portscan import SERVICE_MAP, CRIT_PORTS, HIGH_PORTS
 
-# Common UDP probes
 UDP_PROBES: dict[int, bytes] = {
-    53:   b"\x00\x00\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"  # DNS query
+    53:   b"\x00\x00\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
           b"\x07version\x04bind\x00\x00\x10\x00\x03",
-    123:  b"\x1b" + b"\x00" * 47,                               # NTP client request
-    161:  b"\x30\x26\x02\x01\x00\x04\x06public"                # SNMP v1 GetRequest
+    123:  b"\x1b" + b"\x00" * 47,
+    161:  b"\x30\x26\x02\x01\x00\x04\x06public"
           b"\xa0\x19\x02\x04\x71\x68\xd4\x65\x02\x01\x00"
           b"\x02\x01\x00\x30\x0b\x30\x09\x06\x05\x2b\x06"
           b"\x01\x02\x01\x05\x00",
-    137:  b"\x00\x00\x00\x10\x00\x01\x00\x00\x00\x00\x00\x00"  # NetBIOS name query
+    137:  b"\x00\x00\x00\x10\x00\x01\x00\x00\x00\x00\x00\x00"
           b"\x20CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x00\x00\x21\x00\x01",
-    1900: b"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n"  # SSDP
+    1900: b"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n"
           b"MAN: \"ssdp:discover\"\r\nMX: 1\r\nST: ssdp:all\r\n\r\n",
-    5353: b"\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"  # mDNS query
+    5353: b"\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"
           b"\x05local\x00\x00\xff\x00\x01",
-    69:   b"\x00\x01README\x00octet\x00",                        # TFTP RRQ
-    500:  b"\x00" * 28 + b"\x01\x10\x02\x00" + b"\x00" * 4,    # IKE/ISAKMP
-    4500: b"\x00" * 28 + b"\x01\x10\x02\x00" + b"\x00" * 4,    # IKE NAT-T
+    69:   b"\x00\x01README\x00octet\x00",
+    500:  b"\x00" * 28 + b"\x01\x10\x02\x00" + b"\x00" * 4,
+    4500: b"\x00" * 28 + b"\x01\x10\x02\x00" + b"\x00" * 4,
     5060: (b"OPTIONS sip:nm SIP/2.0\r\nVia: SIP/2.0/UDP nm;branch=foo\r\n"
            b"From: sip:nm@nm;tag=root\r\nTo: sip:nm2@nm2\r\n"
            b"Call-ID: 50000\r\nCSeq: 42 OPTIONS\r\n"
-           b"Max-Forwards: 70\r\nContent-Length: 0\r\n\r\n"),     # SIP OPTIONS
+           b"Max-Forwards: 70\r\nContent-Length: 0\r\n\r\n"),
 }
-_DEFAULT_PROBE = b"\x00" * 8  # generic empty probe
+_DEFAULT_PROBE = b"\x00" * 8
 
-# ICMP type/code constants
 ICMP_DEST_UNREACH       = 3
-ICMP_PORT_UNREACH       = 3   # code 3 → port closed
-ICMP_ADMIN_PROHIBITED   = 13  # code 13 → filtered by firewall
+ICMP_PORT_UNREACH       = 3
+ICMP_ADMIN_PROHIBITED   = 13
 ICMP_NET_UNREACH        = 0
 ICMP_HOST_UNREACH       = 1
 ICMP_PROTO_UNREACH      = 2
@@ -64,9 +62,7 @@ def _icmp_state(icmp_code: int) -> str:
         return "closed"
     if icmp_code in (ICMP_ADMIN_PROHIBITED, 10, 11, 12):
         return "filtered"
-    return "filtered"  # any other unreachable = filtered
-
-# Root-mode scanner (raw ICMP sniffer)
+    return "filtered"
 
 class UDPScanner:
     """
@@ -96,9 +92,7 @@ class UDPScanner:
         self._total            = len(ports)
         self._done             = 0
         self._stop_sniffer     = threading.Event()
-        # port → state from ICMP replies
         self._icmp_results: dict[int, str] = {}
-        # ports we sent probes to (for open|filtered classification)
         self._sent: set[int] = set()
 
     def _get_target_ip(self) -> str:
@@ -127,12 +121,10 @@ class UDPScanner:
                 if addr[0] != target_ip:
                     continue
 
-                # IP header length
                 if len(data) < 28:
                     continue
                 ihl = (data[0] & 0x0F) * 4
 
-                # ICMP header starts after IP header
                 if len(data) < ihl + 8:
                     continue
                 icmp_type = data[ihl]
@@ -141,8 +133,6 @@ class UDPScanner:
                 if icmp_type != ICMP_DEST_UNREACH:
                     continue
 
-                # The original IP+UDP header is embedded after the ICMP header
-                # ICMP header = 8 bytes, then original IP header, then original UDP header
                 orig_ip_start = ihl + 8
                 if len(data) < orig_ip_start + 28:
                     continue
@@ -152,7 +142,6 @@ class UDPScanner:
                 if len(data) < orig_udp_start + 8:
                     continue
 
-                # Original UDP destination port (the port we were scanning)
                 orig_dst_port = struct.unpack("!H", data[orig_udp_start + 2: orig_udp_start + 4])[0]
 
                 state = _icmp_state(icmp_code)
@@ -200,7 +189,7 @@ class UDPScanner:
 
             for _ in range(self.retries):
                 self._send_probe(send_sock, target_ip, port)
-                time.sleep(0.001)  # slight inter-probe gap
+                time.sleep(0.001)
 
             with self._lock:
                 self._done += 1
@@ -228,11 +217,9 @@ class UDPScanner:
               f"{'root+ICMP' if root else 'no-root/basic'} mode")
 
         if root:
-            # Start ICMP sniffer thread
             sniffer_t = Thread(target=self._sniffer, args=(target_ip,), daemon=True)
             sniffer_t.start()
 
-            # Create raw UDP send socket
             try:
                 send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             except Exception as e:
@@ -253,13 +240,11 @@ class UDPScanner:
             for w in workers:
                 w.join(timeout=1.0)
 
-            # Wait for straggler ICMP responses
             time.sleep(self.timeout + 0.5)
             self._stop_sniffer.set()
             sniffer_t.join(timeout=3.0)
             send_sock.close()
 
-            # Classify all ports
             for port in self.ports:
                 if port in self._icmp_results:
                     state = self._icmp_results[port]
@@ -268,12 +253,9 @@ class UDPScanner:
                     else:
                         self._filtered.append(port)
                 else:
-                    # No ICMP response and no UDP response → open|filtered
                     self._open_filtered.append(port)
 
         else:
-            # No root — basic mode: just try to get a UDP response
-            # Cannot distinguish closed from open|filtered without ICMP
             print("\033[38;5;240m[!] Not root — ICMP classification unavailable. "
                   "Showing open/open|filtered only.\033[0m")
             for i, port in enumerate(self.ports):
@@ -306,8 +288,6 @@ class UDPScanner:
             "filtered":      sorted(self._filtered),
             "open_filtered": sorted(self._open_filtered),
         }
-
-# Result builder
 
 def udp_scan(target: str, ports: List[int], timeout: float = 2.0,
              threads: int = 50, verbose: bool = False, retries: int = 2) -> List[ScanResult]:
@@ -358,5 +338,3 @@ async def async_udp_scan(target: str, ports: List[int], timeout: float = 2.0,
     """Async wrapper — runs UDP scan in executor so it doesn't block the event loop."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, udp_scan, target, ports, timeout, threads, verbose)
-# udp timeout
-# udp timeout

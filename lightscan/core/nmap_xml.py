@@ -12,32 +12,25 @@ from xml.etree import ElementTree as ET
 
 from lightscan.core.engine import ScanResult, Severity
 
-
 MAX_NMAP_XML_BYTES = 64 * 1024 * 1024
-
 
 class NmapXMLImportError(ValueError):
     """Raised when an Nmap XML artifact is unsafe or does not match the schema."""
-
 
 def _tag_name(element: ET.Element) -> str:
     """Return an XML element name without an optional namespace prefix."""
     return element.tag.rsplit("}", 1)[-1]
 
-
 def _children(element: ET.Element, name: str) -> list[ET.Element]:
     return [child for child in element if _tag_name(child) == name]
-
 
 def _first_child(element: ET.Element, name: str) -> ET.Element | None:
     children = _children(element, name)
     return children[0] if children else None
 
-
 def _bounded_text(value: str | None, limit: int = 512) -> str:
     """Normalize untrusted XML text before it reaches reports or terminal output."""
     return (value or "").strip().replace("\x00", "")[:limit]
-
 
 def _parse_accuracy(raw: str | None) -> int | None:
     try:
@@ -45,7 +38,6 @@ def _parse_accuracy(raw: str | None) -> int | None:
     except ValueError:
         return None
     return value if 0 <= value <= 100 else None
-
 
 def _primary_target(host: ET.Element) -> str | None:
     addresses = _children(host, "address")
@@ -61,7 +53,6 @@ def _primary_target(host: ET.Element) -> str | None:
             return _bounded_text(hostname.get("name"), 255)
     return None
 
-
 def _collect_cpes(element: ET.Element) -> list[str]:
     cpes: list[str] = []
     for child in element.iter():
@@ -71,7 +62,6 @@ def _collect_cpes(element: ET.Element) -> list[str]:
         if value and value not in cpes:
             cpes.append(value)
     return cpes
-
 
 def _import_os_matches(host: ET.Element, target: str) -> list[ScanResult]:
     os_section = _first_child(host, "os")
@@ -114,7 +104,6 @@ def _import_os_matches(host: ET.Element, target: str) -> list[ScanResult]:
             )
         )
     return results
-
 
 def _import_open_services(host: ET.Element, target: str) -> list[ScanResult]:
     ports_section = _first_child(host, "ports")
@@ -169,7 +158,6 @@ def _import_open_services(host: ET.Element, target: str) -> list[ScanResult]:
             )
         )
     return results
-
 
 def import_nmap_xml(path: str | Path) -> tuple[list[ScanResult], dict[str, int | str]]:
     """Import OS matches and open-service records from one Nmap XML artifact.

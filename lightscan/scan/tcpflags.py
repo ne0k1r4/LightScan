@@ -8,15 +8,14 @@ Used by: packetscan.py, syn.py, syn_scanner.py
 from __future__ import annotations
 from typing import Optional, Tuple
 
-# TCP flag bit positions (RFC 793 + RFC 3168)
 TCP_FIN = 0x01
 TCP_SYN = 0x02
 TCP_RST = 0x04
 TCP_PSH = 0x08
 TCP_ACK = 0x10
 TCP_URG = 0x20
-TCP_ECE = 0x40   # RFC 3168 – ECN-Echo
-TCP_CWR = 0x80   # RFC 3168 – Congestion Window Reduced
+TCP_ECE = 0x40
+TCP_CWR = 0x80
 
 _FLAG_MAP = (
     (TCP_CWR, 'CWR'), (TCP_ECE, 'ECE'), (TCP_URG, 'URG'), (TCP_ACK, 'ACK'),
@@ -63,10 +62,6 @@ def is_firewall_rst(flags: int) -> bool:
     f = parse_tcp_flags(flags)
     return f['RST'] and not f['ACK']
 
-# ICMP Type 3 (Destination Unreachable) classification
-# state: 'filtered' | 'closed' | 'firewall'
-# reason: short label for ScanResult.data and verbose output
-
 ICMP3_TABLE: dict = {
     0:  ('filtered', 'net-unreachable'),
     1:  ('filtered', 'host-unreachable'),
@@ -86,8 +81,8 @@ ICMP3_TABLE: dict = {
     15: ('firewall', 'precedence-cutoff'),
 }
 
-ICMP_TTL_EXCEEDED    = 11   # type 11 → filtered (TTL hop limit reached)
-ICMP_DEST_UNREACHABLE = 3   # type 3 → use ICMP3_TABLE
+ICMP_TTL_EXCEEDED    = 11
+ICMP_DEST_UNREACHABLE = 3
 
 def classify_icmp3(code: int) -> Tuple[str, str]:
     """

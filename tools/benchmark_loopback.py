@@ -16,10 +16,8 @@ import sys
 import time
 from pathlib import Path
 
-
 PORT_RANGE = "1-65535"
 LOOPBACK_TARGET = "127.0.0.1"
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -38,7 +36,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def run_command(command: list[str], timeout: float) -> dict:
     started = time.perf_counter()
     completed = subprocess.run(
@@ -56,7 +53,6 @@ def run_command(command: list[str], timeout: float) -> dict:
         "stderr_tail": completed.stderr[-500:],
     }
 
-
 def summarize(trials: list[dict]) -> dict:
     elapsed = [trial["elapsed_seconds"] for trial in trials]
     return {
@@ -66,7 +62,6 @@ def summarize(trials: list[dict]) -> dict:
         "maximum_seconds": round(max(elapsed), 6),
         "ports_per_second_median": round(65535 / statistics.median(elapsed), 3),
     }
-
 
 def main() -> int:
     args = parse_args()
@@ -187,7 +182,6 @@ def main() -> int:
     print(json.dumps(document["comparison"], indent=2))
     print(f"Saved local benchmark: {output}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

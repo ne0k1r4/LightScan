@@ -26,10 +26,8 @@ _FORBIDDEN_TOKENS = re.compile(
 )
 _HTTP_PORTS = {80, 443, 8000, 8080, 8081, 8443, 8888}
 
-
 class LuaCheckError(RuntimeError):
     """Raised when a constrained Lua check cannot be safely executed."""
-
 
 @dataclass(frozen=True)
 class LuaCheckMetadata:
@@ -40,14 +38,12 @@ class LuaCheckMetadata:
     categories: tuple[str, ...]
     ports: tuple[int, ...]
 
-
 @dataclass(frozen=True)
 class LuaCheck:
     """A validated Lua source file and its exposed metadata."""
 
     path: Path
     metadata: LuaCheckMetadata
-
 
 class LuaCheckRegistry:
     """Discover, validate, and select Lua checks from explicitly supplied roots."""
@@ -143,7 +139,6 @@ class LuaCheckRegistry:
             raise LuaCheckError(f"{path.name}: {response.get('error', 'Lua execution failed')}")
         return response.get("value")
 
-
 async def run_lua_checks(
     host: str,
     open_ports: Sequence[int],
@@ -168,7 +163,6 @@ async def run_lua_checks(
     completed = await asyncio.gather(*tasks) if tasks else []
     return [result for group in completed for result in group]
 
-
 async def _run_one(
     host: str,
     port: int,
@@ -187,7 +181,6 @@ async def _run_one(
         if not isinstance(output, list):
             raise LuaCheckError(f"{check.metadata.name}: run() must return a table of findings")
         return _normalize_findings(check.metadata, host, port, output)
-
 
 async def _collect_context(host: str, port: int, timeout: float) -> dict | None:
     """Collect a read-only observation; Lua code never receives a socket."""
@@ -223,7 +216,6 @@ async def _collect_context(host: str, port: int, timeout: float) -> dict | None:
                 await writer.wait_closed()
             except (ConnectionError, OSError):
                 pass
-
 
 def _normalize_findings(
     metadata: LuaCheckMetadata,
@@ -262,14 +254,12 @@ def _normalize_findings(
         )
     return normalized
 
-
 def _list_value(value: object) -> list[object]:
     if value is None:
         return []
     if isinstance(value, list):
         return value
     raise LuaCheckError("Lua metadata lists must be JSON arrays")
-
 
 def _run_lua(binary: str, runner_path: Path, timeout: float) -> str:
     import subprocess
@@ -290,7 +280,6 @@ def _run_lua(binary: str, runner_path: Path, timeout: float) -> str:
     if completed.returncode != 0:
         raise LuaCheckError(completed.stderr.strip() or "Lua runner exited unsuccessfully")
     return completed.stdout
-
 
 def _lua_runner(script_path: Path, mode: str, context_path: Path) -> str:
     """Build a minimal Lua process that exposes no ambient capabilities."""

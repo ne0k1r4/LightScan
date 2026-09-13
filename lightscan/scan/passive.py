@@ -1,17 +1,5 @@
-# scan/passive.py — passive network recon via traffic sniffing
-# Light (Neok1ra)
 
-# zero packets sent. sits on interface and observes:
-# ARP     → IP/MAC mapping, new host detection, OUI fingerprinting
-# DNS     → hostname ↔ IP mapping from responses
-# mDNS    → .local service discovery
-# DHCP    → hostname from option 12, MAC from chaddr
-# NetBIOS → Windows hostname + domain from UDP/137
 
-# requires scapy + root. works great on pentest engagements —
-# you learn a surprising amount just by watching for 60 seconds.
-# added after i spent time on a network that blocked all ICMP but was
-# broadcasting everything over mDNS. silent recon FTW.
 from __future__ import annotations
 import time
 from dataclasses import dataclass, field
