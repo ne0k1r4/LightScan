@@ -1,49 +1,25 @@
-"""
-Core engine — the async task runner everything else is built on.
+"""Shared result record and legacy asynchronous task runner.
 
-ScanResult is the single data type that flows through the whole tool.
-Every scanner, brute-forcer, and CVE checker returns a list of these.
-PhantomEngine runs them all concurrently behind a semaphore and shows
-a live progress line while they run.
+New bounded TCP scans use :mod:`lightscan.scan.streaming`; ``ScanResult``
+remains the common serialization contract used by all scanner families.
 """
 from __future__ import annotations
 
 import asyncio
 import time
 import sys
-from dataclasses import dataclass, field, asdict
-from enum import Enum
 
-class Severity(str, Enum):
-    CRITICAL = "CRITICAL"
-    HIGH = "HIGH"
-    MEDIUM = "MEDIUM"
-    LOW = "LOW"
-    INFO = "INFO"
-
-@dataclass
-class ScanResult:
-    module:    str
-    target:    str
-    port:      int
-    status:    str
-    severity:  Severity = Severity.INFO
-    detail:    str = ""
-    data:      dict = field(default_factory=dict)
-    timestamp: float = field(default_factory=time.time)
-
-    def to_dict(self):
-        d = asdict(self)
-        d["severity"] = self.severity.value
-        return d
+from lightscan.core.rate_limit import RateLimiter
+from lightscan.core.models import ScanResult, Severity
 
 class PhantomEngine:
-    def __init__(self, concurrency=256, timeout=3.0, verbose=False, rate_limit=0.0,
+    def __init__(self, concurrency=256, timeout=3.0, verbose=False, max_rate=0.0,
                  adaptive=False, timing=4):
         self.concurrency = concurrency
         self.timeout     = timeout
         self.verbose     = verbose
-        self.rate_limit  = rate_limit
+        self.max_rate = max_rate
+        self._rate_limiter = RateLimiter(max_rate)
         self._sem        = None
         self._results    = []
         self._errors     = []
@@ -102,8 +78,7 @@ class PhantomEngine:
 
     async def _run_one(self, coro, label=""):
         async with self._sem:
-            if self.rate_limit > 0:
-                await asyncio.sleep(self.rate_limit)
+            await self._rate_limiter.acquire()
 
             timeout = self.timeout
             target  = self._host_from_label(label, getattr(self, "_target", ""))

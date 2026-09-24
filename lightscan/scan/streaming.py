@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import math
 import random
 import time
 from collections import defaultdict
@@ -16,6 +17,7 @@ from typing import Callable, Iterable, Sequence
 
 from lightscan.core.engine import ScanResult, Severity
 from lightscan.core.runtime_telemetry import capture_runtime_snapshot, resource_delta
+from lightscan.core.rate_limit import RateLimiter
 from lightscan.scan.aimd import AimdConcurrencyController
 from lightscan.scan.portscan import CRIT_PORTS, HIGH_PORTS, PROBES, SERVICE_MAP
 
@@ -38,14 +40,14 @@ class ScanControls:
             raise ValueError("concurrency must be at least 1")
         if self.per_host_concurrency < 1:
             raise ValueError("per_host_concurrency must be at least 1")
-        if self.max_rate < 0:
-            raise ValueError("max_rate cannot be negative")
+        if not math.isfinite(self.max_rate) or self.max_rate < 0:
+            raise ValueError("max_rate must be finite and non-negative")
         if self.retries < 0:
             raise ValueError("retries cannot be negative")
-        if not 0 <= self.retry_jitter <= 1:
+        if not math.isfinite(self.retry_jitter) or not 0 <= self.retry_jitter <= 1:
             raise ValueError("retry_jitter must be between 0 and 1")
-        if self.host_timeout < 0:
-            raise ValueError("host_timeout cannot be negative")
+        if not math.isfinite(self.host_timeout) or self.host_timeout < 0:
+            raise ValueError("host_timeout must be finite and non-negative")
         if self.host_group_size < 1:
             raise ValueError("host_group_size must be at least 1")
         if not 0 <= self.timing <= 5:
@@ -95,24 +97,14 @@ class _Job:
     host: str
     port: int
 
-class _RateGate:
-    """A monotonic, process-local start-rate limiter for connection attempts."""
+class _RateGate(RateLimiter):
+    """Compatibility name for the shared connection-start limiter."""
 
     def __init__(self, max_rate: float):
-        self._interval = 1.0 / max_rate if max_rate else 0.0
-        self._lock = asyncio.Lock()
-        self._next_start = 0.0
+        super().__init__(max_rate)
 
     async def wait(self) -> None:
-        if not self._interval:
-            return
-        async with self._lock:
-            now = time.monotonic()
-            scheduled = max(now, self._next_start)
-            self._next_start = scheduled + self._interval
-        delay = scheduled - now
-        if delay > 0:
-            await asyncio.sleep(delay)
+        await self.acquire()
 
 class _AdaptiveWindow:
     """A mutable in-flight limit controlled by measured scan feedback."""
@@ -148,7 +140,7 @@ class StreamingTCPScanner:
         banners: bool = True,
         result_sink: Callable[[ScanResult], None] | None = None,
     ):
-        if timeout <= 0:
+        if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be greater than zero")
         self.controls = controls
         self.timeout = timeout
@@ -157,7 +149,7 @@ class StreamingTCPScanner:
         self.metrics = ScanMetrics()
         self._runtime_started = capture_runtime_snapshot()
         self._started_at = time.monotonic()
-        self._rate_gate = _RateGate(controls.max_rate)
+        self._rate_gate = RateLimiter(controls.max_rate)
         self._host_started: dict[str, float] = {}
         self._host_locks: dict[str, asyncio.Semaphore] = defaultdict(
             lambda: asyncio.Semaphore(self.controls.per_host_concurrency)
@@ -209,10 +201,15 @@ class StreamingTCPScanner:
                 await queue.put(job)
                 self.metrics.scheduled += 1
             await queue.join()
-        finally:
             for _ in workers:
                 await queue.put(None)
             await asyncio.gather(*workers)
+        except asyncio.CancelledError:
+            for worker in workers:
+                worker.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            raise
+        finally:
             self.metrics.elapsed = time.monotonic() - self._started_at
             self.metrics.runtime = resource_delta(
                 self._runtime_started, capture_runtime_snapshot()
@@ -310,7 +307,7 @@ class StreamingTCPScanner:
         return base * random.uniform(1.0 - jitter, 1.0 + jitter)
 
     async def _connect_once(self, host: str, port: int) -> tuple[str, ScanResult | None]:
-        await self._rate_gate.wait()
+        await self._rate_gate.acquire()
         self.metrics.attempts += 1
         if self._adaptive is not None:
             self._adaptive.record_sent(host)

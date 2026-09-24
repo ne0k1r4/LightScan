@@ -1,0 +1,9 @@
+{
+  "target": "192.0.2.7/32",
+  "max_targets": 4,
+  "expected_hosts": ["192.0.2.7"],
+  "ports": "443,80,443",
+  "expected_ports": [80, 443],
+  "max_rate": 20,
+  "min_elapsed_ms_for_three_starts": 90
+}

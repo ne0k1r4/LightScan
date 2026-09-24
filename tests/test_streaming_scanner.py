@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from lightscan.scan.go_runner import scan_with_go
+from lightscan.core.rate_limit import RateLimiter
 from lightscan.scan.streaming import ScanControls, StreamingTCPScanner, _RateGate
 
 @pytest.fixture
@@ -37,6 +39,8 @@ def test_scan_controls_reject_invalid_capacity_values():
         ScanControls(per_host_concurrency=0)
     with pytest.raises(ValueError, match="retries"):
         ScanControls(retries=-1)
+    with pytest.raises(ValueError, match="finite"):
+        ScanControls(max_rate=float("nan"))
 
 def test_job_iterator_interleaves_hosts_before_advancing_to_next_port():
     scanner = StreamingTCPScanner(ScanControls(host_group_size=2), banners=False)
@@ -78,6 +82,55 @@ async def test_rate_gate_spaces_connection_starts():
     elapsed = asyncio.get_running_loop().time() - started
 
     assert elapsed >= 0.06
+
+async def test_cancelling_scan_stops_workers_without_draining_pending_jobs():
+    scanner = StreamingTCPScanner(
+        ScanControls(concurrency=1, per_host_concurrency=1, adaptive=False),
+        banners=False,
+    )
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def blocked_job(_job):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+
+    scanner._scan_job = blocked_job
+    scan_task = asyncio.create_task(
+        scanner.scan(["192.0.2.1"], [80, 443, 8080, 8443])
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+    scan_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(scan_task, timeout=1)
+    assert stopped.is_set()
+    assert scanner.metrics.scheduled < 4
+
+async def test_shared_rate_limiter_spaces_acquires_at_starts_per_second():
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures" / "engine_inputs.json").read_text()
+    )
+    limiter = RateLimiter(rate=fixture["max_rate"])
+    loop = asyncio.get_running_loop()
+    starts = []
+    for _ in range(3):
+        await limiter.acquire()
+        starts.append(loop.time())
+
+    assert starts[1] - starts[0] >= 0.045
+    assert (starts[2] - starts[0]) * 1000 >= fixture["min_elapsed_ms_for_three_starts"]
+
+def test_rate_limiter_rejects_negative_rate():
+    with pytest.raises(ValueError, match="rate"):
+        RateLimiter(rate=-1)
+
+def test_rate_limiter_rejects_non_finite_rate():
+    with pytest.raises(ValueError, match="finite"):
+        RateLimiter(rate=float("inf"))
 
 @pytest.mark.skipif(shutil.which("go") is None, reason="Go toolchain is unavailable")
 async def test_go_engine_streams_open_results_into_common_result_contract(tcp_banner_server, tmp_path):

@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"math/rand"
 	"net"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -147,6 +149,7 @@ func parsePorts(spec string) ([]int, error) {
 			seen[port] = true
 		}
 	}
+	sort.Ints(ports)
 	return ports, nil
 }
 
@@ -363,7 +366,11 @@ func newRateGate(maxRate float64) *rateGate {
 	if maxRate <= 0 {
 		return &rateGate{}
 	}
-	return &rateGate{interval: time.Duration(float64(time.Second) / maxRate)}
+	interval := time.Duration(float64(time.Second) / maxRate)
+	if interval < time.Nanosecond {
+		interval = time.Nanosecond
+	}
+	return &rateGate{interval: interval}
 }
 
 func (gate *rateGate) wait() {
@@ -371,16 +378,11 @@ func (gate *rateGate) wait() {
 		return
 	}
 	gate.mu.Lock()
-	now := time.Now()
-	scheduled := now
-	if gate.next.After(now) {
-		scheduled = gate.next
-	}
-	gate.next = scheduled.Add(gate.interval)
-	gate.mu.Unlock()
-	if delay := time.Until(scheduled); delay > 0 {
+	if delay := time.Until(gate.next); delay > 0 {
 		time.Sleep(delay)
 	}
+	gate.next = time.Now().Add(gate.interval)
+	gate.mu.Unlock()
 }
 
 type hostLimiter struct {
@@ -523,6 +525,19 @@ func boundedBuffer(concurrency int) int {
 	return concurrency * 2
 }
 
+func finiteNonNegative(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
+}
+
+func validScanControls(
+	concurrency, perHostConcurrency, hostGroup, timeoutMs, retries int,
+	maxRate, retryJitter float64,
+	hostTimeout time.Duration,
+) bool {
+	return concurrency >= 1 && perHostConcurrency >= 1 && hostGroup >= 1 && timeoutMs >= 1 && retries >= 0 &&
+		finiteNonNegative(maxRate) && finiteNonNegative(retryJitter) && retryJitter <= 1 && hostTimeout >= 0
+}
+
 func main() {
 	target := flag.String("t", "", "Target: IPv4/IPv6 literal, IPv4 CIDR, range, hostname, or file:path")
 	portSpec := flag.String("p", "top100", "Ports: 22,80,443 | 1-1024 | top100")
@@ -546,7 +561,7 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if *concurrency < 1 || *perHostConcurrency < 1 || *hostGroup < 1 || *timeoutMs < 1 || *retries < 0 || *maxRate < 0 || *retryJitter < 0 || *retryJitter > 1 {
+	if !validScanControls(*concurrency, *perHostConcurrency, *hostGroup, *timeoutMs, *retries, *maxRate, *retryJitter, *hostTimeout) {
 		fmt.Fprintln(os.Stderr, "error: concurrency, host group, timeout, retries, and rate controls are invalid")
 		os.Exit(2)
 	}
