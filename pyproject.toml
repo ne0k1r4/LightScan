@@ -60,10 +60,6 @@ include = ["lightscan*"]
 [tool.setuptools.package-data]
 lightscan = ["templates/**/*.yaml", "data/*.json", "data/nmap-service-probes", "lua_scripts/*.lua"]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-
 [tool.ruff]
 line-length = 100
 target-version = "py310"
