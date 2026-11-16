@@ -129,6 +129,9 @@ def build_parser():
                    help="Web checks to run (spider dir tech waf sqli xss cmdi traversal redirect cors creds jwt takeover files secrets)")
     m.add_argument("--web-wordlist", metavar="FILE",      help="Wordlist file for --web-scan directory brute")
     m.add_argument("--web-threads",  type=int, default=10, help="Threads for web dir brute (default 10)")
+    m.add_argument("-H", "--header", action="append", default=[], metavar="HEADER", help="Custom HTTP request header (e.g. -H 'X-Custom: Val' -H 'Authorization: Bearer xyz')")
+    m.add_argument("--cookie",       metavar="COOKIE",     help="Session cookie string (e.g. 'session=xyz; token=abc')")
+    m.add_argument("--auth-token",   metavar="TOKEN",      help="Bearer or API authorization token for authenticated auditing")
     m.add_argument("--rdp-probe",    metavar="HOST",      help="RDP fingerprint probe (NLA/SSL/cert info)")
     m.add_argument("--cve",           action="store_true", help="CVE + template checks on open ports (legacy + template engine)")
     m.add_argument("--cve-list",      nargs="+",

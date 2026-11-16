@@ -427,12 +427,26 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
     if getattr(args, 'web_scan', None):
         from lightscan.web.scanner import web_scan_async
         print(f"\033[38;5;196m[WEB-SCAN]\033[0m {args.web_scan}")
+
+        parsed_headers = {}
+        raw_headers = getattr(args, 'header', None) or []
+        for h in raw_headers:
+            if ":" in h:
+                k, v = h.split(":", 1)
+                parsed_headers[k.strip()] = v.strip()
+            elif "=" in h:
+                k, v = h.split("=", 1)
+                parsed_headers[k.strip()] = v.strip()
+
         web_results = await web_scan_async(
             args.web_scan,
             wordlist_file = getattr(args, 'web_wordlist', None),
             timeout  = args.timeout,
             threads  = getattr(args, 'web_threads', 10),
             checks   = getattr(args, 'web_checks', None),
+            headers  = parsed_headers or None,
+            cookies  = getattr(args, 'cookie', None),
+            auth_token = getattr(args, 'auth_token', None),
         )
         all_results.extend(web_results)
         counts = {}
@@ -446,14 +460,25 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
 
         SEV_COLOR = {"CRITICAL":"\033[38;5;196m","HIGH":"\033[38;5;208m",
                      "MEDIUM":"\033[38;5;226m","LOW":"\033[38;5;40m","INFO":"\033[38;5;240m"}
+        CONF_COLOR = {"CERTAIN":"\033[38;5;46m", "FIRM":"\033[38;5;220m", "TENTATIVE":"\033[38;5;245m"}
         for result in web_results:
             sev = result.severity.value
             if sev not in ("CRITICAL","HIGH","MEDIUM"): continue
             col  = SEV_COLOR.get(sev,"\033[0m")
-            print(f"    {col}[{sev}]\033[0m {result.module} — {result.detail}")
+            conf_val = getattr(result.confidence, "value", str(result.confidence))
+            conf_col = CONF_COLOR.get(conf_val, "\033[38;5;245m")
+            meta_parts = []
+            if getattr(result, "owasp", None):
+                meta_parts.append(result.owasp)
+            if getattr(result, "cwe", None):
+                meta_parts.append(result.cwe)
+            meta_str = f" \033[38;5;240m[{' | '.join(meta_parts)}]\033[0m" if meta_parts else ""
+            print(f"    {col}[{sev}]\033[0m {conf_col}[{conf_val}]\033[0m {result.module} — {result.detail}{meta_str}")
             location = result.data.get("url") or result.data.get("path")
             if location:
                 print(f"      \033[38;5;240m↳ {location}\033[0m")
+            if getattr(result, "remediation", None):
+                print(f"      \033[38;5;39m↳ Fix:\033[0m \033[38;5;248m{result.remediation}\033[0m")
 
     if getattr(args, 'rdp_probe', None):
         from lightscan.brute.handlers.rdp_raw import make_rdp_probe, RawRDPHandler

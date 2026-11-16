@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from lightscan.core.models import ScanResult, Severity
+from lightscan.core.models import Confidence, ScanResult, Severity
 from lightscan.core.reporter import Reporter
 
 
@@ -23,6 +23,12 @@ def _load_report(path: str) -> tuple[list[ScanResult], dict[str, Any]]:
         if not isinstance(row, dict):
             raise ValueError(f"result {index} must be an object")
         try:
+            raw_conf = str(row.get("confidence", "FIRM")).upper()
+            try:
+                conf = Confidence(raw_conf)
+            except ValueError:
+                conf = Confidence.FIRM
+
             results.append(
                 ScanResult(
                     module=str(row["module"]),
@@ -33,6 +39,10 @@ def _load_report(path: str) -> tuple[list[ScanResult], dict[str, Any]]:
                     detail=str(row.get("detail", "")),
                     data=row.get("data", {}) if isinstance(row.get("data", {}), dict) else {},
                     timestamp=float(row.get("timestamp", 0.0)),
+                    confidence=conf,
+                    cwe=str(row.get("cwe", "")),
+                    owasp=str(row.get("owasp", "")),
+                    remediation=str(row.get("remediation", "")),
                 )
             )
         except (KeyError, TypeError, ValueError) as exc:

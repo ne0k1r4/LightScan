@@ -51,7 +51,7 @@ try:
 except ImportError:
     _REQUESTS = False
 
-from lightscan.core.engine import ScanResult, Severity
+from lightscan.core.engine import Confidence, ScanResult, Severity
 
 DIR_WORDLIST = [
     "admin", "login", "wp-admin", "wp-login.php", "administrator",
@@ -139,11 +139,27 @@ class WebScanner:
 
     def __init__(self, base_url: str, timeout: float = 8.0,
                  threads: int = 10, verify_ssl: bool = False,
-                 proxy: str | None = None):
+                 proxy: str | None = None,
+                 headers: dict | None = None,
+                 cookies: str | dict | None = None,
+                 auth_token: str | None = None):
         self.base_url = base_url.rstrip("/")
         self.timeout  = timeout
         self.threads  = threads
         self._results_lock = threading.Lock()
+
+        self.default_headers: dict[str, str] = dict(headers or {})
+        if auth_token:
+            clean_tok = auth_token.strip()
+            if not any(clean_tok.startswith(p) for p in ("Bearer ", "Token ", "Basic ")):
+                clean_tok = f"Bearer {clean_tok}"
+            self.default_headers["Authorization"] = clean_tok
+        if cookies:
+            if isinstance(cookies, dict):
+                cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+            else:
+                cookie_str = str(cookies).strip()
+            self.default_headers["Cookie"] = cookie_str
 
         if _REQUESTS:
             import requests as req
@@ -154,8 +170,12 @@ class WebScanner:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/120.0.0.0 Safari/537.36"
             )
+            if self.default_headers:
+                self.session.headers.update(self.default_headers)
             if proxy:
                 self.session.proxies = {"http": proxy, "https": proxy}
+            else:
+                self.session.trust_env = False
             self._use_requests = True
         else:
             self.session = None
@@ -225,19 +245,21 @@ class WebScanner:
         """Safe HTTP GET primitive wrapper."""
         try:
             url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
+            req_headers = dict(self.default_headers)
+            if headers:
+                req_headers.update(headers)
             if self._use_requests:
                 return self.session.get(
                     url, timeout=self.timeout,
-                    headers=headers or {},
+                    headers=req_headers,
                     allow_redirects=allow_redirects,
                     verify=False, **kwargs)
             else:
                 req = urllib.request.Request(url)
                 req.add_header("User-Agent",
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                if headers:
-                    for k, v in headers.items():
-                        req.add_header(k, v)
+                for k, v in req_headers.items():
+                    req.add_header(k, v)
                 ctx = __import__("ssl").create_default_context()
                 ctx.check_hostname = False; ctx.verify_mode = 0
                 with urllib.request.urlopen(req, timeout=self.timeout,
@@ -248,19 +270,25 @@ class WebScanner:
         except Exception:
             return None
 
-    def _post(self, path: str, data: dict, allow_redirects: bool = False):
+    def _post(self, path: str, data: dict, allow_redirects: bool = False, headers: dict | None = None):
         """Safe POST."""
         try:
             url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
+            req_headers = dict(self.default_headers)
+            if headers:
+                req_headers.update(headers)
             if self._use_requests:
                 return self.session.post(
                     url, data=data, timeout=self.timeout,
+                    headers=req_headers,
                     allow_redirects=allow_redirects, verify=False)
             else:
                 enc = urllib.parse.urlencode(data).encode()
                 req = urllib.request.Request(url, data=enc, method="POST")
                 req.add_header("Content-Type", "application/x-www-form-urlencoded")
                 req.add_header("User-Agent", "Mozilla/5.0")
+                for k, v in req_headers.items():
+                    req.add_header(k, v)
                 ctx = __import__("ssl").create_default_context()
                 ctx.check_hostname = False; ctx.verify_mode = 0
                 with urllib.request.urlopen(req, timeout=self.timeout,
@@ -268,6 +296,50 @@ class WebScanner:
                     r._status = r.status; return r
         except Exception:
             return None
+
+    def _measure_differential(self, base_resp, test_resp, indicator: str = "", indicators: list[str] | None = None) -> tuple[Confidence, dict]:
+        """
+        Compare a probe response against a clean control response to detect structural deltas,
+        status divergence, and ensure indicators were not present in the clean baseline.
+        """
+        base_status = self._status(base_resp)
+        test_status = self._status(test_resp)
+        base_text = self._text(base_resp)
+        test_text = self._text(test_resp)
+
+        all_ind = [i.lower() for i in (indicators or ([indicator] if indicator else [])) if i]
+        base_lower = base_text.lower()
+        test_lower = test_text.lower()
+
+        pre_existing = any(ind in base_lower for ind in all_ind)
+        ind_found = [ind for ind in all_ind if ind in test_lower and ind not in base_lower]
+
+        status_changed = (base_status != test_status)
+        len_diff = abs(len(test_text) - len(base_text))
+        len_ratio = len_diff / max(len(base_text), 1)
+
+        diff_meta = {
+            "base_status": base_status,
+            "test_status": test_status,
+            "len_diff": len_diff,
+            "len_ratio": round(len_ratio, 3),
+            "indicators_found": ind_found,
+            "pre_existing": pre_existing,
+        }
+
+        if pre_existing:
+            return Confidence.TENTATIVE, diff_meta
+
+        if ind_found:
+            return Confidence.CERTAIN, diff_meta
+
+        if status_changed and test_status in (500, 502, 503) and base_status == 200:
+            return Confidence.FIRM, diff_meta
+
+        if len_ratio > 0.35 and (status_changed or "error" in test_lower):
+            return Confidence.FIRM, diff_meta
+
+        return Confidence.TENTATIVE, diff_meta
 
     def _text(self, resp) -> str:
         """Extract body text regardless of response type."""
@@ -508,7 +580,7 @@ class WebScanner:
         return tech
 
     def sqli_test(self) -> list[dict]:
-        """Test for error-based SQL injection on GET parameters."""
+        """Test for error-based SQL injection on GET parameters with differential verification."""
         urls = self._collect_param_urls()
         payload = "'"
         vulnerable: list[dict] = []
@@ -516,6 +588,8 @@ class WebScanner:
         for url in urls:
             parsed = urllib.parse.urlparse(url)
             params = dict(urllib.parse.parse_qsl(parsed.query))
+            base_resp = self._get(url)
+            base_content = self._text(base_resp).lower()
             for key in params:
                 test_params = params.copy()
                 test_params[key] = payload
@@ -525,13 +599,16 @@ class WebScanner:
                     content = self._text(resp).lower()
                     for pattern in SQLI_ERRORS:
                         if pattern in content:
+                            conf, diff = self._measure_differential(base_resp, resp, indicator=pattern)
                             vulnerable.append({
                                 "url":       url,
                                 "parameter": key,
                                 "type":      "error-based",
                                 "pattern":   pattern,
+                                "confidence": conf,
+                                "diff":      diff,
                             })
-                            print(f"  \033[38;5;196m[SQLi]\033[0m {url} param={key}")
+                            print(f"  \033[38;5;196m[SQLi]\033[0m {url} param={key} [{conf.value}]")
                             break
                 except Exception:
                     continue
@@ -3400,6 +3477,7 @@ class WebScanner:
                     resp = self._get(test_path)
                     body = self._text(resp)
                     if "cmdi_49" in body and "echo cmdi" not in body:
+                        conf, diff_meta = self._measure_differential(base_resp, resp, indicator="cmdi_49")
                         tested_pairs.add(pair_key)
                         hit = {
                             "url": u,
@@ -3408,9 +3486,11 @@ class WebScanner:
                             "type": p_type,
                             "payload": payload,
                             "evidence": "cmdi_49 detected in response",
+                            "confidence": conf,
+                            "diff": diff_meta,
                         }
                         vulnerable.append(hit)
-                        print(f"  \033[38;5;196m[CMDi]\033[0m {u} param={p_name} type={p_type}")
+                        print(f"  \033[38;5;196m[CMDi]\033[0m {u} param={p_name} type={p_type} [{conf.value}]")
                         break
 
         form_targets = self._collect_form_targets()
@@ -3419,6 +3499,7 @@ class WebScanner:
             f_fields = form.get("fields", [])
             parsed = urllib.parse.urlparse(f_url)
             f_path = parsed.path or "/"
+            base_post = self._post(f_path, {f: "test" for f in f_fields})
 
             for field in f_fields:
                 pair_key = f"POST:{f_path}:{field}"
@@ -3431,6 +3512,7 @@ class WebScanner:
                     resp = self._post(f_path, post_data)
                     body = self._text(resp)
                     if "cmdi_49" in body and "echo cmdi" not in body:
+                        conf, diff_meta = self._measure_differential(base_post, resp, indicator="cmdi_49")
                         tested_pairs.add(pair_key)
                         hit = {
                             "url": f_url,
@@ -3439,9 +3521,11 @@ class WebScanner:
                             "type": f"post-{p_type}",
                             "payload": payload,
                             "evidence": "cmdi_49 detected in POST response",
+                            "confidence": conf,
+                            "diff": diff_meta,
                         }
                         vulnerable.append(hit)
-                        print(f"  \033[38;5;196m[CMDi POST]\033[0m {f_url} field={field} type={p_type}")
+                        print(f"  \033[38;5;196m[CMDi POST]\033[0m {f_url} field={field} type={p_type} [{conf.value}]")
                         break
 
         self.results["cmdi"] = vulnerable
@@ -3478,6 +3562,7 @@ class WebScanner:
             params = dict(urllib.parse.parse_qsl(parsed.query))
             if not params:
                 params = {p: "test.txt" for p in candidate_params if p in u}
+            base_resp = self._get(u)
 
             for p_name in params:
                 pair_key = f"{parsed.path}:{p_name}"
@@ -3494,6 +3579,7 @@ class WebScanner:
 
                     matched_indicator = next((ind for ind in indicators if ind in body), None)
                     if matched_indicator:
+                        conf, diff_meta = self._measure_differential(base_resp, resp, indicator=matched_indicator, indicators=indicators)
                         tested_pairs.add(pair_key)
                         hit = {
                             "url": u,
@@ -3501,9 +3587,11 @@ class WebScanner:
                             "technique": technique,
                             "payload": payload,
                             "indicator": matched_indicator,
+                            "confidence": conf,
+                            "diff": diff_meta,
                         }
                         vulnerable.append(hit)
-                        print(f"  \033[38;5;196m[TRAVERSAL]\033[0m {u} param={p_name} technique={technique}")
+                        print(f"  \033[38;5;196m[TRAVERSAL]\033[0m {u} param={p_name} technique={technique} [{conf.value}]")
                         break
 
         self.results["path_traversal"] = vulnerable
@@ -3956,15 +4044,18 @@ class WebScanner:
 
         for v in self.results["sqli"]:
             out.append(ScanResult("web-sqli", host, port, "vulnerable",
-                Severity.CRITICAL, f"SQLi error-based param={v['parameter']} {v['url']}", v))
+                Severity.CRITICAL, f"SQLi error-based param={v['parameter']} {v['url']}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
 
         for v in self.results["xss"]:
             out.append(ScanResult("web-xss", host, port, "vulnerable",
-                Severity.HIGH, f"Reflected XSS param={v['parameter']} {v['url']}", v))
+                Severity.HIGH, f"Reflected XSS param={v['parameter']} {v['url']}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
 
         for v in self.results["open_redirect"]:
             out.append(ScanResult("web-redirect", host, port, "vulnerable",
-                Severity.MEDIUM, f"Open redirect param={v['parameter']}", v))
+                Severity.MEDIUM, f"Open redirect param={v['parameter']}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
 
         cors = self.results["cors"]
         if cors and cors.get("vulnerable"):
@@ -3972,57 +4063,68 @@ class WebScanner:
                 sev = Severity.CRITICAL if detail.get("critical") else Severity.HIGH
                 out.append(ScanResult("web-cors", host, port, "vulnerable", sev,
                     f"CORS reflects {detail['origin_sent']} credentials={detail['allow_credentials']}",
-                    detail))
+                    detail, confidence=detail.get("confidence", Confidence.CERTAIN)))
 
         for v in self.results["default_creds"]:
             out.append(ScanResult("web-default-creds", host, port, "vulnerable",
                 Severity.CRITICAL,
-                f"Default creds {v['user']}:{v['pass']} @ /{v['path']}", v))
+                f"Default creds {v['user']}:{v['pass']} @ /{v['path']}", v,
+                confidence=Confidence.CERTAIN))
 
         jwt = self.results["jwt_none"]
         if jwt and jwt.get("vulnerable"):
             out.append(ScanResult("web-jwt-none", host, port, "vulnerable",
                 Severity.CRITICAL,
                 f"JWT alg:none accepted @ {jwt.get('endpoint','')}",
-                jwt))
+                jwt, confidence=Confidence.CERTAIN))
 
         for v in self.results["sensitive_files"]:
             sev = Severity.CRITICAL if v["path"] in (".git/HEAD", ".env") \
                   else Severity.HIGH
             out.append(ScanResult("web-sensitive-file", host, port, "exposed", sev,
-                f"/{v['path']} ({v['status']}) {v['size']}B", v))
+                f"/{v['path']} ({v['status']}) {v['size']}B", v,
+                confidence=Confidence.CERTAIN))
 
         for v in self.results["js_secrets"]:
             out.append(ScanResult("web-secret", host, port, "exposed",
                 Severity.CRITICAL,
-                f"Hardcoded {v['type']} in {v['source']}", v))
+                f"Hardcoded {v['type']} in {v['source']}", v,
+                confidence=Confidence.FIRM))
 
         for v in self.results.get("cmdi", []):
             out.append(ScanResult("web-cmdi", host, port, "vulnerable",
                 Severity.CRITICAL,
-                f"Command injection {v.get('type')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v))
+                f"Command injection {v.get('type')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
 
         for v in self.results.get("path_traversal", []):
             out.append(ScanResult("web-path-traversal", host, port, "vulnerable",
                 Severity.HIGH,
-                f"Path traversal {v.get('technique')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v))
+                f"Path traversal {v.get('technique')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
 
         for v in self.results.get("waf_bypass", []):
             out.append(ScanResult("web-waf-bypass", host, port, "bypassed",
                 Severity.MEDIUM,
-                f"WAF evasion technique '{v.get('technique')}' succeeded", v))
+                f"WAF evasion technique '{v.get('technique')}' succeeded", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
 
         for v in self.results.get("subdomain_takeover", []):
             sev = Severity.HIGH if v.get("vulnerable") else Severity.INFO
+            conf = Confidence.CERTAIN if v.get("vulnerable") else Confidence.TENTATIVE
             out.append(ScanResult("web-subdomain-takeover", host, port,
                 "vulnerable" if v.get("vulnerable") else "safe", sev,
-                f"Subdomain takeover risk: {v.get('subdomain')} -> {v.get('platform')}", v))
+                f"Subdomain takeover risk: {v.get('subdomain')} -> {v.get('platform')}", v,
+                confidence=v.get("confidence", conf)))
 
         return out
 
 async def web_scan_async(url: str, wordlist_file: str | None = None,
                          timeout: float = 8.0, threads: int = 10,
-                         checks: list[str] | None = None) -> list[ScanResult]:
+                         checks: list[str] | None = None,
+                         headers: dict[str, str] | None = None,
+                         cookies: str | dict[str, str] | None = None,
+                         auth_token: str | None = None) -> list[ScanResult]:
     """
     Async entry point — runs WebScanner in thread pool so it doesn't block
     the PhantomEngine event loop.
@@ -4035,7 +4137,8 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
     loop = asyncio.get_running_loop()
 
     def _run():
-        ws = WebScanner(url, timeout=timeout, threads=threads)
+        ws = WebScanner(url, timeout=timeout, threads=threads,
+                        headers=headers, cookies=cookies, auth_token=auth_token)
         if checks is None:
             ws.run_all(wordlist_file=wordlist_file)
         else:

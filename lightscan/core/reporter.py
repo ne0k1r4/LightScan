@@ -262,38 +262,64 @@ class Reporter:
     def _write_html(self, path: str, results: list[ScanResult], meta: dict) -> None:
         critical = sum(result.severity == Severity.CRITICAL for result in results)
         high = sum(result.severity == Severity.HIGH for result in results)
-        rows = "\n".join(
-            "<tr class='{severity}'>"
-            "<td>{target}</td><td>{port}</td><td>{module}</td>"
-            "<td><span class='s {severity}'>{severity_label}</span></td>"
-            "<td>{detail}</td></tr>".format(
-                severity=html.escape(result.severity.value.lower()),
-                target=html.escape(result.target),
-                port=result.port,
-                module=html.escape(result.module),
-                severity_label=html.escape(result.severity.value),
-                detail=html.escape(result.detail),
+        medium = sum(result.severity == Severity.MEDIUM for result in results)
+        row_list = []
+        for result in results:
+            conf_val = result.confidence.value if hasattr(result.confidence, 'value') else str(result.confidence)
+            rem_html = f"<div class='rem'><strong>Fix:</strong> {html.escape(result.remediation)}</div>" if result.remediation else ""
+            row_list.append(
+                f"<tr class='{html.escape(result.severity.value.lower())}'>"
+                f"<td><code>{html.escape(result.target)}</code></td>"
+                f"<td>{result.port}</td>"
+                f"<td><strong>{html.escape(result.module)}</strong></td>"
+                f"<td><span class='s {html.escape(result.severity.value.lower())}'>{html.escape(result.severity.value)}</span></td>"
+                f"<td><span class='c {html.escape(conf_val.lower())}'>{html.escape(conf_val)}</span></td>"
+                f"<td><span class='tax-tag'>{html.escape(result.owasp or '')}</span><br><small class='tax-cwe'>{html.escape(result.cwe or '')}</small></td>"
+                f"<td>{html.escape(result.detail)}{rem_html}</td>"
+                f"</tr>"
             )
-            for result in results
-        )
+        rows = "\n".join(row_list)
         document = f"""<!DOCTYPE html><html><head><meta charset='utf-8'>
-<title>LightScan Report</title>
-<style>body{{font-family:monospace;background:#0d0d0d;color:#ccc;padding:2rem}}
-h1{{color:#e84545}}table{{width:100%;border-collapse:collapse}}
-th{{background:#1a1a1a;color:#e84545;padding:8px;text-align:left}}
-td{{padding:6px 8px;border-bottom:1px solid #222}}tr:hover{{background:#151515}}
-.critical td,.high td{{color:#ff6644}}.s{{padding:2px 8px;border-radius:3px;font-size:11px}}
-.s.critical{{background:#3d0000;color:#ff4444}}.s.high{{background:#3d1a00;color:#ff8800}}
-.stats{{display:flex;gap:2rem;margin:1rem 0}}
-.stat{{background:#1a1a1a;padding:1rem;border-left:3px solid #e84545}}
-.stat h2{{margin:0;color:#e84545}}.stat p{{margin:0;color:#888}}</style></head><body>
-<h1>LightScan Report</h1>
-<p style='color:#555'>generated {html.escape(time.ctime())} · lightscan v2.6.0</p>
+<title>LightScan Security Assessment Report</title>
+<style>
+body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#0d1117;color:#c9d1d9;padding:2rem;line-height:1.5}}
+h1{{color:#f0f6fc;margin-bottom:0.25rem}}
+.sub{{color:#8b949e;margin-top:0;font-size:0.9rem}}
+table{{width:100%;border-collapse:collapse;margin-top:1.5rem;font-size:0.9rem}}
+th{{background:#161b22;color:#f0f6fc;padding:10px;text-align:left;border-bottom:2px solid #30363d}}
+td{{padding:10px;border-bottom:1px solid #21262d;vertical-align:top}}
+tr:hover{{background:#161b22}}
+code{{font-family:monospace;background:#161b22;padding:2px 6px;border-radius:4px;color:#79c0ff}}
+.s{{padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;display:inline-block}}
+.s.critical{{background:#490202;color:#ff7b72;border:1px solid #b62324}}
+.s.high{{background:#3d1a00;color:#ffa657;border:1px solid #9e4a06}}
+.s.medium{{background:#2e2405;color:#e3b341;border:1px solid #7d5b0a}}
+.s.low{{background:#0d2d14;color:#7ee787;border:1px solid #196c2e}}
+.s.info{{background:#161b22;color:#8b949e;border:1px solid #30363d}}
+.c{{padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600}}
+.c.certain{{background:#1b472e;color:#7ee787}}
+.c.firm{{background:#3e3012;color:#e3b341}}
+.c.tentative{{background:#21262d;color:#8b949e}}
+.tax-tag{{color:#58a6ff;font-weight:600;font-size:11px}}
+.tax-cwe{{color:#8b949e;font-size:11px}}
+.rem{{margin-top:6px;padding:6px 10px;background:#161b22;border-left:3px solid #1f6feb;border-radius:3px;font-size:12px;color:#a5d6ff}}
+.stats{{display:flex;gap:1.5rem;margin:1.5rem 0}}
+.stat{{background:#161b22;padding:1rem 1.5rem;border-radius:6px;border-top:3px solid #30363d}}
+.stat.crit{{border-color:#ff7b72}}
+.stat.hi{{border-color:#ffa657}}
+.stat.med{{border-color:#e3b341}}
+.stat h2{{margin:0;font-size:1.8rem;color:#f0f6fc}}
+.stat p{{margin:0;color:#8b949e;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px}}
+</style></head><body>
+<h1>LightScan Security Assessment Report</h1>
+<p class='sub'>Generated {html.escape(time.ctime())} · LightScan v2.6.0</p>
 <div class='stats'>
-<div class='stat'><h2>{len(results)}</h2><p>findings</p></div>
-<div class='stat'><h2>{critical}</h2><p>critical</p></div>
-<div class='stat'><h2>{high}</h2><p>high</p></div></div>
-<table><tr><th>Host</th><th>Port</th><th>Service</th><th>Severity</th><th>Detail</th></tr>
+<div class='stat'><h2>{len(results)}</h2><p>Total Findings</p></div>
+<div class='stat crit'><h2>{critical}</h2><p>Critical</p></div>
+<div class='stat hi'><h2>{high}</h2><p>High</p></div>
+<div class='stat med'><h2>{medium}</h2><p>Medium</p></div>
+</div>
+<table><tr><th>Host</th><th>Port</th><th>Vulnerability / Check</th><th>Severity</th><th>Confidence</th><th>OWASP & CWE</th><th>Evidence & Remediation</th></tr>
 {rows}</table></body></html>"""
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(document)
@@ -301,7 +327,7 @@ td{{padding:6px 8px;border-bottom:1px solid #222}}tr:hover{{background:#151515}}
     def _write_csv(self, path: str, results: list[ScanResult], meta: dict | None = None) -> None:
         with open(path, "w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
-            writer.writerow(["host", "port", "status", "service", "severity", "detail", "module"])
+            writer.writerow(["host", "port", "status", "service", "severity", "confidence", "owasp", "cwe", "remediation", "detail", "module"])
             for result in results:
                 writer.writerow(
                     [
@@ -310,6 +336,10 @@ td{{padding:6px 8px;border-bottom:1px solid #222}}tr:hover{{background:#151515}}
                         result.status,
                         result.data.get("service", result.module),
                         result.severity.value,
+                        result.confidence.value if hasattr(result.confidence, 'value') else str(result.confidence),
+                        result.owasp,
+                        result.cwe,
+                        result.remediation,
                         result.detail,
                         result.module,
                     ]

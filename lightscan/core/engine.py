@@ -10,7 +10,7 @@ import time
 import sys
 
 from lightscan.core.rate_limit import RateLimiter
-from lightscan.core.models import ScanResult, Severity
+from lightscan.core.models import Confidence, ScanResult, Severity
 
 class PhantomEngine:
     def __init__(self, concurrency=256, timeout=3.0, verbose=False, max_rate=0.0,
