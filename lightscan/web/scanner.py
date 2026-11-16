@@ -117,6 +117,20 @@ JS_SECRET_PATTERNS = [
     (r'AIza[0-9A-Za-z\-_]{35}',                                        "GOOGLE_API_KEY"),
 ]
 
+TAKEOVER_FINGERPRINTS = {
+    "github.io": ("GitHub Pages", "There isn't a GitHub Pages site here"),
+    "herokuapp.com": ("Heroku", "No such app"),
+    "netlify.app": ("Netlify", "Not Found"),
+    "azurewebsites.net": ("Azure App Service", "404 Web Site not found"),
+    "s3.amazonaws.com": ("AWS S3", "NoSuchBucket"),
+    "myshopify.com": ("Shopify", "Sorry, this shop is currently unavailable"),
+    "fastly.net": ("Fastly", "Fastly error"),
+    "surge.sh": ("Surge.sh", "project not found"),
+    "bitbucket.io": ("Bitbucket", "Repository not found"),
+    "ghost.io": ("Ghost", "The thing you were looking for is no longer here"),
+    "wordpress.com": ("WordPress", "Do you want to register"),
+}
+
 class WebScanner:
     """
     Full web application scanner.
@@ -146,6 +160,9 @@ class WebScanner:
         else:
             self.session = None
             self._use_requests = False
+
+        self._discovered_endpoints: list[str] = []
+        self._discovered_params: list[dict] = []
 
         self.results: dict = {
             "directories":    [],
@@ -197,6 +214,10 @@ class WebScanner:
             "subdomains":     [],
             "cache_poison":   [],
             "ssl_tls":        {},
+            "crawled_urls":   [],
+            "cmdi":           [],
+            "path_traversal": [],
+            "subdomain_takeover": [],
         }
 
     def _get(self, path: str, headers: dict | None = None,
@@ -3174,9 +3195,17 @@ class WebScanner:
     def _collect_param_urls(self) -> set[str]:
         """
         Crawl home page and discovered directories for URLs with GET params.
-        Used by sqli_test, xss_test, open_redirect_test.
+        Used by sqli_test, xss_test, open_redirect_test, cmdi_test, path_traversal_test.
         """
         urls: set = set()
+        for ep in self._discovered_endpoints:
+            if "?" in ep and "=" in ep:
+                urls.add(ep)
+        for c in self.results.get("crawled_urls", []):
+            u = c.get("url", "")
+            if "?" in u and "=" in u:
+                urls.add(u)
+
         resp = self._get("/")
         if not resp: return urls
 
@@ -3209,55 +3238,493 @@ class WebScanner:
 
         return urls
 
+    def spider_crawl(self, max_depth: int = 3, max_urls: int = 200) -> dict:
+        """
+        BFS web crawler discovering endpoints, forms, parameters, and scripts.
+        Feeds discovered targets to all injection and audit checks.
+        """
+        parsed_base = urllib.parse.urlparse(self.base_url)
+        base_netloc = parsed_base.netloc
+        base_scheme = parsed_base.scheme or "http"
+
+        q: queue.Queue = queue.Queue()
+        start_url = self.base_url + "/"
+        q.put((start_url, 0))
+        visited: set[str] = set()
+        crawled_list: list[dict] = []
+        forms_found: list[dict] = []
+
+        endpoint_regex = re.compile(r'["\'](/[\w\d_./?=&%#-]+)["\']')
+
+        while not q.empty() and len(visited) < max_urls:
+            curr_url, depth = q.get()
+            clean_url = curr_url.split("#")[0]
+            if clean_url in visited:
+                continue
+            visited.add(clean_url)
+
+            resp = self._get(clean_url)
+            if resp is None:
+                continue
+
+            status = self._status(resp)
+            text = self._text(resp)
+            parsed_curr = urllib.parse.urlparse(clean_url)
+            params = dict(urllib.parse.parse_qsl(parsed_curr.query))
+
+            crawled_record = {
+                "url": clean_url,
+                "path": parsed_curr.path or "/",
+                "params": params,
+                "method": "GET",
+                "status": status,
+            }
+            crawled_list.append(crawled_record)
+
+            if parsed_curr.path and parsed_curr.path not in self._discovered_endpoints:
+                self._discovered_endpoints.append(clean_url)
+
+            for p_name, p_val in params.items():
+                self._discovered_params.append({
+                    "url": clean_url,
+                    "param": p_name,
+                    "value": p_val,
+                    "method": "GET",
+                })
+
+            if depth >= max_depth:
+                continue
+
+            links_to_enqueue: set[str] = set()
+
+            soup = self._parse_html(text)
+            if soup:
+                for tag in soup.find_all(["a", "link", "script", "iframe"]):
+                    attr = "href" if tag.name in ("a", "link") else "src"
+                    val = tag.get(attr)
+                    if val and not str(val).startswith(("mailto:", "javascript:", "tel:", "#")):
+                        resolved = urllib.parse.urljoin(clean_url, str(val))
+                        links_to_enqueue.add(resolved)
+
+                for form in soup.find_all("form"):
+                    action = form.get("action") or clean_url
+                    method = (form.get("method") or "GET").upper()
+                    f_url = urllib.parse.urljoin(clean_url, action)
+                    f_fields = [
+                        inp.get("name") for inp in form.find_all(["input", "textarea", "select"])
+                        if inp.get("name")
+                    ]
+                    forms_found.append({"url": f_url, "method": method, "fields": f_fields})
+                    for f in f_fields:
+                        self._discovered_params.append({
+                            "url": f_url,
+                            "param": f,
+                            "value": "",
+                            "method": method,
+                        })
+                    if f_url.startswith(f"{base_scheme}://{base_netloc}"):
+                        links_to_enqueue.add(f_url)
+            else:
+                for match in endpoint_regex.findall(text):
+                    resolved = urllib.parse.urljoin(clean_url, match)
+                    links_to_enqueue.add(resolved)
+
+            for raw_link in links_to_enqueue:
+                p_link = urllib.parse.urlparse(raw_link)
+                if p_link.netloc == base_netloc:
+                    normalized = urllib.parse.urlunparse((
+                        p_link.scheme,
+                        p_link.netloc,
+                        p_link.path,
+                        p_link.params,
+                        p_link.query,
+                        "",
+                    ))
+                    if normalized not in visited and len(visited) + q.qsize() < max_urls:
+                        q.put((normalized, depth + 1))
+
+        self.results["crawled_urls"] = crawled_list
+        res_summary = {
+            "urls_crawled": len(visited),
+            "endpoints": len(self._discovered_endpoints),
+            "forms": len(forms_found),
+            "param_urls": len(self._collect_param_urls()),
+        }
+        print(f"  \033[38;5;46m[SPIDER]\033[0m Crawled {res_summary['urls_crawled']} URLs, found {res_summary['endpoints']} endpoints, {res_summary['param_urls']} param URLs")
+        return res_summary
+
+    def cmdi_test(self) -> list[dict]:
+        """
+        Test for OS Command Injection vulnerabilities across GET params and POST forms.
+        Uses non-destructive arithmetic evaluation `echo cmdi_$((7*7))` (Unix)
+        and `echo cmdi_49` (Windows), verifying `cmdi_49` appears in the output.
+        """
+        vulnerable: list[dict] = []
+        tested_pairs: set[str] = set()
+
+        get_payloads = [
+            ("; echo cmdi_$((7*7))", "semicolon-arithmetic"),
+            ("| echo cmdi_$((7*7))", "pipe-arithmetic"),
+            ("& echo cmdi_$((7*7)) &", "background-arithmetic"),
+            ("`echo cmdi_49`", "backtick-exec"),
+            ("$(echo cmdi_49)", "subshell-exec"),
+            ("& echo cmdi_49", "cmd-ampersand"),
+            ("| echo cmdi_49", "cmd-pipe"),
+        ]
+
+        urls = list(self._collect_param_urls())
+        if not urls:
+            urls = [self.base_url + "/?cmd=test&exec=test&query=test&id=1"]
+
+        for u in urls:
+            parsed = urllib.parse.urlparse(u)
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            if not params:
+                continue
+
+            base_resp = self._get(u)
+            base_body = self._text(base_resp)
+            if "cmdi_49" in base_body:
+                continue
+
+            for p_name in params:
+                pair_key = f"{parsed.path}:{p_name}"
+                if pair_key in tested_pairs:
+                    continue
+
+                for payload, p_type in get_payloads:
+                    t_params = params.copy()
+                    t_params[p_name] = payload
+                    test_query = urllib.parse.urlencode(t_params)
+                    test_path = parsed.path + ("?" + test_query if test_query else "")
+                    resp = self._get(test_path)
+                    body = self._text(resp)
+                    if "cmdi_49" in body and "echo cmdi" not in body:
+                        tested_pairs.add(pair_key)
+                        hit = {
+                            "url": u,
+                            "parameter": p_name,
+                            "method": "GET",
+                            "type": p_type,
+                            "payload": payload,
+                            "evidence": "cmdi_49 detected in response",
+                        }
+                        vulnerable.append(hit)
+                        print(f"  \033[38;5;196m[CMDi]\033[0m {u} param={p_name} type={p_type}")
+                        break
+
+        form_targets = self._collect_form_targets()
+        for form in form_targets:
+            f_url = form.get("url", "")
+            f_fields = form.get("fields", [])
+            parsed = urllib.parse.urlparse(f_url)
+            f_path = parsed.path or "/"
+
+            for field in f_fields:
+                pair_key = f"POST:{f_path}:{field}"
+                if pair_key in tested_pairs:
+                    continue
+
+                for payload, p_type in get_payloads[:3]:
+                    post_data = {f: "test" for f in f_fields}
+                    post_data[field] = payload
+                    resp = self._post(f_path, post_data)
+                    body = self._text(resp)
+                    if "cmdi_49" in body and "echo cmdi" not in body:
+                        tested_pairs.add(pair_key)
+                        hit = {
+                            "url": f_url,
+                            "parameter": field,
+                            "method": "POST",
+                            "type": f"post-{p_type}",
+                            "payload": payload,
+                            "evidence": "cmdi_49 detected in POST response",
+                        }
+                        vulnerable.append(hit)
+                        print(f"  \033[38;5;196m[CMDi POST]\033[0m {f_url} field={field} type={p_type}")
+                        break
+
+        self.results["cmdi"] = vulnerable
+        return vulnerable
+
+    def path_traversal_test(self) -> list[dict]:
+        """
+        Extended Local and Remote Path Traversal testing.
+        Includes Windows system targets, PHP filter wrappers, null-byte truncation,
+        and double-URL encoding bypasses across all discovered endpoints.
+        """
+        vulnerable: list[dict] = []
+        tested_pairs: set[str] = set()
+
+        traversal_payloads = [
+            ("../../../../../../../../etc/passwd", ["root:x:", "root:*:", "/bin/sh", "/bin/bash"], "linux-relative"),
+            ("..%252f..%252f..%252f..%252f..%252f..%252fetc%252fpasswd", ["root:x:", "root:*:"], "double-encoded"),
+            ("../../../../../../../../etc/passwd%00", ["root:x:", "root:*:"], "null-byte-linux"),
+            ("....//....//....//....//....//etc/passwd", ["root:x:", "root:*:"], "dot-dot-slash-bypass"),
+            ("..;/..;/..;/..;/..;/etc/passwd", ["root:x:", "root:*:"], "semicolon-path-bypass"),
+            ("php://filter/convert.base64-encode/resource=index.php", ["PD9waHA", "PHNjcmlwdA"], "php-filter-wrapper"),
+            ("..\\..\\..\\..\\..\\..\\windows\\win.ini", ["[fonts]", "[extensions]", "[files]"], "windows-relative"),
+            ("/windows/win.ini", ["[fonts]", "[extensions]", "[files]"], "windows-absolute"),
+            ("..\\..\\..\\..\\..\\..\\boot.ini", ["[boot loader]"], "windows-boot-ini"),
+        ]
+
+        urls = list(self._collect_param_urls())
+        candidate_params = ["file", "path", "page", "include", "doc", "folder", "view", "template", "dir", "filename"]
+        if not urls:
+            urls = [f"{self.base_url}/?{p}=test.txt" for p in candidate_params[:3]]
+
+        for u in urls:
+            parsed = urllib.parse.urlparse(u)
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            if not params:
+                params = {p: "test.txt" for p in candidate_params if p in u}
+
+            for p_name in params:
+                pair_key = f"{parsed.path}:{p_name}"
+                if pair_key in tested_pairs:
+                    continue
+
+                for payload, indicators, technique in traversal_payloads:
+                    t_params = params.copy()
+                    t_params[p_name] = payload
+                    test_query = urllib.parse.urlencode(t_params)
+                    test_path = parsed.path + ("?" + test_query if test_query else "")
+                    resp = self._get(test_path)
+                    body = self._text(resp)
+
+                    matched_indicator = next((ind for ind in indicators if ind in body), None)
+                    if matched_indicator:
+                        tested_pairs.add(pair_key)
+                        hit = {
+                            "url": u,
+                            "parameter": p_name,
+                            "technique": technique,
+                            "payload": payload,
+                            "indicator": matched_indicator,
+                        }
+                        vulnerable.append(hit)
+                        print(f"  \033[38;5;196m[TRAVERSAL]\033[0m {u} param={p_name} technique={technique}")
+                        break
+
+        self.results["path_traversal"] = vulnerable
+        return vulnerable
+
+    def waf_detect(self) -> dict:
+        """
+        Active & Passive Web Application Firewall (WAF) fingerprinting.
+        Analyzes response headers, status codes on active probes, and block pages.
+        """
+        waf_info = {"detected": False, "vendor": "None detected", "confidence": 0.0, "status": 200}
+
+        home_resp = self._get("/")
+        headers = self._headers(home_resp)
+        body = self._text(home_resp)
+
+        for vendor, sig in WAF_SIGNATURES.items():
+            for h in sig.get("headers", []):
+                if h in [k.lower() for k in headers.keys()]:
+                    waf_info = {"detected": True, "vendor": vendor, "confidence": 0.9, "status": self._status(home_resp)}
+                    self.results["waf"] = waf_info
+                    print(f"  \033[38;5;208m[WAF]\033[0m Detected {vendor} via passive signature header '{h}'")
+                    return waf_info
+            if sig.get("body") and sig["body"].lower() in body.lower():
+                waf_info = {"detected": True, "vendor": vendor, "confidence": 0.8, "status": self._status(home_resp)}
+                self.results["waf"] = waf_info
+                print(f"  \033[38;5;208m[WAF]\033[0m Detected {vendor} via body signature '{sig['body']}'")
+                return waf_info
+
+        probe_path = "/?id=1' AND 1=1 UNION SELECT 1,2,3--<script>alert(1)</script>"
+        probe_resp = self._get(probe_path)
+        p_status = self._status(probe_resp)
+        p_headers = self._headers(probe_resp)
+        p_body = self._text(probe_resp)
+
+        for vendor, sig in WAF_SIGNATURES.items():
+            for h in sig.get("headers", []):
+                if h in [k.lower() for k in p_headers.keys()]:
+                    waf_info = {"detected": True, "vendor": vendor, "confidence": 1.0, "status": p_status}
+                    self.results["waf"] = waf_info
+                    print(f"  \033[38;5;208m[WAF]\033[0m Active probe blocked by {vendor} [{p_status}]")
+                    return waf_info
+            if sig.get("body") and sig["body"].lower() in p_body.lower():
+                waf_info = {"detected": True, "vendor": vendor, "confidence": 0.95, "status": p_status}
+                self.results["waf"] = waf_info
+                print(f"  \033[38;5;208m[WAF]\033[0m Active probe triggered {vendor} block page [{p_status}]")
+                return waf_info
+
+        if p_status in (403, 406, 429):
+            waf_info = {"detected": True, "vendor": f"Generic WAF / Filter (HTTP {p_status})", "confidence": 0.7, "status": p_status}
+            print(f"  \033[38;5;208m[WAF]\033[0m Active probe rejected with HTTP {p_status}")
+
+        self.results["waf"] = waf_info
+        return waf_info
+
+    def waf_bypass_test(self) -> list[dict]:
+        """
+        Evaluate WAF rule bypass techniques (case randomization, SQL comments,
+        double encoding, and parameter pollution).
+        """
+        bypasses: list[dict] = []
+        base_probe = "/?id=1' UNION SELECT 1,2,3--"
+        base_resp = self._get(base_probe)
+        base_status = self._status(base_resp)
+
+        waf = self.results.get("waf") or {}
+        if not waf.get("detected") and base_status not in (403, 406, 429):
+            return bypasses
+
+        evasion_techniques = [
+            ("Case Randomization", "/?id=1' uNiOn SeLeCt 1,2,3--"),
+            ("Inline Comments", "/?id=1'/**/UNION/**/SELECT/**/1,2,3--"),
+            ("Double URL Encoding", "/?id=1%2527%2520UNION%2520SELECT%25201,2,3--"),
+            ("HTTP Parameter Pollution", "/?id=1&id=1' UNION SELECT 1,2,3--"),
+            ("Null Byte Evasion", "/?id=1%00' UNION SELECT 1,2,3--"),
+            ("Tab Whitespace", "/?id=1'%09UNION%09SELECT%091,2,3--"),
+        ]
+
+        for name, test_path in evasion_techniques:
+            resp = self._get(test_path)
+            status = self._status(resp)
+            if status == 200:
+                hit = {
+                    "technique": name,
+                    "test_path": test_path,
+                    "status": status,
+                    "bypassed": True,
+                }
+                bypasses.append(hit)
+                print(f"  \033[38;5;226m[WAF BYPASS]\033[0m Technique '{name}' succeeded with HTTP 200")
+
+        self.results["waf_bypass"] = bypasses
+        return bypasses
+
+    def subdomain_takeover_test(self) -> list[dict]:
+        """
+        Check for dangling DNS CNAME records and abandoned cloud provider assets
+        (GitHub Pages, Heroku, Netlify, Azure, AWS S3, Shopify, etc.).
+        """
+        import socket
+        findings: list[dict] = []
+        parsed = urllib.parse.urlparse(self.base_url)
+        hostname = parsed.hostname or self.base_url
+
+        parts = hostname.split(".")
+        if len(parts) >= 2:
+            domain = ".".join(parts[-2:])
+        else:
+            domain = hostname
+
+        candidates = list(self.results.get("subdomains", []))
+        quick_prefixes = ["dev", "staging", "test", "docs", "blog", "app", "api", "support", "help", "shop"]
+        for p in quick_prefixes:
+            sub = f"{p}.{domain}"
+            if sub not in candidates:
+                candidates.append(sub)
+
+        for sub in candidates[:15]:
+            try:
+                canonname = ""
+                try:
+                    addr_info = socket.getaddrinfo(sub, None, socket.AF_UNSPEC, socket.SOCK_STREAM, 0, socket.AI_CANONNAME)
+                    if addr_info and addr_info[0][3]:
+                        canonname = addr_info[0][3].lower()
+                except (socket.gaierror, OSError):
+                    pass
+
+                scheme = parsed.scheme or "http"
+                test_url = f"{scheme}://{sub}"
+                resp_body = ""
+                try:
+                    req = urllib.request.Request(test_url, headers={"User-Agent": "Mozilla/5.0"})
+                    ctx = __import__("ssl").create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = 0
+                    with urllib.request.urlopen(req, timeout=3.0, context=ctx) as r:
+                        resp_body = r.read(8192).decode("utf-8", errors="replace")
+                except urllib.error.HTTPError as e:
+                    try:
+                        resp_body = e.read(4096).decode("utf-8", errors="replace")
+                    except Exception:
+                        resp_body = ""
+                except Exception:
+                    resp_body = ""
+
+                for provider_cname, (platform, fingerprint) in TAKEOVER_FINGERPRINTS.items():
+                    cname_match = provider_cname in canonname
+                    body_match = fingerprint.lower() in resp_body.lower() if fingerprint and resp_body else False
+
+                    if cname_match or body_match:
+                        hit = {
+                            "subdomain": sub,
+                            "cname": canonname,
+                            "platform": platform,
+                            "vulnerable": True,
+                            "fingerprint": fingerprint,
+                            "evidence": f"CNAME={canonname} body_match={body_match}",
+                        }
+                        findings.append(hit)
+                        print(f"  \033[38;5;196m[TAKEOVER]\033[0m Subdomain takeover risk at {sub} -> {platform}")
+                        break
+            except Exception:
+                continue
+
+        self.results["subdomain_takeover"] = findings
+        return findings
+
     def run_all(self, wordlist_file: str | None = None) -> dict:
         """
         Run all configured web application tests.
         Returns raw results dict.
         """
         print(f"\033[38;5;196m[WEB]\033[0m {self.base_url}")
+        print(f"  [00] Web spider & crawler");        self.spider_crawl()
         print(f"  [01] Directory brute");            self.dir_brute(wordlist_file=wordlist_file)
         print(f"  [02] Technology fingerprint");     self.fingerprint_tech()
-        print(f"  [03] SSL/TLS analysis");            self.ssl_tls_test()
-        print(f"  [04] CMS detection");              self.detect_cms()
-        print(f"  [05] CMS plugin/theme enum");      self.cms_plugin_enum()
-        print(f"  [06] Error disclosure");           self.error_disclosure_test()
-        print(f"  [07] Cookie security flags");      self.cookie_security_test()
-        print(f"  [08] Security headers");
-        print(f"  [09] Clickjacking");               self.clickjacking_test()
-        print(f"  [10] CSRF detection");             self.csrf_test()
-        print(f"  [11] SQLi GET error-based");       self.sqli_test()
-        print(f"  [12] SQLi POST form-based");       self.sqli_post_test()
-        print(f"  [13] SQLi blind bool+time");       self.sqli_blind_test()
-        print(f"  [14] SQLi UNION");                 self.sqli_union_test()
-        print(f"  [15] XSS reflected");              self.xss_test()
-        print(f"  [16] XSS stored");                 self.xss_stored_test()
-        print(f"  [17] DOM XSS static analysis");    self.xss_dom_test()
-        print(f"  [18] SSTI");                       self.ssti_test()
-        print(f"  [19] LFI / path traversal");       self.lfi_test()
-        print(f"  [20] SSRF");                       self.ssrf_test()
-        print(f"  [21] XXE");                        self.xxe_test()
-        print(f"  [22] IDOR");                       self.idor_test()
-        print(f"  [23] File upload bypass");         self.file_upload_test()
-        print(f"  [24] Deserialization probes");     self.deserialization_test()
-        print(f"  [25] Prototype pollution");        self.prototype_pollution_test()
-        print(f"  [26] CRLF injection");             self.crlf_test()
-        print(f"  [27] Open redirect");              self.open_redirect_test()
-        print(f"  [28] CORS");                       self.cors_test()
-        print(f"  [29] Default credentials");        self.default_creds_test()
-        print(f"  [30] JWT none + advanced");        self.jwt_none_test(); self.jwt_advanced_test()
-        print(f"  [31] OAuth misconfiguration");     self.oauth_test()
-        print(f"  [32] GraphQL");                    self.graphql_test()
-        print(f"  [33] WebSocket");                  self.websocket_test()
-        print(f"  [34] HTTP methods");               self.http_methods_test()
-        print(f"  [35] Host header injection");      self.host_header_injection_test()
-        print(f"  [36] Rate limit detection");       self.rate_limit_test()
-        print(f"  [37] Cache poisoning");            self.cache_poison_test()
-        print(f"  [38] HTTP request smuggling");     self.smuggling_probe()
-        print(f"  [39] Parameter pollution");        self.param_pollution_test()
-        print(f"  [40] API endpoint discovery");     self.api_discovery_test()
-        print(f"  [41] Subdomain passive recon");    self.subdomain_passive_test()
-        print(f"  [42] Sensitive files");            self.sensitive_files_test()
-        print(f"  [43] JS secret scan");             self.js_secret_scan()
+        print(f"  [03] WAF detection & bypass");     self.waf_detect(); self.waf_bypass_test()
+        print(f"  [04] SSL/TLS analysis");            self.ssl_tls_test()
+        print(f"  [05] CMS detection");              self.detect_cms()
+        print(f"  [06] CMS plugin/theme enum");      self.cms_plugin_enum()
+        print(f"  [07] Error disclosure");           self.error_disclosure_test()
+        print(f"  [08] Cookie security flags");      self.cookie_security_test()
+        print(f"  [09] Security headers");
+        print(f"  [10] Clickjacking");               self.clickjacking_test()
+        print(f"  [11] CSRF detection");             self.csrf_test()
+        print(f"  [12] SQLi GET error-based");       self.sqli_test()
+        print(f"  [13] SQLi POST form-based");       self.sqli_post_test()
+        print(f"  [14] SQLi blind bool+time");       self.sqli_blind_test()
+        print(f"  [15] SQLi UNION");                 self.sqli_union_test()
+        print(f"  [16] XSS reflected");              self.xss_test()
+        print(f"  [17] XSS stored");                 self.xss_stored_test()
+        print(f"  [18] DOM XSS static analysis");    self.xss_dom_test()
+        print(f"  [19] SSTI");                       self.ssti_test()
+        print(f"  [20] LFI / path traversal");       self.lfi_test()
+        print(f"  [21] Extended path traversal");     self.path_traversal_test()
+        print(f"  [22] Command injection");          self.cmdi_test()
+        print(f"  [23] SSRF");                       self.ssrf_test()
+        print(f"  [24] XXE");                        self.xxe_test()
+        print(f"  [25] IDOR");                       self.idor_test()
+        print(f"  [26] File upload bypass");         self.file_upload_test()
+        print(f"  [27] Deserialization probes");     self.deserialization_test()
+        print(f"  [28] Prototype pollution");        self.prototype_pollution_test()
+        print(f"  [29] CRLF injection");             self.crlf_test()
+        print(f"  [30] Open redirect");              self.open_redirect_test()
+        print(f"  [31] CORS");                       self.cors_test()
+        print(f"  [32] Default credentials");        self.default_creds_test()
+        print(f"  [33] JWT none + advanced");        self.jwt_none_test(); self.jwt_advanced_test()
+        print(f"  [34] OAuth misconfiguration");     self.oauth_test()
+        print(f"  [35] GraphQL");                    self.graphql_test()
+        print(f"  [36] WebSocket");                  self.websocket_test()
+        print(f"  [37] HTTP methods");               self.http_methods_test()
+        print(f"  [38] Host header injection");      self.host_header_injection_test()
+        print(f"  [39] Rate limit detection");       self.rate_limit_test()
+        print(f"  [40] Cache poisoning");            self.cache_poison_test()
+        print(f"  [41] HTTP request smuggling");     self.smuggling_probe()
+        print(f"  [42] Parameter pollution");        self.param_pollution_test()
+        print(f"  [43] API endpoint discovery");     self.api_discovery_test()
+        print(f"  [44] Subdomain passive recon");    self.subdomain_passive_test()
+        print(f"  [45] Subdomain takeover");         self.subdomain_takeover_test()
+        print(f"  [46] Sensitive files");            self.sensitive_files_test()
+        print(f"  [47] JS secret scan");             self.js_secret_scan()
         return self.results
 
     def to_scan_results(self) -> list[ScanResult]:
@@ -3530,6 +3997,27 @@ class WebScanner:
                 Severity.CRITICAL,
                 f"Hardcoded {v['type']} in {v['source']}", v))
 
+        for v in self.results.get("cmdi", []):
+            out.append(ScanResult("web-cmdi", host, port, "vulnerable",
+                Severity.CRITICAL,
+                f"Command injection {v.get('type')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v))
+
+        for v in self.results.get("path_traversal", []):
+            out.append(ScanResult("web-path-traversal", host, port, "vulnerable",
+                Severity.HIGH,
+                f"Path traversal {v.get('technique')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v))
+
+        for v in self.results.get("waf_bypass", []):
+            out.append(ScanResult("web-waf-bypass", host, port, "bypassed",
+                Severity.MEDIUM,
+                f"WAF evasion technique '{v.get('technique')}' succeeded", v))
+
+        for v in self.results.get("subdomain_takeover", []):
+            sev = Severity.HIGH if v.get("vulnerable") else Severity.INFO
+            out.append(ScanResult("web-subdomain-takeover", host, port,
+                "vulnerable" if v.get("vulnerable") else "safe", sev,
+                f"Subdomain takeover risk: {v.get('subdomain')} -> {v.get('platform')}", v))
+
         return out
 
 async def web_scan_async(url: str, wordlist_file: str | None = None,
@@ -3540,7 +4028,8 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
     the PhantomEngine event loop.
 
     checks: subset of ['dir','tech','sqli','xss','redirect','cors',
-                        'creds','jwt','files','secrets']
+                        'creds','jwt','files','secrets', 'spider', 'cmdi',
+                        'traversal', 'waf', 'takeover']
             None = run all
     """
     loop = asyncio.get_running_loop()
@@ -3551,8 +4040,11 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
             ws.run_all(wordlist_file=wordlist_file)
         else:
             CHECK_MAP = {
+                "spider":     ws.spider_crawl,
+                "crawler":    ws.spider_crawl,
                 "dir":        lambda: ws.dir_brute(wordlist_file=wordlist_file),
                 "tech":       ws.fingerprint_tech,
+                "waf":        lambda: (ws.waf_detect(), ws.waf_bypass_test()),
                 "ssl":        ws.ssl_tls_test,
                 "cms":        ws.detect_cms,
                 "plugins":    ws.cms_plugin_enum,
@@ -3569,6 +4061,8 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
                 "xss-dom":    ws.xss_dom_test,
                 "ssti":       ws.ssti_test,
                 "lfi":        ws.lfi_test,
+                "traversal":  ws.path_traversal_test,
+                "cmdi":       ws.cmdi_test,
                 "ssrf":       ws.ssrf_test,
                 "xxe":        ws.xxe_test,
                 "idor":       ws.idor_test,
@@ -3591,6 +4085,7 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
                 "hpp":        ws.param_pollution_test,
                 "api":        ws.api_discovery_test,
                 "subdomains": ws.subdomain_passive_test,
+                "takeover":   ws.subdomain_takeover_test,
                 "files":      ws.sensitive_files_test,
                 "secrets":    ws.js_secret_scan,
             }

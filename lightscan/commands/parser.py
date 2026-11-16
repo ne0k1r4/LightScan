@@ -124,9 +124,9 @@ def build_parser():
     m.add_argument("--os-probe",     action="store_true", help="Active T2-T7 OS fingerprinting (root+scapy, 6 extra packets per host)")
     m.add_argument("--os-passive",   action="store_true", help="Passive OS fingerprint from SYN-ACK (auto with --syn, zero extra packets)")
     m.add_argument("--os-port",      type=int,            help="Open port for --os-probe (auto-detected if omitted)")
-    m.add_argument("--web-scan",     metavar="URL",       help="Full web application scan on URL (dir, tech, sqli, xss, cors, creds, jwt, files, secrets)")
+    m.add_argument("--web-scan",     metavar="URL",       help="Full web application scan on URL (spider, dir, tech, waf, sqli, xss, cmdi, traversal, cors, creds, jwt, takeover, files, secrets)")
     m.add_argument("--web-checks",   nargs="+", metavar="CHECK",
-                   help="Web checks to run (dir tech sqli xss redirect cors creds jwt files secrets)")
+                   help="Web checks to run (spider dir tech waf sqli xss cmdi traversal redirect cors creds jwt takeover files secrets)")
     m.add_argument("--web-wordlist", metavar="FILE",      help="Wordlist file for --web-scan directory brute")
     m.add_argument("--web-threads",  type=int, default=10, help="Threads for web dir brute (default 10)")
     m.add_argument("--rdp-probe",    metavar="HOST",      help="RDP fingerprint probe (NLA/SSL/cert info)")
