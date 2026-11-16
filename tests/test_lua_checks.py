@@ -30,6 +30,21 @@ async def http_server():
         server.close()
         await server.wait_closed()
 
+@pytest.fixture
+async def dynamic_server():
+    async def handler(reader, writer):
+        await reader.read(1024)
+        writer.close()
+        await writer.wait_closed()
+
+    server = await asyncio.start_server(handler, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        yield port
+    finally:
+        server.close()
+        await server.wait_closed()
+
 def builtin_lua_root() -> Path:
     return Path(__file__).resolve().parents[1] / "lightscan" / "lua_scripts"
 
@@ -77,7 +92,7 @@ async def test_http_lua_check_uses_read_only_observation_context(http_server):
         "X-Content-Type-Options",
     }
 
-async def test_lua_check_timeout_is_reported_as_a_controlled_error(tmp_path, http_server):
+async def test_lua_check_timeout_is_reported_as_a_controlled_error(tmp_path, dynamic_server):
     looping = tmp_path / "looping.lua"
     looping.write_text(
         "function metadata() return {name='looping-check', description='x', categories={'safe'}, ports={}} end\n"
@@ -89,5 +104,5 @@ async def test_lua_check_timeout_is_reported_as_a_controlled_error(tmp_path, htt
 
     with pytest.raises(LuaCheckError, match="timed out"):
         await run_lua_checks(
-            "127.0.0.1", [http_server], registry, names=["looping-check"], timeout=0.1
+            "127.0.0.1", [dynamic_server], registry, names=["looping-check"], timeout=0.1
         )
