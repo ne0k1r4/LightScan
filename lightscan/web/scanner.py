@@ -1,27 +1,7 @@
 """
-LightScan v2.0 PHANTOM — Web Application Scanner
-Developer: Light (Neok1ra)
-
-Feature set:
-  1. dir_brute          — threaded directory brute, wordlist or wordlist_file
-  2. fingerprint_tech   — server, X-Powered-By, cookies, generator meta, JS libs
-  3. sqli_test          — error-based SQLi probe on discovered GET params
-  4. xss_test           — reflected XSS probe on discovered GET params
-  5. cors_test          — CORS origin reflection + credentials header check
-  6. default_creds_test — POST brute on common admin panels
-  7. jwt_none_test       — JWT alg:none downgrade on discovered tokens
-
-Added features:
-  • wordlist_file support
-  • version extraction from tech fingerprint
-  • WAF detection (Cloudflare, ModSecurity, AWS WAF, Akamai, Imperva, F5)
-  • Security headers audit (missing HSTS, CSP, X-Frame-Options, etc.)
-  • Open redirect probe on discovered GET params
-  • Sensitive file check (robots.txt, .git/HEAD, .env, backup.sql, etc.)
-  • JS secret scanning (API keys, tokens in inline/external script tags)
-  • Form-based login detection for default_creds_test
-  • Async run_all_async() wrapper for BruteEngine / PhantomEngine integration
-  • Returns list[ScanResult] — plugs directly into reporter / PhantomEngine
+LightScan — Advanced Web Application Security Scanner
+Asynchronous web application assessment engine with differential evidence verification,
+authenticated audit profiling, and standardized CWE/OWASP taxonomy reporting.
 """
 from __future__ import annotations
 
