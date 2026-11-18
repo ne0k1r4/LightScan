@@ -185,7 +185,7 @@ def _flags_to_str(flags: int) -> str:
 class MultiProbeOSDetector:
     """
     Active OS detection engine using multi-probe sequence.
-    Features:
+    Capabilities:
       • Async-compatible (run_in_executor wrapper)
       • Feeds into SignatureDB.match() for scoring
       • Returns LightScan ScanResult objects

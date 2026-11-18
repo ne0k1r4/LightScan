@@ -1903,7 +1903,7 @@ class WebScanner:
             CN/SANs mismatch, MD5/SHA1 signature
           • Protocol: SSLv2/v3 (DROWN/POODLE), TLS 1.0/1.1 offered
           • Ciphers: NULL, EXPORT, RC4, DES/3DES, anonymous DH (ADH/AECDH)
-          • Features: HSTS presence + max-age, HSTS preload, certificate
+          • Security extensions: HSTS presence + max-age, HSTS preload, certificate
             transparency (SCT), OCSP stapling hint
         """
         import ssl as _ssl, socket as _sock, datetime as _dt
