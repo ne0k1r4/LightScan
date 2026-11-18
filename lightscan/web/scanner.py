@@ -238,6 +238,21 @@ class WebScanner:
             "cmdi":           [],
             "path_traversal": [],
             "subdomain_takeover": [],
+            "nosql_injection": [],
+            "ldap_injection": [],
+            "xpath_injection": [],
+            "second_order":   [],
+            "blind_cmdi":     [],
+            "bola":           [],
+            "bfla":           [],
+            "mass_assignment":[],
+            "excessive_data": [],
+            "api_inventory":  [],
+            "http2":          {},
+            "cors_preflight_cache": [],
+            "dns_rebinding":  [],
+            "cache_deception": [],
+            "business_logic_bypass": [],
         }
 
     def _get(self, path: str, headers: dict | None = None,
@@ -3759,6 +3774,1395 @@ class WebScanner:
         self.results["subdomain_takeover"] = findings
         return findings
 
+    # ──────────────────────────────────────────────────────────
+    #  BATCH 2 — ADVANCED INJECTION MODULES
+    # ──────────────────────────────────────────────────────────
+
+    def nosql_injection_test(self) -> list[dict]:
+        """Test for NoSQL injection via MongoDB operator injection in GET and POST params."""
+        findings: list[dict] = []
+
+        NOSQL_PAYLOADS_GET = [
+            ("[$ne]", "operator-ne", "!='' operator bypass"),
+            ("[$gt]", "operator-gt", ">'' operator bypass"),
+            ("[$regex]=.*", "operator-regex", "regex wildcard match"),
+            ("[$exists]=true", "operator-exists", "field existence test"),
+        ]
+
+        NOSQL_PAYLOADS_POST = [
+            ({"$ne": ""}, "operator-ne", "!='' operator bypass"),
+            ({"$gt": ""}, "operator-gt", ">'' operator bypass"),
+            ({"$regex": ".*"}, "operator-regex", "regex wildcard match"),
+            ({"$nin": [1]}, "operator-nin", "not-in bypass"),
+        ]
+
+        JSON_PAYLOADS = [
+            ('{"$gt":""}', "json-gt", "JSON $gt operator"),
+            ('{"$ne":""}', "json-ne", "JSON $ne operator"),
+            ('{"$regex":".*"}', "json-regex", "JSON regex operator"),
+            ('{"$where":"1==1"}', "json-where", "JSON $where JS eval"),
+        ]
+
+        urls = self._collect_param_urls()
+
+        for url in urls:
+            parsed = urllib.parse.urlparse(url)
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            base_resp = self._get(url)
+            base_text = self._text(base_resp)
+            base_status = self._status(base_resp)
+
+            for key in params:
+                for suffix, technique, desc in NOSQL_PAYLOADS_GET:
+                    try:
+                        inject_key = f"{key}{suffix}"
+                        test_params = {k: v for k, v in params.items() if k != key}
+                        test_params[inject_key] = ""
+                        test_url = parsed.path + "?" + urllib.parse.urlencode(test_params)
+                        resp = self._get(test_url)
+                        test_text = self._text(resp)
+                        test_status = self._status(resp)
+
+                        if test_status != base_status or (
+                            len(test_text) != len(base_text) and
+                            abs(len(test_text) - len(base_text)) > 50
+                        ):
+                            conf, diff = self._measure_differential(base_resp, resp)
+                            if conf != Confidence.TENTATIVE or test_status in (200, 302) and base_status in (401, 403):
+                                findings.append({
+                                    "url": url,
+                                    "parameter": key,
+                                    "type": "GET",
+                                    "technique": technique,
+                                    "description": desc,
+                                    "confidence": conf,
+                                    "diff": diff,
+                                })
+                                print(f"  \033[38;5;196m[NoSQLi]\033[0m {url} param={key} {technique} [{conf.value}]")
+                                break
+                    except Exception:
+                        continue
+
+        forms = self._discover_forms()
+        for form in forms:
+            action = form.get("action", "/")
+            fields = form.get("fields", {})
+            if not fields:
+                continue
+            base_resp = self._post(action, fields)
+            base_text = self._text(base_resp)
+            base_status = self._status(base_resp)
+
+            for field_name in fields:
+                for payload_val, technique, desc in NOSQL_PAYLOADS_POST:
+                    try:
+                        test_data = dict(fields)
+                        test_data[field_name] = str(payload_val)
+                        resp = self._post(action, test_data)
+                        test_text = self._text(resp)
+                        test_status = self._status(resp)
+
+                        if test_status != base_status or (
+                            abs(len(test_text) - len(base_text)) > 50
+                        ):
+                            conf, diff = self._measure_differential(base_resp, resp)
+                            if conf != Confidence.TENTATIVE:
+                                findings.append({
+                                    "url": urllib.parse.urljoin(self.base_url, action),
+                                    "parameter": field_name,
+                                    "type": "POST",
+                                    "technique": technique,
+                                    "description": desc,
+                                    "confidence": conf,
+                                    "diff": diff,
+                                })
+                                print(f"  \033[38;5;196m[NoSQLi]\033[0m POST {action} param={field_name} {technique} [{conf.value}]")
+                                break
+                    except Exception:
+                        continue
+
+            for field_name in fields:
+                for json_body, technique, desc in JSON_PAYLOADS:
+                    try:
+                        test_data = dict(fields)
+                        test_data[field_name] = json_body
+                        resp = self._post(action, test_data,
+                                         headers={"Content-Type": "application/json"})
+                        test_status = self._status(resp)
+                        if test_status != base_status:
+                            findings.append({
+                                "url": urllib.parse.urljoin(self.base_url, action),
+                                "parameter": field_name,
+                                "type": "POST-JSON",
+                                "technique": technique,
+                                "description": desc,
+                                "confidence": Confidence.FIRM,
+                            })
+                            print(f"  \033[38;5;196m[NoSQLi]\033[0m JSON POST {action} {technique}")
+                            break
+                    except Exception:
+                        continue
+
+        self.results["nosql_injection"] = findings
+        return findings
+
+    def ldap_injection_test(self) -> list[dict]:
+        """Test for LDAP injection via special filter characters."""
+        findings: list[dict] = []
+
+        LDAP_PAYLOADS = [
+            ("*", "wildcard", ["ldap", "result", "cn=", "dn=", "uid="]),
+            (")(cn=*)", "filter-break", ["ldap", "cn=", "dn=", "uid="]),
+            ("*)(&", "and-inject", ["ldap", "error", "invalid filter"]),
+            ("*)(|(cn=*)", "or-inject", ["ldap", "cn=", "result"]),
+            ("admin)(&)", "auth-bypass", ["ldap", "welcome", "dashboard", "logged in"]),
+            ("\\00", "null-byte", ["ldap", "error", "null"]),
+        ]
+
+        ERROR_INDICATORS = [
+            "ldap error", "invalid dn syntax", "bad search filter",
+            "javax.naming", "ldap_search", "ldap_bind", "ldapsearch",
+            "supplied argument is not a valid ldap",
+        ]
+
+        urls = self._collect_param_urls()
+
+        for url in urls:
+            parsed = urllib.parse.urlparse(url)
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            base_resp = self._get(url)
+            base_text = self._text(base_resp).lower()
+
+            for key in params:
+                for payload, technique, success_indicators in LDAP_PAYLOADS:
+                    try:
+                        test_params = params.copy()
+                        test_params[key] = payload
+                        test_url = parsed.path + "?" + urllib.parse.urlencode(test_params)
+                        resp = self._get(test_url)
+                        content = self._text(resp).lower()
+
+                        for error in ERROR_INDICATORS:
+                            if error in content and error not in base_text:
+                                conf = Confidence.CERTAIN
+                                findings.append({
+                                    "url": url,
+                                    "parameter": key,
+                                    "type": "error-based",
+                                    "technique": technique,
+                                    "payload": payload,
+                                    "evidence": error,
+                                    "confidence": conf,
+                                })
+                                print(f"  \033[38;5;196m[LDAPi]\033[0m {url} param={key} error='{error}' [{conf.value}]")
+                                break
+
+                        if technique == "wildcard":
+                            resp_len = len(content)
+                            base_len = len(base_text)
+                            if resp_len > base_len * 1.5 and resp_len - base_len > 200:
+                                for ind in success_indicators:
+                                    if ind in content:
+                                        findings.append({
+                                            "url": url,
+                                            "parameter": key,
+                                            "type": "content-expansion",
+                                            "technique": technique,
+                                            "payload": payload,
+                                            "evidence": f"response expanded {resp_len - base_len}B with LDAP indicator '{ind}'",
+                                            "confidence": Confidence.FIRM,
+                                        })
+                                        print(f"  \033[38;5;196m[LDAPi]\033[0m {url} param={key} wildcard expansion [{Confidence.FIRM.value}]")
+                                        break
+                    except Exception:
+                        continue
+
+        self.results["ldap_injection"] = findings
+        return findings
+
+    def xpath_injection_test(self) -> list[dict]:
+        """Test for XPath injection via boolean and error-based techniques."""
+        findings: list[dict] = []
+
+        XPATH_PAYLOADS = [
+            ("' or '1'='1", "boolean-or", "auth bypass / always-true"),
+            ("' or ''='", "empty-string", "empty string true condition"),
+            ("1 or 1=1", "numeric-or", "numeric always-true"),
+            ("'] | //* | //*['", "union-extract", "XPath union all nodes"),
+            ("' and count(/*)>0 and '1'='1", "count-probe", "count-based extraction"),
+        ]
+
+        ERROR_INDICATORS = [
+            "xpath", "xmldom", "simplexml", "lxml", "xmlparse",
+            "invalid expression", "unknown nodetype", "unterminated string",
+            "expected node test", "xmlexception",
+        ]
+
+        urls = self._collect_param_urls()
+
+        for url in urls:
+            parsed = urllib.parse.urlparse(url)
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            base_resp = self._get(url)
+            base_text = self._text(base_resp).lower()
+            base_status = self._status(base_resp)
+
+            for key in params:
+                for payload, technique, desc in XPATH_PAYLOADS:
+                    try:
+                        test_params = params.copy()
+                        test_params[key] = payload
+                        test_url = parsed.path + "?" + urllib.parse.urlencode(test_params)
+                        resp = self._get(test_url)
+                        content = self._text(resp).lower()
+                        test_status = self._status(resp)
+
+                        for error in ERROR_INDICATORS:
+                            if error in content and error not in base_text:
+                                findings.append({
+                                    "url": url,
+                                    "parameter": key,
+                                    "type": "error-based",
+                                    "technique": technique,
+                                    "payload": payload,
+                                    "evidence": error,
+                                    "confidence": Confidence.CERTAIN,
+                                })
+                                print(f"  \033[38;5;196m[XPathi]\033[0m {url} param={key} error='{error}'")
+                                break
+
+                        if technique == "boolean-or":
+                            if test_status == 200 and base_status in (401, 403):
+                                findings.append({
+                                    "url": url,
+                                    "parameter": key,
+                                    "type": "auth-bypass",
+                                    "technique": technique,
+                                    "payload": payload,
+                                    "evidence": f"status changed {base_status} -> {test_status}",
+                                    "confidence": Confidence.FIRM,
+                                })
+                                print(f"  \033[38;5;196m[XPathi]\033[0m {url} param={key} auth bypass {base_status}->{test_status}")
+
+                        if technique == "boolean-or" and test_status == base_status == 200:
+                            diff_len = abs(len(content) - len(base_text))
+                            if diff_len > 100:
+                                conf, diff = self._measure_differential(base_resp, resp)
+                                if conf in (Confidence.CERTAIN, Confidence.FIRM):
+                                    findings.append({
+                                        "url": url,
+                                        "parameter": key,
+                                        "type": "boolean-differential",
+                                        "technique": technique,
+                                        "payload": payload,
+                                        "evidence": f"content delta {diff_len}B",
+                                        "confidence": conf,
+                                        "diff": diff,
+                                    })
+                    except Exception:
+                        continue
+
+        self.results["xpath_injection"] = findings
+        return findings
+
+    def second_order_injection_test(self) -> list[dict]:
+        """Test for second-order injection: store payload, then trigger on retrieval."""
+        findings: list[dict] = []
+
+        MARKER = f"ls2nd{int(time.time()) & 0xFFFF}"
+        PAYLOADS = [
+            (f"<img src=x onerror=alert('{MARKER}')>", "xss", MARKER),
+            (f"' OR '{MARKER}'='{MARKER}'--", "sqli", MARKER),
+            (f"{{{{7*7}}}}", "ssti", "49"),
+        ]
+
+        STORAGE_PATHS = [
+            "/register", "/signup", "/contact", "/feedback",
+            "/comment", "/review", "/profile", "/settings",
+            "/search", "/subscribe",
+        ]
+
+        RETRIEVAL_PATHS = [
+            "/profile", "/account", "/dashboard", "/admin/users",
+            "/comments", "/reviews", "/search", "/feed",
+        ]
+
+        forms = self._discover_forms()
+
+        for form in forms:
+            action = form.get("action", "/")
+            fields = form.get("fields", {})
+            if not fields:
+                continue
+
+            for field_name in fields:
+                for payload, technique, indicator in PAYLOADS:
+                    try:
+                        inject_data = dict(fields)
+                        inject_data[field_name] = payload
+                        store_resp = self._post(action, inject_data)
+                        store_status = self._status(store_resp)
+
+                        if store_status in (200, 201, 302, 303):
+                            for rpath in RETRIEVAL_PATHS:
+                                try:
+                                    ret_resp = self._get(rpath)
+                                    ret_text = self._text(ret_resp)
+                                    if indicator in ret_text:
+                                        findings.append({
+                                            "url": urllib.parse.urljoin(self.base_url, action),
+                                            "parameter": field_name,
+                                            "type": f"second-order-{technique}",
+                                            "technique": technique,
+                                            "storage_endpoint": action,
+                                            "retrieval_endpoint": rpath,
+                                            "payload": payload,
+                                            "indicator": indicator,
+                                            "confidence": Confidence.CERTAIN,
+                                        })
+                                        print(f"  \033[38;5;196m[2nd-ORDER]\033[0m {technique} stored@{action} triggered@{rpath}")
+                                        break
+                                except Exception:
+                                    continue
+                    except Exception:
+                        continue
+
+        self.results["second_order"] = findings
+        return findings
+
+    def blind_cmdi_test(self) -> list[dict]:
+        """Test for blind command injection via time-based detection (sleep/ping)."""
+        findings: list[dict] = []
+
+        SLEEP_DURATION = 5
+        TIME_THRESHOLD = 4.0
+
+        BLIND_PAYLOADS = [
+            (f"; sleep {SLEEP_DURATION}", "semicolon-sleep", "linux"),
+            (f"| sleep {SLEEP_DURATION}", "pipe-sleep", "linux"),
+            (f"`sleep {SLEEP_DURATION}`", "backtick-sleep", "linux"),
+            (f"$(sleep {SLEEP_DURATION})", "dollar-sleep", "linux"),
+            (f"& ping -c {SLEEP_DURATION} 127.0.0.1 &", "ping-delay", "linux"),
+            (f"& ping -n {SLEEP_DURATION} 127.0.0.1 &", "ping-delay-win", "windows"),
+            (f"| timeout /t {SLEEP_DURATION} >nul", "timeout-win", "windows"),
+        ]
+
+        urls = self._collect_param_urls()
+
+        for url in urls:
+            parsed = urllib.parse.urlparse(url)
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+
+            for key in params:
+                baseline_start = time.time()
+                try:
+                    self._get(url)
+                except Exception:
+                    pass
+                baseline_time = time.time() - baseline_start
+
+                for payload, technique, platform in BLIND_PAYLOADS:
+                    try:
+                        test_params = params.copy()
+                        test_params[key] = params[key] + payload
+                        test_url = parsed.path + "?" + urllib.parse.urlencode(test_params)
+
+                        start = time.time()
+                        resp = self._get(test_url)
+                        elapsed = time.time() - start
+
+                        if elapsed >= TIME_THRESHOLD and elapsed > baseline_time * 2:
+                            verify_start = time.time()
+                            self._get(url)
+                            verify_elapsed = time.time() - verify_start
+
+                            if elapsed > verify_elapsed * 2:
+                                conf = Confidence.CERTAIN if elapsed >= SLEEP_DURATION else Confidence.FIRM
+                                findings.append({
+                                    "url": url,
+                                    "parameter": key,
+                                    "type": f"blind-time-{platform}",
+                                    "technique": technique,
+                                    "payload": payload,
+                                    "baseline_time": round(baseline_time, 2),
+                                    "inject_time": round(elapsed, 2),
+                                    "verify_time": round(verify_elapsed, 2),
+                                    "confidence": conf,
+                                })
+                                print(f"  \033[38;5;196m[BLIND-CMDi]\033[0m {url} param={key} {technique} delay={elapsed:.1f}s [{conf.value}]")
+                                break
+                    except Exception:
+                        continue
+
+        forms = self._discover_forms()
+        for form in forms:
+            action = form.get("action", "/")
+            fields = form.get("fields", {})
+            if not fields:
+                continue
+
+            for field_name in fields:
+                baseline_start = time.time()
+                try:
+                    self._post(action, fields)
+                except Exception:
+                    pass
+                baseline_time = time.time() - baseline_start
+
+                for payload, technique, platform in BLIND_PAYLOADS[:4]:
+                    try:
+                        test_data = dict(fields)
+                        test_data[field_name] = (fields.get(field_name, "") or "") + payload
+
+                        start = time.time()
+                        self._post(action, test_data)
+                        elapsed = time.time() - start
+
+                        if elapsed >= TIME_THRESHOLD and elapsed > baseline_time * 2:
+                            findings.append({
+                                "url": urllib.parse.urljoin(self.base_url, action),
+                                "parameter": field_name,
+                                "type": f"blind-time-post-{platform}",
+                                "technique": technique,
+                                "payload": payload,
+                                "inject_time": round(elapsed, 2),
+                                "confidence": Confidence.FIRM,
+                            })
+                            print(f"  \033[38;5;196m[BLIND-CMDi]\033[0m POST {action} param={field_name} {technique} delay={elapsed:.1f}s")
+                            break
+                    except Exception:
+                        continue
+
+        self.results["blind_cmdi"] = findings
+        return findings
+
+    # ──────────────────────────────────────────────────────────
+    #  BATCH 4 — API SECURITY MODULES
+    # ──────────────────────────────────────────────────────────
+
+    def bola_test(self) -> list[dict]:
+        """Test for Broken Object Level Authorization (BOLA/IDOR on API endpoints)."""
+        findings: list[dict] = []
+
+        API_PATTERNS = [
+            (r"/api/v\d+/users?/(\d+)", "user"),
+            (r"/api/v\d+/accounts?/(\d+)", "account"),
+            (r"/api/v\d+/orders?/(\d+)", "order"),
+            (r"/api/v\d+/profiles?/(\d+)", "profile"),
+            (r"/api/v\d+/documents?/(\d+)", "document"),
+            (r"/api/v\d+/messages?/(\d+)", "message"),
+            (r"/api/v\d+/invoices?/(\d+)", "invoice"),
+            (r"/api/v\d+/[^/]+/(\d+)", "generic-id"),
+            (r"/users?/(\d+)", "user-short"),
+            (r"/profiles?/(\d+)", "profile-short"),
+        ]
+
+        endpoints = set()
+        for ep in self._discovered_endpoints:
+            endpoints.add(ep)
+        for c in self.results.get("crawled_urls", []):
+            endpoints.add(c.get("url", ""))
+        for api_ep in self.results.get("api_endpoints", []):
+            if isinstance(api_ep, dict):
+                endpoints.add(api_ep.get("url", ""))
+            elif isinstance(api_ep, str):
+                endpoints.add(api_ep)
+
+        for ep in endpoints:
+            if not ep:
+                continue
+            parsed = urllib.parse.urlparse(ep)
+            path = parsed.path
+
+            endpoint_checked = False
+            for pattern, resource_type in API_PATTERNS:
+                if endpoint_checked:
+                    break
+                match = re.search(pattern, path)
+                if not match:
+                    continue
+                endpoint_checked = True
+
+                original_id = match.group(1)
+                try:
+                    orig_resp = self._get(path)
+                    orig_status = self._status(orig_resp)
+                    orig_text = self._text(orig_resp)
+
+                    if orig_status not in (200, 201):
+                        continue
+
+                    test_ids = []
+                    int_id = int(original_id)
+                    for offset in [1, -1, 2, 100, 999]:
+                        candidate = int_id + offset
+                        if candidate > 0:
+                            test_ids.append(str(candidate))
+
+                    for test_id in test_ids:
+                        tampered_path = path.replace(f"/{original_id}", f"/{test_id}", 1)
+                        tamper_resp = self._get(tampered_path)
+                        tamper_status = self._status(tamper_resp)
+                        tamper_text = self._text(tamper_resp)
+
+                        if tamper_status == 200 and len(tamper_text) > 10:
+                            if tamper_text != orig_text:
+                                findings.append({
+                                    "url": ep,
+                                    "resource_type": resource_type,
+                                    "original_id": original_id,
+                                    "tampered_id": test_id,
+                                    "tampered_path": tampered_path,
+                                    "original_status": orig_status,
+                                    "tampered_status": tamper_status,
+                                    "confidence": Confidence.FIRM,
+                                })
+                                print(f"  \033[38;5;196m[BOLA]\033[0m {path} id={original_id}->{test_id} accessible")
+                                break
+                except Exception:
+                    continue
+
+        self.results["bola"] = findings
+        return findings
+
+    def bfla_test(self) -> list[dict]:
+        """Test for Broken Function Level Authorization (access admin endpoints as regular user)."""
+        findings: list[dict] = []
+
+        ADMIN_PATHS = [
+            "/api/admin", "/api/v1/admin", "/api/v2/admin",
+            "/admin/api", "/api/admin/users", "/api/admin/settings",
+            "/api/admin/config", "/api/admin/logs", "/api/admin/dashboard",
+            "/api/internal", "/api/debug", "/api/management",
+            "/api/v1/admin/users", "/api/v1/admin/roles",
+            "/api/v1/admin/permissions", "/api/v1/admin/audit",
+            "/actuator", "/actuator/env", "/actuator/health",
+            "/actuator/configprops", "/actuator/mappings",
+            "/management", "/management/health", "/management/info",
+            "/_debug", "/_internal", "/_admin",
+            "/graphql", "/api/graphql",
+        ]
+
+        PRIVILEGED_METHODS = ["PUT", "DELETE", "PATCH"]
+
+        for path in ADMIN_PATHS:
+            try:
+                resp = self._get(path)
+                status = self._status(resp)
+                text = self._text(resp)
+
+                if status == 200 and len(text) > 20:
+                    is_json = False
+                    try:
+                        json.loads(text)
+                        is_json = True
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
+                    if is_json or any(kw in text.lower() for kw in
+                                     ["admin", "user", "config", "setting", "permission",
+                                      "role", "audit", "log", "debug"]):
+                        findings.append({
+                            "url": urllib.parse.urljoin(self.base_url, path),
+                            "path": path,
+                            "type": "admin-endpoint-exposed",
+                            "status": status,
+                            "is_json": is_json,
+                            "response_length": len(text),
+                            "confidence": Confidence.FIRM,
+                        })
+                        print(f"  \033[38;5;196m[BFLA]\033[0m Admin endpoint accessible: {path} ({status})")
+            except Exception:
+                continue
+
+        discovered_apis = set()
+        for api_ep in self.results.get("api_endpoints", []):
+            if isinstance(api_ep, dict):
+                discovered_apis.add(api_ep.get("path", api_ep.get("url", "")))
+            elif isinstance(api_ep, str):
+                discovered_apis.add(api_ep)
+
+        for api_path in discovered_apis:
+            if not api_path:
+                continue
+            for method in PRIVILEGED_METHODS:
+                try:
+                    if method == "PUT":
+                        resp = self._put(api_path, data="{}", headers={"Content-Type": "application/json"})
+                    elif method == "DELETE":
+                        resp = self._delete(api_path)
+                    elif method == "PATCH":
+                        resp = self._patch(api_path, data="{}", headers={"Content-Type": "application/json"})
+                    else:
+                        continue
+
+                    status = self._status(resp)
+                    if status not in (401, 403, 404, 405, 0, None):
+                        findings.append({
+                            "url": urllib.parse.urljoin(self.base_url, api_path),
+                            "path": api_path,
+                            "type": f"privileged-method-{method}",
+                            "method": method,
+                            "status": status,
+                            "confidence": Confidence.FIRM,
+                        })
+                        print(f"  \033[38;5;196m[BFLA]\033[0m {method} {api_path} returned {status}")
+                except Exception:
+                    continue
+
+        self.results["bfla"] = findings
+        return findings
+
+    def mass_assignment_test(self) -> list[dict]:
+        """Test for mass assignment by injecting extra fields in POST/PUT requests."""
+        findings: list[dict] = []
+
+        DANGEROUS_FIELDS = [
+            ("role", "admin"),
+            ("is_admin", "true"),
+            ("isAdmin", "true"),
+            ("admin", "1"),
+            ("privilege", "admin"),
+            ("permissions", "all"),
+            ("access_level", "9999"),
+            ("user_type", "administrator"),
+            ("verified", "true"),
+            ("active", "true"),
+            ("approved", "true"),
+            ("balance", "99999"),
+            ("price", "0"),
+            ("discount", "100"),
+        ]
+
+        forms = self._discover_forms()
+
+        for form in forms:
+            action = form.get("action", "/")
+            method = form.get("method", "POST").upper()
+            fields = form.get("fields", {})
+            if not fields:
+                continue
+
+            try:
+                normal_resp = self._post(action, fields)
+                normal_status = self._status(normal_resp)
+                normal_text = self._text(normal_resp)
+            except Exception:
+                continue
+
+            for extra_field, extra_value in DANGEROUS_FIELDS:
+                if extra_field in fields:
+                    continue
+                try:
+                    inject_data = dict(fields)
+                    inject_data[extra_field] = extra_value
+                    inject_resp = self._post(action, inject_data)
+                    inject_status = self._status(inject_resp)
+                    inject_text = self._text(inject_resp)
+
+                    if inject_status in (200, 201, 302):
+                        if inject_status != normal_status or (
+                            inject_text != normal_text and
+                            any(kw in inject_text.lower() for kw in
+                                ["admin", "success", "updated", "created"])
+                        ):
+                            findings.append({
+                                "url": urllib.parse.urljoin(self.base_url, action),
+                                "form_action": action,
+                                "injected_field": extra_field,
+                                "injected_value": extra_value,
+                                "normal_status": normal_status,
+                                "inject_status": inject_status,
+                                "confidence": Confidence.FIRM,
+                            })
+                            print(f"  \033[38;5;196m[MASS-ASSIGN]\033[0m {action} accepted extra field '{extra_field}={extra_value}'")
+                            break
+                except Exception:
+                    continue
+
+        api_endpoints = set()
+        for ep in self.results.get("api_endpoints", []):
+            if isinstance(ep, dict):
+                api_endpoints.add(ep.get("url", ep.get("path", "")))
+            elif isinstance(ep, str):
+                api_endpoints.add(ep)
+
+        for api_path in api_endpoints:
+            if not api_path:
+                continue
+            for extra_field, extra_value in DANGEROUS_FIELDS[:5]:
+                try:
+                    payload = json.dumps({extra_field: extra_value})
+                    resp = self._post(api_path, payload,
+                                     headers={"Content-Type": "application/json"})
+                    status = self._status(resp)
+                    if status in (200, 201):
+                        text = self._text(resp)
+                        if extra_field in text or extra_value in text:
+                            findings.append({
+                                "url": urllib.parse.urljoin(self.base_url, api_path),
+                                "api_path": api_path,
+                                "injected_field": extra_field,
+                                "injected_value": extra_value,
+                                "type": "api-mass-assignment",
+                                "confidence": Confidence.FIRM,
+                            })
+                            print(f"  \033[38;5;196m[MASS-ASSIGN]\033[0m API {api_path} reflected '{extra_field}'")
+                            break
+                except Exception:
+                    continue
+
+        self.results["mass_assignment"] = findings
+        return findings
+
+    def excessive_data_test(self) -> list[dict]:
+        """Test for excessive data exposure in API responses."""
+        findings: list[dict] = []
+
+        SENSITIVE_FIELDS = [
+            "password", "passwd", "pass", "pwd", "hash", "password_hash",
+            "secret", "secret_key", "private_key", "api_key", "apikey",
+            "token", "access_token", "refresh_token", "session_token",
+            "ssn", "social_security", "credit_card", "card_number", "cvv",
+            "bank_account", "routing_number", "iban",
+            "internal_id", "internal_note", "debug", "stack_trace",
+            "db_password", "database_url", "connection_string",
+            "aws_secret", "stripe_secret", "private",
+        ]
+
+        endpoints = set()
+        for ep in self._discovered_endpoints:
+            endpoints.add(ep)
+        for c in self.results.get("crawled_urls", []):
+            endpoints.add(c.get("url", ""))
+        for api_ep in self.results.get("api_endpoints", []):
+            if isinstance(api_ep, dict):
+                endpoints.add(api_ep.get("url", api_ep.get("path", "")))
+            elif isinstance(api_ep, str):
+                endpoints.add(api_ep)
+
+        PROBE_PATHS = [
+            "/api/v1/users/me", "/api/v1/user", "/api/v1/profile",
+            "/api/v1/account", "/api/me", "/api/user",
+            "/api/v2/users/me", "/api/v2/user", "/api/v2/profile",
+            "/user/profile", "/account/settings",
+        ]
+        for p in PROBE_PATHS:
+            endpoints.add(urllib.parse.urljoin(self.base_url, p))
+
+        checked = set()
+        for ep in endpoints:
+            if not ep:
+                continue
+            parsed = urllib.parse.urlparse(ep)
+            path_key = parsed.path
+            if path_key in checked:
+                continue
+            checked.add(path_key)
+
+            try:
+                resp = self._get(parsed.path)
+                status = self._status(resp)
+                text = self._text(resp)
+
+                if status != 200 or len(text) < 10:
+                    continue
+
+                try:
+                    data = json.loads(text)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
+                exposed = []
+
+                def _scan_keys(obj, prefix=""):
+                    if isinstance(obj, dict):
+                        for k, v in obj.items():
+                            full_key = f"{prefix}.{k}" if prefix else k
+                            if k.lower() in SENSITIVE_FIELDS:
+                                exposed.append({"field": full_key, "value_type": type(v).__name__})
+                            if isinstance(v, (dict, list)):
+                                _scan_keys(v, full_key)
+                    elif isinstance(obj, list):
+                        for i, item in enumerate(obj[:3]):
+                            _scan_keys(item, f"{prefix}[{i}]")
+
+                _scan_keys(data)
+
+                if exposed:
+                    findings.append({
+                        "url": ep,
+                        "path": parsed.path,
+                        "exposed_fields": exposed,
+                        "field_count": len(exposed),
+                        "confidence": Confidence.FIRM,
+                    })
+                    field_names = ", ".join(e["field"] for e in exposed[:5])
+                    print(f"  \033[38;5;208m[DATA-EXPOSURE]\033[0m {parsed.path} exposes: {field_names}")
+            except Exception:
+                continue
+
+        self.results["excessive_data"] = findings
+        return findings
+
+    def api_inventory_test(self) -> list[dict]:
+        """Discover undocumented API versions and shadow endpoints."""
+        findings: list[dict] = []
+
+        VERSION_PATTERNS = [
+            "/api/v{}/", "/api/v{}", "/v{}/", "/v{}",
+            "/api/version{}/", "/api/ver{}/",
+        ]
+
+        SHADOW_PATHS = [
+            "/api/internal", "/api/private", "/api/hidden",
+            "/api/legacy", "/api/deprecated", "/api/beta",
+            "/api/alpha", "/api/staging", "/api/test",
+            "/api/dev", "/api/debug", "/api/experimental",
+            "/api/old", "/api/backup", "/api/v0",
+        ]
+
+        DOC_PATHS = [
+            "/swagger.json", "/swagger/v1/swagger.json",
+            "/api-docs", "/api/docs", "/api/documentation",
+            "/openapi.json", "/openapi.yaml", "/api/openapi.json",
+            "/redoc", "/api/redoc",
+            "/graphql", "/graphiql", "/playground",
+            "/api/schema", "/api/spec",
+            "/.well-known/openapi.json",
+        ]
+
+        discovered_versions = set()
+        for ver in range(0, 10):
+            for pattern in VERSION_PATTERNS:
+                path = pattern.format(ver)
+                try:
+                    resp = self._get(path)
+                    status = self._status(resp)
+                    text = self._text(resp)
+
+                    if status == 200 and len(text) > 20:
+                        discovered_versions.add(ver)
+                        findings.append({
+                            "url": urllib.parse.urljoin(self.base_url, path),
+                            "path": path,
+                            "type": "api-version",
+                            "version": ver,
+                            "status": status,
+                            "response_length": len(text),
+                            "confidence": Confidence.CERTAIN,
+                        })
+                        print(f"  \033[38;5;39m[API-INVENTORY]\033[0m Active API version: {path} ({status})")
+                        break
+                except Exception:
+                    continue
+
+        for path in SHADOW_PATHS:
+            try:
+                resp = self._get(path)
+                status = self._status(resp)
+                text = self._text(resp)
+                if status == 200 and len(text) > 20:
+                    findings.append({
+                        "url": urllib.parse.urljoin(self.base_url, path),
+                        "path": path,
+                        "type": "shadow-endpoint",
+                        "status": status,
+                        "response_length": len(text),
+                        "confidence": Confidence.FIRM,
+                    })
+                    print(f"  \033[38;5;208m[API-INVENTORY]\033[0m Shadow endpoint: {path} ({status})")
+            except Exception:
+                continue
+
+        for path in DOC_PATHS:
+            try:
+                resp = self._get(path)
+                status = self._status(resp)
+                text = self._text(resp)
+                if status == 200 and len(text) > 50:
+                    is_spec = any(kw in text.lower() for kw in
+                                 ["swagger", "openapi", "paths", "definitions",
+                                  "graphql", "schema", "query", "mutation"])
+                    if is_spec:
+                        findings.append({
+                            "url": urllib.parse.urljoin(self.base_url, path),
+                            "path": path,
+                            "type": "api-documentation",
+                            "status": status,
+                            "confidence": Confidence.CERTAIN,
+                        })
+                        print(f"  \033[38;5;39m[API-INVENTORY]\033[0m API docs exposed: {path}")
+            except Exception:
+                continue
+
+        self.results["api_inventory"] = findings
+        return findings
+
+    # ──────────────────────────────────────────────────────────
+    #  BATCH 5 — INFRASTRUCTURE MODULES
+    # ──────────────────────────────────────────────────────────
+
+    def http2_test(self) -> dict:
+        """Check HTTP/2 support and potential rapid reset susceptibility."""
+        result = {}
+        try:
+            import ssl
+            parsed = urllib.parse.urlparse(self.base_url)
+            host = parsed.hostname
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+            if parsed.scheme == "https":
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                ctx.set_alpn_protocols(["h2", "http/1.1"])
+
+                with __import__("socket").create_connection((host, port), timeout=self.timeout) as sock:
+                    with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                        negotiated = ssock.selected_alpn_protocol()
+                        result["alpn_negotiated"] = negotiated
+                        result["http2_supported"] = negotiated == "h2"
+                        result["tls_version"] = ssock.version()
+
+                        if negotiated == "h2":
+                            result["rapid_reset_note"] = (
+                                "Server supports HTTP/2. Verify CVE-2023-44487 "
+                                "(HTTP/2 Rapid Reset) mitigation is applied."
+                            )
+                            print(f"  \033[38;5;39m[HTTP/2]\033[0m HTTP/2 supported via ALPN (rapid reset check recommended)")
+                        else:
+                            print(f"  \033[38;5;240m[HTTP/2]\033[0m HTTP/2 not negotiated (ALPN={negotiated})")
+            else:
+                resp = self._get("/", headers={"Upgrade": "h2c", "Connection": "Upgrade, HTTP2-Settings"})
+                status = self._status(resp)
+                result["http2_cleartext_attempted"] = True
+                result["h2c_upgrade_status"] = status
+                result["http2_supported"] = status == 101
+                if status == 101:
+                    print(f"  \033[38;5;39m[HTTP/2]\033[0m h2c cleartext upgrade accepted")
+
+        except Exception as e:
+            result["error"] = str(e)
+
+        self.results["http2"] = result
+        return result
+
+    def cors_preflight_cache_test(self) -> list[dict]:
+        """Test for CORS preflight response caching abuse."""
+        findings: list[dict] = []
+
+        test_origins = [
+            f"https://evil-{int(time.time())}.com",
+            "https://attacker.com",
+            "null",
+        ]
+
+        for origin in test_origins:
+            try:
+                resp = self._get("/", headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "PUT",
+                    "Access-Control-Request-Headers": "X-Custom-Header",
+                })
+
+                if resp is None:
+                    continue
+
+                resp_headers = {}
+                if hasattr(resp, "headers"):
+                    if hasattr(resp.headers, "items"):
+                        resp_headers = {k.lower(): v for k, v in resp.headers.items()}
+                    else:
+                        resp_headers = {k.lower(): resp.headers[k] for k in resp.headers}
+
+                acao = resp_headers.get("access-control-allow-origin", "")
+                acac = resp_headers.get("access-control-allow-credentials", "")
+                acma = resp_headers.get("access-control-max-age", "")
+
+                if acao and acao != "*":
+                    if acao == origin or acao == "null":
+                        cache_seconds = int(acma) if acma.isdigit() else 0
+
+                        vuln = {
+                            "origin_sent": origin,
+                            "origin_reflected": acao,
+                            "credentials_allowed": acac.lower() == "true",
+                            "max_age": cache_seconds,
+                            "type": "preflight-cache",
+                        }
+
+                        if cache_seconds > 3600:
+                            vuln["confidence"] = Confidence.CERTAIN
+                            vuln["risk"] = "Long preflight cache allows persistent CORS abuse"
+                            findings.append(vuln)
+                            print(f"  \033[38;5;196m[CORS-CACHE]\033[0m Origin {origin} reflected with max-age={cache_seconds}s")
+                        elif acao == origin and acac.lower() == "true":
+                            vuln["confidence"] = Confidence.FIRM
+                            vuln["risk"] = "Origin reflected with credentials in preflight"
+                            findings.append(vuln)
+                            print(f"  \033[38;5;208m[CORS-CACHE]\033[0m Origin {origin} reflected with credentials")
+            except Exception:
+                continue
+
+        self.results["cors_preflight_cache"] = findings
+        return findings
+
+    def dns_rebinding_test(self) -> list[dict]:
+        """Test for DNS rebinding susceptibility via Host header validation."""
+        findings: list[dict] = []
+
+        parsed = urllib.parse.urlparse(self.base_url)
+        original_host = parsed.hostname
+
+        REBIND_HOSTS = [
+            "127.0.0.1",
+            "localhost",
+            "0.0.0.0",
+            "[::1]",
+            "169.254.169.254",
+            f"evil.{original_host}",
+            f"{original_host}.attacker.com",
+            "attacker.com",
+            f"127.0.0.1.nip.io",
+        ]
+
+        try:
+            normal_resp = self._get("/")
+            normal_text = self._text(normal_resp)
+            normal_status = self._status(normal_resp)
+        except Exception:
+            self.results["dns_rebinding"] = findings
+            return findings
+
+        for rebind_host in REBIND_HOSTS:
+            try:
+                resp = self._get("/", headers={"Host": rebind_host})
+                test_text = self._text(resp)
+                test_status = self._status(resp)
+
+                if test_status == normal_status and len(test_text) > 50:
+                    similarity = 1.0 - (abs(len(test_text) - len(normal_text)) / max(len(normal_text), 1))
+                    if similarity > 0.8:
+                        findings.append({
+                            "original_host": original_host,
+                            "rebind_host": rebind_host,
+                            "status": test_status,
+                            "response_similarity": round(similarity, 3),
+                            "type": "host-not-validated",
+                            "confidence": Confidence.FIRM,
+                        })
+                        print(f"  \033[38;5;208m[DNS-REBIND]\033[0m Host: {rebind_host} accepted (similarity={similarity:.1%})")
+            except Exception:
+                continue
+
+        self.results["dns_rebinding"] = findings
+        return findings
+
+    def web_cache_deception_test(self) -> list[dict]:
+        """Test for web cache deception by appending static file extensions to dynamic endpoints."""
+        findings: list[dict] = []
+
+        DYNAMIC_PATHS = [
+            "/account", "/profile", "/settings", "/dashboard",
+            "/my-account", "/user", "/api/me", "/api/user",
+        ]
+
+        STATIC_SUFFIXES = [
+            "/nonexistent.css", "/nonexistent.js", "/nonexistent.png",
+            "/nonexistent.gif", "/nonexistent.ico", "/nonexistent.svg",
+            "/..%2f..%2fnonexistent.css",
+        ]
+
+        for dpath in DYNAMIC_PATHS:
+            try:
+                normal_resp = self._get(dpath)
+                normal_status = self._status(normal_resp)
+                normal_text = self._text(normal_resp)
+
+                if normal_status != 200 or len(normal_text) < 50:
+                    continue
+
+                for suffix in STATIC_SUFFIXES:
+                    try:
+                        deception_path = dpath + suffix
+                        resp1 = self._get(deception_path)
+                        status1 = self._status(resp1)
+                        text1 = self._text(resp1)
+
+                        if status1 == 200 and len(text1) > 50:
+                            similarity = 1.0 - (abs(len(text1) - len(normal_text)) / max(len(normal_text), 1))
+                            if similarity > 0.7:
+                                resp_headers = {}
+                                if hasattr(resp1, "headers"):
+                                    if hasattr(resp1.headers, "items"):
+                                        resp_headers = {k.lower(): v for k, v in resp1.headers.items()}
+                                    else:
+                                        resp_headers = {k.lower(): resp1.headers[k] for k in resp1.headers}
+
+                                cache_control = resp_headers.get("cache-control", "")
+                                x_cache = resp_headers.get("x-cache", "")
+                                cf_cache = resp_headers.get("cf-cache-status", "")
+
+                                is_cached = any(kw in (cache_control + x_cache + cf_cache).lower()
+                                              for kw in ["hit", "public", "max-age", "s-maxage"])
+
+                                if is_cached or similarity > 0.9:
+                                    findings.append({
+                                        "url": urllib.parse.urljoin(self.base_url, deception_path),
+                                        "dynamic_path": dpath,
+                                        "deception_path": deception_path,
+                                        "suffix": suffix,
+                                        "similarity": round(similarity, 3),
+                                        "cache_headers": {
+                                            "cache-control": cache_control,
+                                            "x-cache": x_cache,
+                                            "cf-cache-status": cf_cache,
+                                        },
+                                        "is_cached": is_cached,
+                                        "confidence": Confidence.CERTAIN if is_cached else Confidence.FIRM,
+                                    })
+                                    print(f"  \033[38;5;196m[CACHE-DECEPTION]\033[0m {deception_path} returns dynamic content (cached={is_cached})")
+                                    break
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+        self.results["cache_deception"] = findings
+        return findings
+
+    def business_logic_bypass_test(self) -> list[dict]:
+        """Test for rate-limit and business logic bypass via header manipulation."""
+        findings: list[dict] = []
+
+        BYPASS_HEADERS = {
+            "X-Forwarded-For": ["127.0.0.1", "10.0.0.1", "192.168.1.1", "::1"],
+            "X-Real-IP": ["127.0.0.1"],
+            "X-Originating-IP": ["127.0.0.1"],
+            "X-Client-IP": ["127.0.0.1"],
+            "X-Remote-IP": ["127.0.0.1"],
+            "X-Remote-Addr": ["127.0.0.1"],
+            "True-Client-IP": ["127.0.0.1"],
+            "CF-Connecting-IP": ["127.0.0.1"],
+            "Fastly-Client-IP": ["127.0.0.1"],
+        }
+
+        RATE_LIMIT_PATHS = [
+            "/login", "/api/login", "/auth", "/api/auth",
+            "/signin", "/api/signin", "/register", "/api/register",
+            "/forgot-password", "/api/forgot-password",
+            "/reset-password", "/api/reset-password",
+            "/api/v1/auth/login", "/api/v1/auth/register",
+        ]
+
+        for path in RATE_LIMIT_PATHS:
+            try:
+                normal_resp = self._get(path)
+                normal_status = self._status(normal_resp)
+                if normal_status in (404, 0, None):
+                    continue
+
+                blocked = False
+                for _ in range(15):
+                    try:
+                        resp = self._post(path, {"username": "test", "password": "test"})
+                        if self._status(resp) in (429, 403):
+                            blocked = True
+                            break
+                    except Exception:
+                        break
+
+                if not blocked:
+                    continue
+
+                for header_name, header_values in BYPASS_HEADERS.items():
+                    for header_value in header_values:
+                        try:
+                            resp = self._post(
+                                path,
+                                {"username": "test", "password": "test"},
+                                headers={header_name: header_value}
+                            )
+                            bypass_status = self._status(resp)
+
+                            if bypass_status not in (429, 403, 0, None):
+                                findings.append({
+                                    "url": urllib.parse.urljoin(self.base_url, path),
+                                    "path": path,
+                                    "type": "rate-limit-bypass",
+                                    "bypass_header": header_name,
+                                    "bypass_value": header_value,
+                                    "blocked_status": 429,
+                                    "bypass_status": bypass_status,
+                                    "confidence": Confidence.FIRM,
+                                })
+                                print(f"  \033[38;5;196m[BIZ-BYPASS]\033[0m Rate limit bypassed at {path} with {header_name}: {header_value}")
+                                break
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+
+        PRICE_PATHS = ["/checkout", "/cart", "/api/orders", "/api/checkout", "/api/cart"]
+        for path in PRICE_PATHS:
+            try:
+                resp = self._get(path)
+                status = self._status(resp)
+                if status == 200:
+                    text = self._text(resp)
+                    if any(kw in text.lower() for kw in ["price", "amount", "total", "quantity"]):
+                        neg_resp = self._post(path, {"quantity": "-1", "price": "0.01"},
+                                            headers={"Content-Type": "application/x-www-form-urlencoded"})
+                        neg_status = self._status(neg_resp)
+                        neg_text = self._text(neg_resp)
+                        if neg_status in (200, 201):
+                            if any(kw in neg_text.lower() for kw in ["success", "created", "order", "confirmed"]):
+                                findings.append({
+                                    "url": urllib.parse.urljoin(self.base_url, path),
+                                    "path": path,
+                                    "type": "negative-value-bypass",
+                                    "confidence": Confidence.FIRM,
+                                })
+                                print(f"  \033[38;5;196m[BIZ-BYPASS]\033[0m Negative value accepted at {path}")
+            except Exception:
+                continue
+
+        self.results["business_logic_bypass"] = findings
+        return findings
+
+    def _put(self, path: str, data: str = "", headers: dict | None = None):
+        """Safe HTTP PUT primitive."""
+        try:
+            url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
+            req_headers = dict(self.default_headers)
+            if headers:
+                req_headers.update(headers)
+            if self._use_requests:
+                return self.session.put(
+                    url, data=data, timeout=self.timeout,
+                    headers=req_headers, verify=False)
+            else:
+                req = urllib.request.Request(url, data=data.encode() if data else b"", method="PUT")
+                for k, v in req_headers.items():
+                    req.add_header(k, v)
+                ctx = __import__("ssl").create_default_context()
+                ctx.check_hostname = False; ctx.verify_mode = 0
+                with urllib.request.urlopen(req, timeout=self.timeout, context=ctx) as r:
+                    r._text = r.read(65536).decode("utf-8", errors="replace")
+                    r._status = r.status
+                    return r
+        except Exception:
+            return None
+
+    def _delete(self, path: str, headers: dict | None = None):
+        """Safe HTTP DELETE primitive."""
+        try:
+            url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
+            req_headers = dict(self.default_headers)
+            if headers:
+                req_headers.update(headers)
+            if self._use_requests:
+                return self.session.delete(
+                    url, timeout=self.timeout,
+                    headers=req_headers, verify=False)
+            else:
+                req = urllib.request.Request(url, method="DELETE")
+                for k, v in req_headers.items():
+                    req.add_header(k, v)
+                ctx = __import__("ssl").create_default_context()
+                ctx.check_hostname = False; ctx.verify_mode = 0
+                with urllib.request.urlopen(req, timeout=self.timeout, context=ctx) as r:
+                    r._text = r.read(65536).decode("utf-8", errors="replace")
+                    r._status = r.status
+                    return r
+        except Exception:
+            return None
+
+    def _patch(self, path: str, data: str = "", headers: dict | None = None):
+        """Safe HTTP PATCH primitive."""
+        try:
+            url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
+            req_headers = dict(self.default_headers)
+            if headers:
+                req_headers.update(headers)
+            if self._use_requests:
+                return self.session.patch(
+                    url, data=data, timeout=self.timeout,
+                    headers=req_headers, verify=False)
+            else:
+                req = urllib.request.Request(url, data=data.encode() if data else b"", method="PATCH")
+                for k, v in req_headers.items():
+                    req.add_header(k, v)
+                ctx = __import__("ssl").create_default_context()
+                ctx.check_hostname = False; ctx.verify_mode = 0
+                with urllib.request.urlopen(req, timeout=self.timeout, context=ctx) as r:
+                    r._text = r.read(65536).decode("utf-8", errors="replace")
+                    r._status = r.status
+                    return r
+        except Exception:
+            return None
+
+    def _discover_forms(self) -> list[dict]:
+        """Discover HTML forms on the target site."""
+        forms = []
+        pages_to_check = ["/"]
+        for ep in list(self._discovered_endpoints)[:20]:
+            parsed = urllib.parse.urlparse(ep)
+            if parsed.path not in pages_to_check:
+                pages_to_check.append(parsed.path)
+        for c in list(self.results.get("crawled_urls", []))[:30]:
+            u = c.get("url", "")
+            if u:
+                parsed = urllib.parse.urlparse(u)
+                if parsed.path not in pages_to_check:
+                    pages_to_check.append(parsed.path)
+
+        for page in pages_to_check[:30]:
+            try:
+                resp = self._get(page)
+                text = self._text(resp)
+                soup = self._parse_html(text)
+                if not soup:
+                    continue
+
+                for form_tag in soup.find_all("form"):
+                    action = form_tag.get("action", page)
+                    if not action.startswith(("http://", "https://", "/")):
+                        action = "/" + action
+                    method = form_tag.get("method", "POST").upper()
+
+                    fields = {}
+                    for inp in form_tag.find_all(["input", "textarea", "select"]):
+                        name = inp.get("name")
+                        if not name:
+                            continue
+                        value = inp.get("value", "")
+                        input_type = inp.get("type", "text").lower()
+                        if input_type == "password":
+                            value = value or "testpass123"
+                        elif input_type == "email":
+                            value = value or "test@test.com"
+                        elif input_type in ("text", "search"):
+                            value = value or "test"
+                        elif input_type == "hidden":
+                            pass
+                        elif input_type == "submit":
+                            continue
+                        fields[name] = value
+
+                    if fields:
+                        forms.append({
+                            "action": action,
+                            "method": method,
+                            "fields": fields,
+                            "source_page": page,
+                        })
+            except Exception:
+                continue
+
+        return forms
+
     def run_all(self, wordlist_file: str | None = None) -> dict:
         """
         Run all configured web application tests.
@@ -3813,6 +5217,21 @@ class WebScanner:
         print(f"  [45] Subdomain takeover");         self.subdomain_takeover_test()
         print(f"  [46] Sensitive files");            self.sensitive_files_test()
         print(f"  [47] JS secret scan");             self.js_secret_scan()
+        print(f"  [48] NoSQL injection");            self.nosql_injection_test()
+        print(f"  [49] LDAP injection");             self.ldap_injection_test()
+        print(f"  [50] XPath injection");            self.xpath_injection_test()
+        print(f"  [51] Second-order injection");     self.second_order_injection_test()
+        print(f"  [52] Blind command injection");    self.blind_cmdi_test()
+        print(f"  [53] BOLA / API IDOR");            self.bola_test()
+        print(f"  [54] BFLA / admin endpoint auth"); self.bfla_test()
+        print(f"  [55] Mass assignment");            self.mass_assignment_test()
+        print(f"  [56] Excessive data exposure");    self.excessive_data_test()
+        print(f"  [57] API inventory / shadow APIs");self.api_inventory_test()
+        print(f"  [58] HTTP/2 & rapid reset");       self.http2_test()
+        print(f"  [59] CORS preflight cache");       self.cors_preflight_cache_test()
+        print(f"  [60] DNS rebinding");              self.dns_rebinding_test()
+        print(f"  [61] Web cache deception");        self.web_cache_deception_test()
+        print(f"  [62] Business logic / rate bypass");self.business_logic_bypass_test()
         return self.results
 
     def to_scan_results(self) -> list[ScanResult]:
@@ -4117,6 +5536,98 @@ class WebScanner:
                 f"Subdomain takeover risk: {v.get('subdomain')} -> {v.get('platform')}", v,
                 confidence=v.get("confidence", conf)))
 
+        for v in self.results.get("nosql_injection", []):
+            out.append(ScanResult("web-nosqli", host, port, "vulnerable",
+                Severity.CRITICAL,
+                f"NoSQL injection {v.get('technique')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("ldap_injection", []):
+            out.append(ScanResult("web-ldapi", host, port, "vulnerable",
+                Severity.HIGH,
+                f"LDAP injection {v.get('technique')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("xpath_injection", []):
+            out.append(ScanResult("web-xpathi", host, port, "vulnerable",
+                Severity.HIGH,
+                f"XPath injection {v.get('technique')} param={v.get('parameter')} @ {v.get('url','')[:50]}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("second_order", []):
+            out.append(ScanResult("web-second-order", host, port, "vulnerable",
+                Severity.CRITICAL,
+                f"Second-order {v.get('technique')} stored@{v.get('storage_endpoint')} retrieved@{v.get('retrieval_endpoint')}", v,
+                confidence=v.get("confidence", Confidence.CERTAIN)))
+
+        for v in self.results.get("blind_cmdi", []):
+            out.append(ScanResult("web-blind-cmdi", host, port, "vulnerable",
+                Severity.CRITICAL,
+                f"Blind command injection ({v.get('technique')}) param={v.get('parameter')} delay={v.get('inject_time')}s", v,
+                confidence=v.get("confidence", Confidence.CERTAIN)))
+
+        for v in self.results.get("bola", []):
+            out.append(ScanResult("web-bola", host, port, "vulnerable",
+                Severity.HIGH,
+                f"BOLA/IDOR on {v.get('resource_type')}: {v.get('original_id')} -> {v.get('tampered_id')} accessible", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("bfla", []):
+            out.append(ScanResult("web-bfla", host, port, "vulnerable",
+                Severity.HIGH,
+                f"BFLA: privileged function accessible {v.get('path')} ({v.get('type')})", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("mass_assignment", []):
+            out.append(ScanResult("web-mass-assignment", host, port, "vulnerable",
+                Severity.HIGH,
+                f"Mass assignment accepted field '{v.get('injected_field')}={v.get('injected_value')}'", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("excessive_data", []):
+            out.append(ScanResult("web-excessive-data", host, port, "exposed",
+                Severity.MEDIUM,
+                f"Excessive data exposure @ {v.get('path')} ({v.get('field_count')} sensitive fields)", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("api_inventory", []):
+            sev = Severity.LOW if v.get("type") == "api-version" else Severity.INFO
+            out.append(ScanResult("web-api-inventory", host, port, "discovered",
+                sev,
+                f"API asset discovered: {v.get('type')} @ {v.get('path')}", v,
+                confidence=v.get("confidence", Confidence.CERTAIN)))
+
+        h2 = self.results.get("http2", {})
+        if h2 and h2.get("http2_supported"):
+            out.append(ScanResult("web-http2", host, port, "info",
+                Severity.INFO,
+                f"HTTP/2 protocol enabled (ALPN={h2.get('alpn_negotiated')})", h2,
+                confidence=Confidence.CERTAIN))
+
+        for v in self.results.get("cors_preflight_cache", []):
+            out.append(ScanResult("web-cors-preflight", host, port, "vulnerable",
+                Severity.HIGH if v.get("confidence") == Confidence.CERTAIN else Severity.MEDIUM,
+                f"CORS preflight cache risk: origin {v.get('origin_sent')} max_age={v.get('max_age')}s", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("dns_rebinding", []):
+            out.append(ScanResult("web-dns-rebinding", host, port, "vulnerable",
+                Severity.MEDIUM,
+                f"Host header not validated (accepted {v.get('rebind_host')}, similarity={v.get('response_similarity')})", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("cache_deception", []):
+            out.append(ScanResult("web-cache-deception", host, port, "vulnerable",
+                Severity.HIGH if v.get("is_cached") else Severity.MEDIUM,
+                f"Web cache deception @ {v.get('dynamic_path')} (cached={v.get('is_cached')})", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("business_logic_bypass", []):
+            out.append(ScanResult("web-business-logic", host, port, "vulnerable",
+                Severity.HIGH,
+                f"Business logic bypass ({v.get('type')}) @ {v.get('path')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
         return out
 
 async def web_scan_async(url: str, wordlist_file: str | None = None,
@@ -4191,6 +5702,21 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
                 "takeover":   ws.subdomain_takeover_test,
                 "files":      ws.sensitive_files_test,
                 "secrets":    ws.js_secret_scan,
+                "nosqli":     ws.nosql_injection_test,
+                "ldapi":      ws.ldap_injection_test,
+                "xpathi":     ws.xpath_injection_test,
+                "secondorder":ws.second_order_injection_test,
+                "blindcmdi":  ws.blind_cmdi_test,
+                "bola":       ws.bola_test,
+                "bfla":       ws.bfla_test,
+                "massassign": ws.mass_assignment_test,
+                "dataexposure": ws.excessive_data_test,
+                "apiinventory": ws.api_inventory_test,
+                "http2":      ws.http2_test,
+                "corscache":  ws.cors_preflight_cache_test,
+                "rebind":     ws.dns_rebinding_test,
+                "deception":  ws.web_cache_deception_test,
+                "bizbypass":  ws.business_logic_bypass_test,
             }
             for check in checks:
                 fn = CHECK_MAP.get(check)

@@ -448,6 +448,19 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
             cookies  = getattr(args, 'cookie', None),
             auth_token = getattr(args, 'auth_token', None),
         )
+
+        for r in list(web_results):
+            if r.module == "web-tech" and isinstance(r.data, dict):
+                try:
+                    from lightscan.recon.tech_cve import tech_cve_correlate_async
+                    cve_results = await tech_cve_correlate_async(r.data, timeout=args.timeout)
+                    for cr in cve_results:
+                        cr.target = r.target
+                        cr.port = r.port
+                        web_results.append(cr)
+                except Exception:
+                    pass
+
         all_results.extend(web_results)
         counts = {}
         for r in web_results:
@@ -479,6 +492,30 @@ async def _run_main_body(args, cp, t_start, all_results, open_ports, meta):
                 print(f"      \033[38;5;240m↳ {location}\033[0m")
             if getattr(result, "remediation", None):
                 print(f"      \033[38;5;39m↳ Fix:\033[0m \033[38;5;248m{result.remediation}\033[0m")
+
+    if getattr(args, 'whois', None):
+        from lightscan.recon.whois_lookup import whois_lookup_async
+        print(f"\033[38;5;39m[WHOIS]\033[0m {args.whois}")
+        whois_results = await whois_lookup_async(args.whois, timeout=args.timeout)
+        for r in whois_results:
+            print(f"  {r.detail}")
+        all_results.extend(whois_results)
+
+    if getattr(args, 'reverse_ip', None):
+        from lightscan.recon.reverse_ip import reverse_ip_async
+        print(f"\033[38;5;39m[REVERSE-IP]\033[0m {args.reverse_ip}")
+        rip_results = await reverse_ip_async(args.reverse_ip, timeout=args.timeout)
+        for r in rip_results:
+            print(f"  {r.detail}")
+        all_results.extend(rip_results)
+
+    if getattr(args, 'email_harvest', None):
+        from lightscan.recon.email_harvest import email_harvest_async
+        print(f"\033[38;5;39m[EMAIL-HARVEST]\033[0m {args.email_harvest}")
+        email_results = await email_harvest_async(args.email_harvest, timeout=args.timeout)
+        for r in email_results:
+            print(f"  {r.detail}")
+        all_results.extend(email_results)
 
     if getattr(args, 'rdp_probe', None):
         from lightscan.brute.handlers.rdp_raw import make_rdp_probe, RawRDPHandler

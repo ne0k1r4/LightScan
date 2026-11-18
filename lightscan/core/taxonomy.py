@@ -196,6 +196,101 @@ TAXONOMY_MAP: dict[str, dict[str, str]] = {
         "owasp": "A02:2021-Cryptographic Failures",
         "remediation": "Disable legacy protocol versions (SSLv3, TLS 1.0, TLS 1.1) and deprecated ciphers (RC4, 3DES, CBC mode). Require TLS 1.2+ with modern AEAD cipher suites.",
     },
+    "recon-whois": {
+        "cwe": "CWE-200: Information Exposure",
+        "owasp": "A05:2021-Security Misconfiguration",
+        "remediation": "Enable domain privacy protection, DNSSEC, and ensure timely domain renewal.",
+    },
+    "recon-zonewalk": {
+        "cwe": "CWE-200: Information Exposure",
+        "owasp": "A05:2021-Security Misconfiguration",
+        "remediation": "Use NSEC3 with opt-out to prevent DNS zone enumeration via NSEC walking.",
+    },
+    "recon-vhost": {
+        "cwe": "CWE-200: Information Exposure",
+        "owasp": "A05:2021-Security Misconfiguration",
+        "remediation": "Configure the web server to reject requests with unknown Host headers. Use a default vhost that returns 403.",
+    },
+    "recon-email": {
+        "cwe": "CWE-200: Information Exposure",
+        "owasp": "A05:2021-Security Misconfiguration",
+        "remediation": "Avoid publishing role-based and personal email addresses on public web pages. Use contact forms instead.",
+    },
+    "web-nosqli": {
+        "cwe": "CWE-943: Improper Neutralization of Special Elements in Data Query Logic",
+        "owasp": "A03:2021-Injection",
+        "remediation": "Sanitize query selectors, cast input types explicitly (e.g. string/int), and use MongoDB schema validators or Mongoose with strict type checking to reject operator objects ($ne, $gt, $where).",
+    },
+    "web-ldapi": {
+        "cwe": "CWE-90: LDAP Injection",
+        "owasp": "A03:2021-Injection",
+        "remediation": "Use LDAP filter encoding APIs to escape special characters (*, (, ), \\, NUL) before inserting untrusted values into search filters.",
+    },
+    "web-xpathi": {
+        "cwe": "CWE-643: XPath Injection",
+        "owasp": "A03:2021-Injection",
+        "remediation": "Use parameterized XPath queries or pre-compiled XPath expressions with variable resolvers rather than string concatenation.",
+    },
+    "web-second-order": {
+        "cwe": "CWE-74: Improper Neutralization of Special Elements in Output Used by a Downstream Component",
+        "owasp": "A03:2021-Injection",
+        "remediation": "Contextually encode all retrieved data before rendering in HTML, SQL, or command contexts, and re-validate data upon extraction from storage.",
+    },
+    "web-blind-cmdi": {
+        "cwe": "CWE-78: OS Command Injection",
+        "owasp": "A03:2021-Injection",
+        "remediation": "Avoid invoking shell interpreters. Pass structured argument vectors to APIs like execve or subprocess without shell=True, and validate input against a strict allowlist.",
+    },
+    "web-bola": {
+        "cwe": "CWE-639: Insecure Direct Object Reference",
+        "owasp": "A01:2021-Broken Access Control",
+        "remediation": "Enforce object-level authorization checks on every API request. Verify the requesting user is the owner of or authorized for the specific resource ID.",
+    },
+    "web-bfla": {
+        "cwe": "CWE-285: Improper Authorization",
+        "owasp": "A01:2021-Broken Access Control",
+        "remediation": "Enforce role-based and function-level access control on all administrative and privileged endpoints and HTTP verbs (PUT, DELETE, PATCH).",
+    },
+    "web-mass-assignment": {
+        "cwe": "CWE-915: Improperly Controlled Modification of Dynamically Determined Object Attributes",
+        "owasp": "A04:2021-Insecure Design",
+        "remediation": "Define strict Data Transfer Objects (DTOs) or use an allowlist of assignable model properties, discarding unauthorized fields (e.g. role, isAdmin).",
+    },
+    "web-excessive-data": {
+        "cwe": "CWE-213: Exposure of Sensitive Information Due to Incompatible Policies",
+        "owasp": "A01:2021-Broken Access Control",
+        "remediation": "Filter API responses on the server side using response schemas or serializers. Never rely on the client to filter out sensitive object fields.",
+    },
+    "web-api-inventory": {
+        "cwe": "CWE-1059: Incomplete Documentation",
+        "owasp": "A09:2021-Security Logging and Monitoring Failures",
+        "remediation": "Maintain an up-to-date API inventory, decommission deprecated and shadow endpoints, and restrict public access to API documentation and schemas in production.",
+    },
+    "web-http2": {
+        "cwe": "CWE-400: Uncontrolled Resource Consumption",
+        "owasp": "A04:2021-Insecure Design",
+        "remediation": "Ensure web servers and reverse proxies are patched against HTTP/2 Rapid Reset (CVE-2023-44487) and enforce stream reset rate limits.",
+    },
+    "web-cors-preflight": {
+        "cwe": "CWE-942: Overly Permissive CORS Policy",
+        "owasp": "A01:2021-Broken Access Control",
+        "remediation": "Avoid excessively long Access-Control-Max-Age values for dynamic origins, and do not reflect untrusted origins with credentials allowed in preflight responses.",
+    },
+    "web-dns-rebinding": {
+        "cwe": "CWE-350: Reliance on Reverse DNS Resolution with a Security Boundary",
+        "owasp": "A05:2021-Security Misconfiguration",
+        "remediation": "Validate the Host header against a strict allowlist of domain names and reject requests with unrecognized or internal/loopback Host values.",
+    },
+    "web-cache-deception": {
+        "cwe": "CWE-524: Use of Cache Containing Sensitive Information",
+        "owasp": "A05:2021-Security Misconfiguration",
+        "remediation": "Configure web cache servers to respect Cache-Control: no-store on authenticated dynamic pages and disallow caching based solely on URL path extensions.",
+    },
+    "web-business-logic": {
+        "cwe": "CWE-840: Business Logic Errors",
+        "owasp": "A04:2021-Insecure Design",
+        "remediation": "Validate client IP addresses using secure reverse-proxy headers (reject spoofable headers like X-Forwarded-For if not set by a trusted proxy), and validate numeric business limits (positive quantities, non-zero prices).",
+    },
 }
 
 DEFAULT_TAXONOMY = {
@@ -219,6 +314,13 @@ def get_taxonomy(module_name: str) -> dict[str, str]:
     for key, data in TAXONOMY_MAP.items():
         if key in clean or clean in key:
             return data.copy()
+
+    if clean.startswith("recon-cve-"):
+        return {
+            "cwe": "CWE-937: Using Components with Known Vulnerabilities",
+            "owasp": "A06:2021-Vulnerable and Outdated Components",
+            "remediation": "Upgrade the affected component or library to the vendor's latest patched release immediately.",
+        }
 
     if clean.startswith("cve-"):
         return {
