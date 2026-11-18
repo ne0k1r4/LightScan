@@ -1,8 +1,4 @@
-"""
-LightScan — Advanced Web Application Security Scanner
-Asynchronous web application assessment engine with differential evidence verification,
-authenticated audit profiling, and standardized CWE/OWASP taxonomy reporting.
-"""
+"""Web application scanner."""
 from __future__ import annotations
 
 import asyncio
