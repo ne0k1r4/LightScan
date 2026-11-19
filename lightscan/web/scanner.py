@@ -228,6 +228,22 @@ class WebScanner:
             "dns_rebinding":  [],
             "cache_deception": [],
             "business_logic_bypass": [],
+            "session_fixation": [],
+            "login_bruteforce": [],
+            "password_policy":  [],
+            "session_entropy":  [],
+            "twofa_bypass":     [],
+            "session_timeout":  [],
+            "concurrent_session": [],
+            "insecure_logout":  [],
+            "auth_bypass":      [],
+            "token_leak":       [],
+            "csp_analysis":     [],
+            "cors_extended":    [],
+            "email_injection":  [],
+            "race_condition":   [],
+            "graphql_injection":[],
+            "security_txt":     [],
         }
 
     def _get(self, path: str, headers: dict | None = None,
@@ -4849,6 +4865,674 @@ class WebScanner:
 
         return forms
 
+
+    def session_fixation_test(self) -> list[dict]:
+        findings: list[dict] = []
+        login_endpoints = ["/login", "/signin", "/auth", "/api/login", "/api/auth/login", "/account/login", "/user/login"]
+        for ep in list(self._discovered_endpoints)[:15]:
+            p = urllib.parse.urlparse(ep).path.lower()
+            if any(k in p for k in ("login", "signin", "auth")) and p not in login_endpoints:
+                login_endpoints.append(p)
+
+        for path in login_endpoints[:8]:
+            try:
+                pre_resp = self._get(path)
+                pre_status = self._status(pre_resp)
+                if pre_status in (404, 0, None):
+                    continue
+
+                pre_cookies = {}
+                if hasattr(pre_resp, "cookies"):
+                    pre_cookies = dict(pre_resp.cookies)
+                elif hasattr(pre_resp, "headers"):
+                    sc = pre_resp.headers.get("Set-Cookie", "")
+                    if sc:
+                        for part in sc.split(";"):
+                            if "=" in part:
+                                k, v = part.strip().split("=", 1)
+                                pre_cookies[k] = v
+
+                sess_cookie_names = [k for k in pre_cookies if any(s in k.lower() for s in ("sess", "id", "token", "auth", "jwt"))]
+                if not sess_cookie_names:
+                    continue
+
+                post_resp = self._post(path, {"username": "lightscan_probe_user", "password": "WrongPassword123!", "login": "1"})
+                post_cookies = {}
+                if hasattr(post_resp, "cookies"):
+                    post_cookies = dict(post_resp.cookies)
+
+                fixed = False
+                for cname in sess_cookie_names:
+                    pre_val = pre_cookies.get(cname)
+                    post_val = post_cookies.get(cname, pre_val)
+                    if pre_val and post_val and pre_val == post_val:
+                        fixed = True
+                        findings.append({
+                            "url": urllib.parse.urljoin(self.base_url, path),
+                            "path": path,
+                            "type": "session-fixation",
+                            "cookie_name": cname,
+                            "pre_session_id": pre_val[:16] + "..." if len(pre_val) > 16 else pre_val,
+                            "confidence": Confidence.FIRM,
+                        })
+                        print(f"  [38;5;196m[SESSION-FIX][0m Session ID '{cname}' not regenerated post-auth at {path}")
+                        break
+            except Exception:
+                continue
+
+        self.results["session_fixation"] = findings
+        return findings
+
+    def login_endpoint_bruteforce_test(self) -> list[dict]:
+        findings: list[dict] = []
+        auth_paths = ["/login", "/api/login", "/signin", "/api/auth/login", "/account/login", "/api/v1/auth/login"]
+        for ep in list(self._discovered_endpoints)[:15]:
+            p = urllib.parse.urlparse(ep).path.lower()
+            if any(k in p for k in ("login", "signin", "auth/token")) and p not in auth_paths:
+                auth_paths.append(p)
+
+        for path in auth_paths[:5]:
+            try:
+                base_resp = self._get(path)
+                if self._status(base_resp) in (404, 0, None):
+                    continue
+
+                blocked = False
+                statuses = []
+                for i in range(8):
+                    r = self._post(path, {"username": f"probe_user_{i}", "password": f"Password{i}!#"})
+                    st = self._status(r)
+                    if st is not None:
+                        statuses.append(st)
+                    if st in (429, 403):
+                        blocked = True
+                        break
+                    headers = getattr(r, "headers", {})
+                    if any(k.lower().startswith("x-ratelimit") for k in headers):
+                        blocked = True
+                        break
+
+                if not blocked and len(statuses) >= 6:
+                    all_unrestricted = all(s in (200, 400, 401, 302) for s in statuses)
+                    if all_unrestricted:
+                        findings.append({
+                            "url": urllib.parse.urljoin(self.base_url, path),
+                            "path": path,
+                            "type": "missing-bruteforce-protection",
+                            "attempts_tested": len(statuses),
+                            "statuses_observed": list(set(statuses)),
+                            "confidence": Confidence.FIRM,
+                        })
+                        print(f"  [38;5;196m[AUTH-BRUTE][0m No rate limiting or lockout after {len(statuses)} attempts at {path}")
+            except Exception:
+                continue
+
+        self.results["login_bruteforce"] = findings
+        return findings
+
+    def password_policy_test(self) -> list[dict]:
+        findings: list[dict] = []
+        reg_paths = ["/register", "/signup", "/api/register", "/api/signup", "/user/register", "/api/v1/register", "/reset-password"]
+        for ep in list(self._discovered_endpoints)[:15]:
+            p = urllib.parse.urlparse(ep).path.lower()
+            if any(k in p for k in ("register", "signup")) and p not in reg_paths:
+                reg_paths.append(p)
+
+        WEAK_PASSWORDS = ["1", "123", "password", "a", "admin"]
+        for path in reg_paths[:5]:
+            try:
+                probe_resp = self._get(path)
+                if self._status(probe_resp) in (404, 0, None):
+                    continue
+
+                for wp in WEAK_PASSWORDS:
+                    try:
+                        r = self._post(path, {
+                            "username": "lightscan_policy_probe",
+                            "email": "policy_probe@testdomain.invalid",
+                            "password": wp,
+                            "confirm_password": wp,
+                        })
+                        st = self._status(r)
+                        txt = self._text(r).lower()
+                        if st in (200, 201) and not any(k in txt for k in ("too short", "weak", "minimum", "complexity", "must contain", "invalid password")):
+                            findings.append({
+                                "url": urllib.parse.urljoin(self.base_url, path),
+                                "path": path,
+                                "type": "weak-password-policy",
+                                "accepted_sample": wp,
+                                "confidence": Confidence.FIRM,
+                            })
+                            print(f"  [38;5;196m[PASS-POLICY][0m Trivial password '{wp}' accepted without complexity rejection at {path}")
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+        self.results["password_policy"] = findings
+        return findings
+
+    def session_entropy_test(self) -> list[dict]:
+        findings: list[dict] = []
+        try:
+            tokens = []
+            cookie_names = set()
+            for _ in range(6):
+                r = self._get("/")
+                if r:
+                    cookies = {}
+                    if hasattr(r, "cookies"):
+                        cookies = dict(r.cookies)
+                    for k, v in cookies.items():
+                        if any(s in k.lower() for s in ("sess", "id", "token", "auth", "jwt", "key")):
+                            tokens.append(v)
+                            cookie_names.add(k)
+
+            if len(tokens) >= 3:
+                first_tok = tokens[0]
+                n = len(first_tok)
+                if n < 16:
+                    findings.append({
+                        "url": self.base_url,
+                        "type": "short-session-token",
+                        "cookie_names": list(cookie_names),
+                        "length": n,
+                        "sample": first_tok,
+                        "confidence": Confidence.CERTAIN,
+                    })
+                    print(f"  [38;5;196m[SESSION-ENTROPY][0m Session token length too short ({n} chars, minimum recommended: 16)")
+
+                freq: dict[str, int] = {}
+                for ch in first_tok:
+                    freq[ch] = freq.get(ch, 0) + 1
+                entropy = 0.0
+                for count in freq.values():
+                    p = count / n
+                    entropy -= p * math.log2(p)
+
+                if entropy < 2.5 and n >= 8:
+                    findings.append({
+                        "url": self.base_url,
+                        "type": "low-entropy-token",
+                        "cookie_names": list(cookie_names),
+                        "entropy": round(entropy, 2),
+                        "sample": first_tok,
+                        "confidence": Confidence.FIRM,
+                    })
+                    print(f"  [38;5;196m[SESSION-ENTROPY][0m Low Shannon entropy ({entropy:.2f} bits/char) in session token")
+        except Exception:
+            pass
+
+        self.results["session_entropy"] = findings
+        return findings
+
+    def two_factor_bypass_test(self) -> list[dict]:
+        findings: list[dict] = []
+        twofa_paths = ["/2fa", "/mfa", "/auth/2fa", "/two-factor", "/api/2fa/verify", "/verify-2fa"]
+        for path in twofa_paths:
+            try:
+                resp = self._get(path)
+                st = self._status(resp)
+                if st in (404, 0, None):
+                    continue
+
+                txt = self._text(resp).lower()
+                if any(k in txt for k in ("authenticator", "otp", "code", "verification code", "2fa", "mfa")):
+                    DASHBOARD_ROUTES = ["/dashboard", "/admin", "/account", "/home", "/profile", "/api/v1/user/profile"]
+                    for dash in DASHBOARD_ROUTES:
+                        dash_resp = self._get(dash)
+                        dash_status = self._status(dash_resp)
+                        if dash_status == 200:
+                            dash_txt = self._text(dash_resp).lower()
+                            if not any(k in dash_txt for k in ("login", "sign in", "verify", "2fa")):
+                                findings.append({
+                                    "url": urllib.parse.urljoin(self.base_url, dash),
+                                    "twofa_endpoint": path,
+                                    "bypassed_endpoint": dash,
+                                    "type": "2fa-forced-browsing-bypass",
+                                    "confidence": Confidence.FIRM,
+                                })
+                                print(f"  [38;5;196m[2FA-BYPASS][0m Post-2FA page accessible directly without challenge: {dash}")
+                                break
+            except Exception:
+                continue
+
+        self.results["twofa_bypass"] = findings
+        return findings
+
+    def session_timeout_test(self) -> list[dict]:
+        findings: list[dict] = []
+        try:
+            r = self._get("/")
+            if r and hasattr(r, "headers"):
+                raw_cookies = r.headers.get("Set-Cookie", "")
+                if raw_cookies:
+                    cookie_directives = raw_cookies.split(",")
+                    for cd in cookie_directives:
+                        cd_lower = cd.lower()
+                        if any(s in cd_lower for s in ("sess", "token", "auth", "id=")):
+                            has_expires = "expires=" in cd_lower
+                            has_max_age = "max-age=" in cd_lower
+                            if not has_expires and not has_max_age:
+                                findings.append({
+                                    "url": self.base_url,
+                                    "type": "missing-session-expiration",
+                                    "cookie_directive": cd[:60],
+                                    "confidence": Confidence.CERTAIN,
+                                })
+                                print(f"  [38;5;196m[SESSION-TIMEOUT][0m Session cookie lacks Max-Age and Expires attributes")
+                                break
+                            elif has_max_age:
+                                m = re.search(r"max-age=(\d+)", cd_lower)
+                                if m:
+                                    age = int(m.group(1))
+                                    if age > 86400 * 30:
+                                        findings.append({
+                                            "url": self.base_url,
+                                            "type": "excessive-session-lifetime",
+                                            "max_age_seconds": age,
+                                            "confidence": Confidence.FIRM,
+                                        })
+                                        print(f"  [38;5;196m[SESSION-TIMEOUT][0m Excessive session cookie Max-Age: {age}s (>30 days)")
+                                        break
+        except Exception:
+            pass
+
+        self.results["session_timeout"] = findings
+        return findings
+
+    def concurrent_session_test(self) -> list[dict]:
+        findings: list[dict] = []
+        try:
+            r1 = self._get("/", headers={"User-Agent": "LightScan-Client-A/2.6"})
+            r2 = self._get("/", headers={"User-Agent": "LightScan-Client-B/2.6"})
+
+            c1 = getattr(r1, "cookies", {})
+            c2 = getattr(r2, "cookies", {})
+
+            if c1 and c2:
+                common_keys = set(c1.keys()).intersection(set(c2.keys()))
+                sess_keys = [k for k in common_keys if any(s in k.lower() for s in ("sess", "id", "auth", "token"))]
+                for sk in sess_keys:
+                    if c1[sk] and c1[sk] == c2[sk]:
+                        findings.append({
+                            "url": self.base_url,
+                            "type": "static-shared-session",
+                            "cookie_name": sk,
+                            "confidence": Confidence.FIRM,
+                        })
+                        print(f"  [38;5;196m[CONCURRENT-SESS][0m Same session ID issued across different client user-agents: {sk}")
+                        break
+        except Exception:
+            pass
+
+        self.results["concurrent_session"] = findings
+        return findings
+
+    def insecure_logout_test(self) -> list[dict]:
+        findings: list[dict] = []
+        logout_paths = ["/logout", "/signout", "/api/logout", "/api/auth/logout", "/user/logout", "/auth/signout"]
+        for path in logout_paths:
+            try:
+                r_get = self._get(path, allow_redirects=False)
+                st = self._status(r_get)
+                if st in (200, 302, 303, 307):
+                    headers = getattr(r_get, "headers", {})
+                    sc = headers.get("Set-Cookie", "")
+                    if sc:
+                        if not any(k in sc.lower() for k in ("max-age=0", "expires=thu, 01 jan 1970", "expires=1970")):
+                            findings.append({
+                                "url": urllib.parse.urljoin(self.base_url, path),
+                                "path": path,
+                                "type": "logout-cookie-not-invalidated",
+                                "status": st,
+                                "confidence": Confidence.FIRM,
+                            })
+                            print(f"  [38;5;196m[INSECURE-LOGOUT][0m Logout at {path} does not clear session cookie via Max-Age=0/expired date")
+                            break
+            except Exception:
+                continue
+
+        self.results["insecure_logout"] = findings
+        return findings
+
+    def auth_bypass_test(self) -> list[dict]:
+        findings: list[dict] = []
+        RESTRICTED_CANDIDATES = [
+            "/admin", "/admin/dashboard", "/api/admin", "/manager/html",
+            "/private", "/internal", "/api/v1/admin/users", "/server-status"
+        ]
+
+        BYPASS_HEADERS = [
+            {"X-Original-URL": "/admin"},
+            {"X-Rewrite-URL": "/admin"},
+            {"X-Forwarded-Prefix": "/admin"},
+            {"X-Custom-IP-Authorization": "127.0.0.1"},
+            {"X-Remote-IP": "127.0.0.1"},
+        ]
+
+        for path in RESTRICTED_CANDIDATES[:6]:
+            try:
+                base_r = self._get(path)
+                base_status = self._status(base_r)
+                if base_status not in (401, 403):
+                    continue
+
+                for h in BYPASS_HEADERS:
+                    try:
+                        r = self._get(path, headers=h)
+                        st = self._status(r)
+                        if st == 200:
+                            findings.append({
+                                "url": urllib.parse.urljoin(self.base_url, path),
+                                "path": path,
+                                "type": "header-auth-bypass",
+                                "bypass_header": list(h.keys())[0],
+                                "confidence": Confidence.FIRM,
+                            })
+                            print(f"  [38;5;196m[AUTH-BYPASS][0m Restricted endpoint {path} accessible via {h}")
+                            break
+                    except Exception:
+                        continue
+
+                try:
+                    norm_path = path.rstrip("/") + "/..;/"
+                    r_norm = self._get(norm_path)
+                    if self._status(r_norm) == 200:
+                        findings.append({
+                            "url": urllib.parse.urljoin(self.base_url, norm_path),
+                            "path": norm_path,
+                            "type": "path-normalization-bypass",
+                            "confidence": Confidence.FIRM,
+                        })
+                        print(f"  [38;5;196m[AUTH-BYPASS][0m Path normalization traversal bypass at {norm_path}")
+                except Exception:
+                    pass
+            except Exception:
+                continue
+
+        self.results["auth_bypass"] = findings
+        return findings
+
+    def token_leak_test(self) -> list[dict]:
+        findings: list[dict] = []
+        TOKEN_PARAM_REGEX = re.compile(r"[?&](token|access_token|session|auth|jwt|api_key)=([a-zA-Z0-9_\-\.]{12,})", re.IGNORECASE)
+
+        pages = ["/"]
+        for ep in list(self._discovered_endpoints)[:15]:
+            p = urllib.parse.urlparse(ep).path
+            if p not in pages:
+                pages.append(p)
+
+        for page in pages[:10]:
+            try:
+                resp = self._get(page)
+                if not resp:
+                    continue
+                txt = self._text(resp)
+                m = TOKEN_PARAM_REGEX.search(txt)
+                if m:
+                    findings.append({
+                        "url": urllib.parse.urljoin(self.base_url, page),
+                        "path": page,
+                        "type": "token-in-url-parameter",
+                        "parameter": m.group(1),
+                        "token_preview": m.group(2)[:8] + "...",
+                        "confidence": Confidence.FIRM,
+                    })
+                    print(f"  [38;5;196m[TOKEN-LEAK][0m Token exposed in URL query string '{m.group(1)}' at {page}")
+                    break
+
+                headers = getattr(resp, "headers", {})
+                cc = headers.get("Cache-Control", "").lower()
+                if ("login" in page or "dashboard" in page) and ("no-store" not in cc):
+                    findings.append({
+                        "url": urllib.parse.urljoin(self.base_url, page),
+                        "path": page,
+                        "type": "authenticated-page-cacheable",
+                        "cache_control": cc,
+                        "confidence": Confidence.FIRM,
+                    })
+                    print(f"  [38;5;196m[TOKEN-LEAK][0m Authenticated page {page} missing Cache-Control: no-store")
+                    break
+            except Exception:
+                continue
+
+        self.results["token_leak"] = findings
+        return findings
+
+    def csp_analysis_test(self) -> list[dict]:
+        findings: list[dict] = []
+        try:
+            r = self._get("/")
+            if r and hasattr(r, "headers"):
+                headers = r.headers
+                csp = headers.get("Content-Security-Policy", "")
+                csp_ro = headers.get("Content-Security-Policy-Report-Only", "")
+
+                if not csp and not csp_ro:
+                    findings.append({
+                        "url": self.base_url,
+                        "type": "missing-csp",
+                        "confidence": Confidence.CERTAIN,
+                    })
+                    print(f"  [38;5;196m[CSP][0m Missing Content-Security-Policy header")
+                else:
+                    policy = csp or csp_ro
+                    issues = []
+                    if "'unsafe-inline'" in policy:
+                        issues.append("unsafe-inline-allowed")
+                    if "'unsafe-eval'" in policy:
+                        issues.append("unsafe-eval-allowed")
+                    if "data:" in policy and "script-src" in policy:
+                        issues.append("data-uri-in-script-src")
+                    if "*" in policy:
+                        issues.append("wildcard-source")
+                    if "base-uri" not in policy:
+                        issues.append("missing-base-uri")
+                    if "frame-ancestors" not in policy:
+                        issues.append("missing-frame-ancestors")
+
+                    if issues:
+                        findings.append({
+                            "url": self.base_url,
+                            "type": "weak-csp-policy",
+                            "issues": issues,
+                            "policy": policy[:120] + "..." if len(policy) > 120 else policy,
+                            "confidence": Confidence.CERTAIN,
+                        })
+                        print(f"  [38;5;196m[CSP][0m Weak CSP directives detected: {', '.join(issues[:3])}")
+        except Exception:
+            pass
+
+        self.results["csp_analysis"] = findings
+        return findings
+
+    def cors_extended_test(self) -> list[dict]:
+        findings: list[dict] = []
+        parsed = urllib.parse.urlparse(self.base_url)
+        domain = parsed.hostname or "example.com"
+
+        PROBE_ORIGINS = [
+            ("null-origin", "null"),
+            ("subdomain-origin", f"https://evil.{domain}"),
+            ("prefix-bypass", f"https://{domain}.attacker.com"),
+            ("suffix-bypass", f"https://attacker{domain}"),
+        ]
+
+        for orig_type, orig_val in PROBE_ORIGINS:
+            try:
+                r = self._get("/", headers={"Origin": orig_val})
+                if r and hasattr(r, "headers"):
+                    acao = r.headers.get("Access-Control-Allow-Origin", "")
+                    acac = r.headers.get("Access-Control-Allow-Credentials", "").lower()
+                    if acao == orig_val:
+                        findings.append({
+                            "url": self.base_url,
+                            "type": f"cors-extended-{orig_type}",
+                            "origin_sent": orig_val,
+                            "acao_received": acao,
+                            "allow_credentials": acac == "true",
+                            "confidence": Confidence.CERTAIN if acac == "true" else Confidence.FIRM,
+                        })
+                        print(f"  [38;5;196m[CORS-EXT][0m Origin reflected: {orig_val} (Credentials: {acac})")
+            except Exception:
+                continue
+
+        self.results["cors_extended"] = findings
+        return findings
+
+    def email_injection_test(self) -> list[dict]:
+        findings: list[dict] = []
+        forms = self._discover_forms()
+        contact_forms = [f for f in forms if any(k in f.get("action", "").lower() for k in ("contact", "feedback", "support", "mail"))]
+
+        CRLF_EMAIL_PAYLOAD = "probe@test.com%0ABcc:stealth-audit@evil.com"
+        for form in contact_forms[:3]:
+            try:
+                action = form.get("action", "/")
+                data = dict(form.get("fields", {}))
+                for k in list(data.keys()):
+                    if any(e in k.lower() for e in ("email", "mail", "from")):
+                        data[k] = CRLF_EMAIL_PAYLOAD
+
+                r = self._post(action, data)
+                st = self._status(r)
+                txt = self._text(r).lower()
+                if any(err in txt for err in ("smtp", "sendmail", "mail header", "carriage return", "line feed")):
+                    findings.append({
+                        "url": urllib.parse.urljoin(self.base_url, action),
+                        "action": action,
+                        "type": "email-header-injection",
+                        "confidence": Confidence.CERTAIN,
+                    })
+                    print(f"  [38;5;196m[EMAIL-INJ][0m SMTP header injection indicator triggered at {action}")
+                    break
+            except Exception:
+                continue
+
+        self.results["email_injection"] = findings
+        return findings
+
+    def race_condition_test(self) -> list[dict]:
+        findings: list[dict] = []
+        STATE_PATHS = ["/api/cart/coupon", "/api/transfer", "/api/vote", "/coupon/apply", "/api/order/claim"]
+        for ep in list(self._discovered_endpoints)[:10]:
+            p = urllib.parse.urlparse(ep).path.lower()
+            if any(k in p for k in ("coupon", "claim", "redeem", "vote")) and p not in STATE_PATHS:
+                STATE_PATHS.append(p)
+
+        for path in STATE_PATHS[:3]:
+            try:
+                probe_r = self._get(path)
+                if self._status(probe_r) in (404, 0, None):
+                    continue
+
+                def _send_concurrent(idx: int):
+                    try:
+                        return self._post(path, {"code": "PROBE_COUPON_100", "id": "1", "qty": "1"})
+                    except Exception:
+                        return None
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    futures = [executor.submit(_send_concurrent, i) for i in range(5)]
+                    results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+                success_count = sum(1 for res in results if res and self._status(res) in (200, 201))
+                if success_count >= 3:
+                    findings.append({
+                        "url": urllib.parse.urljoin(self.base_url, path),
+                        "path": path,
+                        "type": "potential-race-condition",
+                        "concurrent_successes": success_count,
+                        "confidence": Confidence.FIRM,
+                    })
+                    print(f"  [38;5;196m[RACE-COND][0m {success_count}/5 concurrent state requests succeeded at {path}")
+                    break
+            except Exception:
+                continue
+
+        self.results["race_condition"] = findings
+        return findings
+
+    def graphql_injection_test(self) -> list[dict]:
+        findings: list[dict] = []
+        gql_endpoints = ["/graphql", "/api/graphql", "/v1/graphql"]
+        for path in gql_endpoints:
+            try:
+                base_r = self._get(path)
+                if self._status(base_r) in (404, 0, None):
+                    continue
+
+                depth_query = "query { __schema { types { fields { type { fields { type { name } } } } } } }"
+                r_depth = self._post(path, data='{"query": "' + depth_query + '"}', headers={"Content-Type": "application/json"})
+                st_depth = self._status(r_depth)
+                txt_depth = self._text(r_depth)
+
+                if st_depth == 200 and "types" in txt_depth:
+                    findings.append({
+                        "url": urllib.parse.urljoin(self.base_url, path),
+                        "path": path,
+                        "type": "graphql-deep-recursion-accepted",
+                        "confidence": Confidence.FIRM,
+                    })
+                    print(f"  [38;5;196m[GRAPHQL-INJ][0m Deep recursive query accepted without depth limit at {path}")
+
+                suggest_query = "query { __schema { tyyypo } }"
+                r_sug = self._post(path, data='{"query": "' + suggest_query + '"}', headers={"Content-Type": "application/json"})
+                txt_sug = self._text(r_sug)
+                if "did you mean" in txt_sug.lower() or "suggestions" in txt_sug.lower():
+                    findings.append({
+                        "url": urllib.parse.urljoin(self.base_url, path),
+                        "path": path,
+                        "type": "graphql-field-suggestions-enabled",
+                        "confidence": Confidence.CERTAIN,
+                    })
+                    print(f"  [38;5;196m[GRAPHQL-INJ][0m Field suggestion leaking schema information at {path}")
+                    break
+            except Exception:
+                continue
+
+        self.results["graphql_injection"] = findings
+        return findings
+
+    def security_txt_test(self) -> list[dict]:
+        findings: list[dict] = []
+        WELL_KNOWN_PATHS = ["/.well-known/security.txt", "/security.txt"]
+        found = False
+        for path in WELL_KNOWN_PATHS:
+            try:
+                r = self._get(path)
+                if self._status(r) == 200:
+                    txt = self._text(r)
+                    if "contact:" in txt.lower():
+                        found = True
+                        has_expires = "expires:" in txt.lower()
+                        has_pgp = "encryption:" in txt.lower()
+                        findings.append({
+                            "url": urllib.parse.urljoin(self.base_url, path),
+                            "path": path,
+                            "type": "security-txt-present",
+                            "has_expires": has_expires,
+                            "has_encryption": has_pgp,
+                            "confidence": Confidence.CERTAIN,
+                        })
+                        print(f"  [38;5;46m[SEC-TXT][0m RFC 9116 security.txt discovered at {path}")
+                        break
+            except Exception:
+                continue
+
+        if not found:
+            findings.append({
+                "url": self.base_url,
+                "type": "missing-security-txt",
+                "confidence": Confidence.CERTAIN,
+            })
+
+        self.results["security_txt"] = findings
+        return findings
+
     def run_all(self, wordlist_file: str | None = None) -> dict:
         print(f"\033[38;5;196m[WEB]\033[0m {self.base_url}")
         print(f"  [00] Web spider & crawler");        self.spider_crawl()
@@ -4914,6 +5598,22 @@ class WebScanner:
         print(f"  [60] DNS rebinding");              self.dns_rebinding_test()
         print(f"  [61] Web cache deception");        self.web_cache_deception_test()
         print(f"  [62] Business logic / rate bypass");self.business_logic_bypass_test()
+        print(f"  [63] Session fixation");           self.session_fixation_test()
+        print(f"  [64] Login brute-force protect");  self.login_endpoint_bruteforce_test()
+        print(f"  [65] Password policy audit");      self.password_policy_test()
+        print(f"  [66] Session token entropy");      self.session_entropy_test()
+        print(f"  [67] 2FA bypass analysis");        self.two_factor_bypass_test()
+        print(f"  [68] Session timeout / expiry");   self.session_timeout_test()
+        print(f"  [69] Concurrent session reuse");   self.concurrent_session_test()
+        print(f"  [70] Insecure logout invalidate"); self.insecure_logout_test()
+        print(f"  [71] Auth bypass & verb tamper");  self.auth_bypass_test()
+        print(f"  [72] Auth token leak analysis");   self.token_leak_test()
+        print(f"  [73] CSP deep policy analysis");   self.csp_analysis_test()
+        print(f"  [74] Extended CORS & origin fuzz");self.cors_extended_test()
+        print(f"  [75] Email / SMTP injection");     self.email_injection_test()
+        print(f"  [76] Race condition / TOCTOU");    self.race_condition_test()
+        print(f"  [77] Advanced GraphQL injection"); self.graphql_injection_test()
+        print(f"  [78] RFC 9116 security.txt audit");self.security_txt_test()
         return self.results
 
     def to_scan_results(self) -> list[ScanResult]:
@@ -5309,6 +6009,108 @@ class WebScanner:
                 f"Business logic bypass ({v.get('type')}) @ {v.get('path')}", v,
                 confidence=v.get("confidence", Confidence.FIRM)))
 
+        for v in self.results.get("session_fixation", []):
+            out.append(ScanResult("web-session-fixation", host, port, "vulnerable",
+                Severity.HIGH,
+                f"Session ID '{v.get('cookie_name')}' not regenerated post-auth @ {v.get('path')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("login_bruteforce", []):
+            out.append(ScanResult("web-login-bruteforce", host, port, "vulnerable",
+                Severity.HIGH,
+                f"Missing brute-force lockout on {v.get('path')} ({v.get('attempts_tested')} attempts unrestricted)", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("password_policy", []):
+            out.append(ScanResult("web-password-policy", host, port, "vulnerable",
+                Severity.MEDIUM,
+                f"Weak password accepted without complexity enforcement @ {v.get('path')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("session_entropy", []):
+            out.append(ScanResult("web-session-entropy", host, port, "vulnerable",
+                Severity.HIGH if v.get("type") == "low-entropy-token" else Severity.MEDIUM,
+                f"Session token entropy risk: {v.get('type')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("twofa_bypass", []):
+            out.append(ScanResult("web-twofa-bypass", host, port, "vulnerable",
+                Severity.HIGH,
+                f"2FA bypass via forced browsing to {v.get('bypassed_endpoint')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("session_timeout", []):
+            out.append(ScanResult("web-session-timeout", host, port, "misconfigured",
+                Severity.MEDIUM,
+                f"Session expiration issue: {v.get('type')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("concurrent_session", []):
+            out.append(ScanResult("web-concurrent-session", host, port, "misconfigured",
+                Severity.LOW,
+                f"Concurrent session sharing detected: {v.get('cookie_name')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("insecure_logout", []):
+            out.append(ScanResult("web-insecure-logout", host, port, "vulnerable",
+                Severity.MEDIUM,
+                f"Insecure logout: session cookies not invalidated @ {v.get('path')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("auth_bypass", []):
+            out.append(ScanResult("web-auth-bypass", host, port, "vulnerable",
+                Severity.HIGH,
+                f"Authentication bypass ({v.get('type')}) @ {v.get('path')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("token_leak", []):
+            out.append(ScanResult("web-token-leak", host, port, "info-leak",
+                Severity.MEDIUM,
+                f"Token exposure: {v.get('type')} @ {v.get('path')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("csp_analysis", []):
+            out.append(ScanResult("web-csp-analysis", host, port, "misconfigured",
+                Severity.MEDIUM,
+                f"Content-Security-Policy: {v.get('type')}", v,
+                confidence=Confidence.CERTAIN))
+
+        for v in self.results.get("cors_extended", []):
+            out.append(ScanResult("web-cors-extended", host, port, "vulnerable",
+                Severity.HIGH if v.get("allow_credentials") else Severity.MEDIUM,
+                f"Extended CORS origin reflection: {v.get('origin_sent')} (credentials={v.get('allow_credentials')})", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("email_injection", []):
+            out.append(ScanResult("web-email-injection", host, port, "vulnerable",
+                Severity.HIGH,
+                f"Email header injection on {v.get('action')}", v,
+                confidence=Confidence.CERTAIN))
+
+        for v in self.results.get("race_condition", []):
+            out.append(ScanResult("web-race-condition", host, port, "vulnerable",
+                Severity.HIGH,
+                f"Race condition vulnerability @ {v.get('path')} ({v.get('concurrent_successes')} concurrent successes)", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("graphql_injection", []):
+            out.append(ScanResult("web-graphql-injection", host, port, "vulnerable",
+                Severity.MEDIUM,
+                f"GraphQL injection flaw: {v.get('type')} @ {v.get('path')}", v,
+                confidence=v.get("confidence", Confidence.FIRM)))
+
+        for v in self.results.get("security_txt", []):
+            if v.get("type") == "security-txt-present":
+                out.append(ScanResult("web-security-txt", host, port, "discovered",
+                    Severity.INFO,
+                    f"RFC 9116 security.txt discovered @ {v.get('path')}", v,
+                    confidence=Confidence.CERTAIN))
+            elif v.get("type") == "missing-security-txt":
+                out.append(ScanResult("web-security-txt", host, port, "missing",
+                    Severity.INFO,
+                    "RFC 9116 security.txt file not found", v,
+                    confidence=Confidence.CERTAIN))
+
         return out
 
 async def web_scan_async(url: str, wordlist_file: str | None = None,
@@ -5389,6 +6191,22 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
                 "rebind":     ws.dns_rebinding_test,
                 "deception":  ws.web_cache_deception_test,
                 "bizbypass":  ws.business_logic_bypass_test,
+                "sessionfix": ws.session_fixation_test,
+                "loginbrute": ws.login_endpoint_bruteforce_test,
+                "passpolicy": ws.password_policy_test,
+                "entropy":    ws.session_entropy_test,
+                "twofa":      ws.two_factor_bypass_test,
+                "timeout":    ws.session_timeout_test,
+                "concurrent": ws.concurrent_session_test,
+                "logout":     ws.insecure_logout_test,
+                "authbypass": ws.auth_bypass_test,
+                "tokenleak":  ws.token_leak_test,
+                "cspanalysis":ws.csp_analysis_test,
+                "corsext":    ws.cors_extended_test,
+                "emailinj":   ws.email_injection_test,
+                "race":       ws.race_condition_test,
+                "graphqlinj": ws.graphql_injection_test,
+                "securitytxt":ws.security_txt_test,
             }
             for check in checks:
                 fn = CHECK_MAP.get(check)

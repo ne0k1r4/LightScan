@@ -128,7 +128,7 @@ def build_parser():
     m.add_argument("--os-port",      type=int,            help="Open port for --os-probe (auto-detected if omitted)")
     m.add_argument("--web-scan",     metavar="URL",       help="Full web application scan on URL (spider, dir, tech, waf, sqli, xss, cmdi, traversal, cors, creds, jwt, takeover, files, secrets)")
     m.add_argument("--web-checks",   nargs="+", metavar="CHECK",
-                   help="Web checks to run (spider dir tech waf sqli xss cmdi traversal nosqli ldapi xpathi secondorder blindcmdi bola bfla massassign dataexposure apiinventory http2 corscache rebind deception bizbypass redirect cors creds jwt takeover files secrets)")
+                   help="Web checks to run (spider dir tech waf sqli xss cmdi traversal nosqli ldapi xpathi secondorder blindcmdi bola bfla massassign dataexposure apiinventory http2 corscache rebind deception bizbypass sessionfix loginbrute passpolicy entropy twofa timeout concurrent logout authbypass tokenleak cspanalysis corsext emailinj race graphqlinj securitytxt redirect cors creds jwt takeover files secrets)")
     m.add_argument("--web-wordlist", metavar="FILE",      help="Wordlist file for --web-scan directory brute")
     m.add_argument("--web-threads",  type=int, default=10, help="Threads for web dir brute (default 10)")
     m.add_argument("-H", "--header", action="append", default=[], metavar="HEADER", help="Custom HTTP request header (e.g. -H 'X-Custom: Val' -H 'Authorization: Bearer xyz')")

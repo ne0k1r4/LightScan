@@ -294,6 +294,89 @@ TAXONOMY_MAP: dict[str, dict[str, str]] = {
         "owasp": "A04:2021-Insecure Design",
         "remediation": "Validate client IP addresses using secure reverse-proxy headers (reject spoofable headers like X-Forwarded-For if not set by a trusted proxy), and validate numeric business limits (positive quantities, non-zero prices).",
     },
+    # Authentication & Session Security
+    "web-session-fixation": {
+        "cwe": "CWE-384: Session Fixation",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Regenerate the session ID upon any authentication state change (login, logout, privilege escalation). Invalidate pre-authentication session tokens server-side.",
+    },
+    "web-login-bruteforce": {
+        "cwe": "CWE-307: Improper Restriction of Excessive Authentication Attempts",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Implement progressive delays, account lockout after a threshold, CAPTCHA challenges, and IP-based rate limiting on login endpoints.",
+    },
+    "web-password-policy": {
+        "cwe": "CWE-521: Weak Password Requirements",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Enforce a minimum password length of 8 characters with complexity requirements (mixed case, digits, special characters). Reject passwords found in common breach dictionaries.",
+    },
+    "web-session-entropy": {
+        "cwe": "CWE-331: Insufficient Entropy",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Generate session tokens using a cryptographically secure random number generator (e.g. secrets.token_hex or /dev/urandom) with at least 128 bits of entropy.",
+    },
+    "web-twofa-bypass": {
+        "cwe": "CWE-308: Use of Single-factor Authentication",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Enforce 2FA validation server-side before granting access to any authenticated resource. Do not expose post-auth redirect URLs before 2FA completion.",
+    },
+    "web-session-timeout": {
+        "cwe": "CWE-613: Insufficient Session Expiration",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Set session cookies with appropriate Max-Age or Expires values (e.g. 15-30 minutes for sensitive applications). Implement server-side idle session timeout.",
+    },
+    "web-concurrent-session": {
+        "cwe": "CWE-613: Insufficient Session Expiration",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Limit concurrent active sessions per user account. Invalidate previous sessions upon new login or provide users a way to review and terminate active sessions.",
+    },
+    "web-insecure-logout": {
+        "cwe": "CWE-613: Insufficient Session Expiration",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "On logout, invalidate the session server-side and clear session cookies by setting them with an expired date and empty value. Ensure tokens cannot be replayed post-logout.",
+    },
+    "web-auth-bypass": {
+        "cwe": "CWE-287: Improper Authentication",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Enforce authentication checks on the canonical request path server-side. Do not rely on X-Original-URL, X-Rewrite-URL, or HTTP verb restrictions for access control.",
+    },
+    "web-token-leak": {
+        "cwe": "CWE-598: Use of GET Request Method With Sensitive Query Strings",
+        "owasp": "A07:2021-Identification and Authentication Failures",
+        "remediation": "Never pass session tokens or credentials via URL query parameters. Set Referrer-Policy: no-referrer on pages with sensitive tokens and ensure Cache-Control: no-store on authenticated responses.",
+    },
+
+    # Advanced Web Application Security
+    "web-csp-analysis": {
+        "cwe": "CWE-693: Protection Mechanism Failure",
+        "owasp": "A05:2021-Security Misconfiguration",
+        "remediation": "Deploy a strict Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'. Avoid 'unsafe-inline' and 'unsafe-eval'.",
+    },
+    "web-cors-extended": {
+        "cwe": "CWE-942: Overly Permissive CORS Policy",
+        "owasp": "A01:2021-Broken Access Control",
+        "remediation": "Validate Origin headers against a strict domain allowlist. Reject null origin, pre-domain, and post-domain origin variations. Never reflect arbitrary origins with credentials.",
+    },
+    "web-email-injection": {
+        "cwe": "CWE-93: Improper Neutralization of CRLF Sequences in HTTP Headers",
+        "owasp": "A03:2021-Injection",
+        "remediation": "Sanitize all form inputs against newline characters (CR, LF) before passing to email sending functions. Use parameterized email APIs instead of raw SMTP header construction.",
+    },
+    "web-race-condition": {
+        "cwe": "CWE-362: Concurrent Execution Using Shared Resource with Improper Synchronization",
+        "owasp": "A04:2021-Insecure Design",
+        "remediation": "Implement server-side mutex locks, database-level uniqueness constraints, or idempotency keys on state-changing operations to prevent time-of-check-to-time-of-use (TOCTOU) vulnerabilities.",
+    },
+    "web-graphql-injection": {
+        "cwe": "CWE-400: Uncontrolled Resource Consumption",
+        "owasp": "A04:2021-Insecure Design",
+        "remediation": "Enforce query depth limits, complexity analysis, and field-level rate limiting on GraphQL endpoints. Disable field suggestions and batch queries in production.",
+    },
+    "web-security-txt": {
+        "cwe": "CWE-1059: Incomplete Documentation",
+        "owasp": "A09:2021-Security Logging and Monitoring Failures",
+        "remediation": "Publish a valid security.txt file at /.well-known/security.txt per RFC 9116, including Contact, Expires, and optional Encryption and Policy fields.",
+    },
 }
 
 DEFAULT_TAXONOMY = {
