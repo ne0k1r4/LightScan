@@ -1,10 +1,6 @@
 """
-Brute force engine — async credential testing across 12 protocols.
-
-Handles lockout detection (stops hammering when the target says "account locked"),
-rate limiting (backs off when the server starts throttling), jitter between
-attempts, credential spray mode (1 password per user per window — safer),
-and checkpoint resume so a 50,000-attempt run survives a reboot.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import asyncio, random, time, sys
@@ -32,15 +28,6 @@ HTTP_SUCCESS_CODES = {200, 201, 202, 301, 302, 303, 307}
 HTTP_FAILURE_CODES = {401, 403, 429, 500}
 
 def infer_http_success(response: str, status_code: int = 0) -> bool | None:
-    """
-    Best-effort heuristic to infer auth success from an HTTP response
-    when the handler cannot make a definitive determination.
-
-    Returns:
-      True  — looks like success
-      False — looks like failure
-      None  — inconclusive (let caller decide)
-    """
     rl = response.lower()
 
     if any(sig in rl for sig in HTTP_FAILURE_SIGS):
@@ -183,7 +170,6 @@ class BruteEngine:
                 f"{f['username']}:{f['password']}", f) for f in self._found]
 
     def run_sync(self, *a, **k):
-        """Fixed: safe run_sync that works whether or not an event loop is running."""
         import concurrent.futures
         try:
             asyncio.get_running_loop()

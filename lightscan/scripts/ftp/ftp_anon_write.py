@@ -1,4 +1,7 @@
-"""Test FTP anonymous login and write access."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, ftplib, io
 SCRIPT_NAME  = "ftp_anon_write"
 SCRIPT_PORTS = [21, 2121]

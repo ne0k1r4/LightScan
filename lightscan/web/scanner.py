@@ -1,4 +1,7 @@
-"""Web application scanner."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -108,10 +111,6 @@ TAKEOVER_FINGERPRINTS = {
 }
 
 class WebScanner:
-    """
-    Full web application scanner.
-    Uses requests if available, falls back to urllib.
-    """
 
     def __init__(self, base_url: str, timeout: float = 8.0,
                  threads: int = 10, verify_ssl: bool = False,
@@ -233,7 +232,6 @@ class WebScanner:
 
     def _get(self, path: str, headers: dict | None = None,
              allow_redirects: bool = True, **kwargs):
-        """Safe HTTP GET primitive wrapper."""
         try:
             url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
             req_headers = dict(self.default_headers)
@@ -262,7 +260,6 @@ class WebScanner:
             return None
 
     def _post(self, path: str, data: dict, allow_redirects: bool = False, headers: dict | None = None):
-        """Safe POST."""
         try:
             url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
             req_headers = dict(self.default_headers)
@@ -289,10 +286,6 @@ class WebScanner:
             return None
 
     def _measure_differential(self, base_resp, test_resp, indicator: str = "", indicators: list[str] | None = None) -> tuple[Confidence, dict]:
-        """
-        Compare a probe response against a clean control response to detect structural deltas,
-        status divergence, and ensure indicators were not present in the clean baseline.
-        """
         base_status = self._status(base_resp)
         test_status = self._status(test_resp)
         base_text = self._text(base_resp)
@@ -333,7 +326,6 @@ class WebScanner:
         return Confidence.TENTATIVE, diff_meta
 
     def _text(self, resp) -> str:
-        """Extract body text regardless of response type."""
         if resp is None: return ""
         if hasattr(resp, "text"): return resp.text
         if hasattr(resp, "_text"): return resp._text
@@ -351,14 +343,12 @@ class WebScanner:
         return {}
 
     def _parse_html(self, text: str):
-        """Parse HTML — bs4 if available, else lightweight regex fallback."""
         if _BS4:
             return BeautifulSoup(text, "html.parser")
         return None
 
     def dir_brute(self, wordlist: list | None = None,
                   wordlist_file: str | None = None) -> list[dict]:
-        """Threaded directory brute — pre-flight check, retries, progress."""
         if wordlist_file:
             try:
                 with open(wordlist_file, "r", errors="replace") as f:
@@ -484,10 +474,6 @@ class WebScanner:
         return found
 
     def fingerprint_tech(self) -> dict:
-        """
-        Fingerprint technologies, extract versions, detect WAF,
-        and audit security headers.
-        """
         resp = self._get("/")
         if not resp:
             return {}
@@ -571,7 +557,6 @@ class WebScanner:
         return tech
 
     def sqli_test(self) -> list[dict]:
-        """Test for error-based SQL injection on GET parameters with differential verification."""
         urls = self._collect_param_urls()
         payload = "'"
         vulnerable: list[dict] = []
@@ -608,10 +593,6 @@ class WebScanner:
         return vulnerable
 
     def xss_test(self, payloads: list | None = None) -> list[dict]:
-        """
-        Test for reflected XSS vulnerability.
-        Stops at the first successful payload hit per parameter.
-        """
         if payloads is None:
             payloads = [
                 "<script>alert('XSS')</script>",
@@ -673,11 +654,6 @@ class WebScanner:
         return vulnerable
 
     def sqli_post_test(self) -> list[dict]:
-        """
-        Scan form inputs on discovered pages for SQL injection.
-        Finds <form> elements on every page, injects SQL payloads into fields,
-        and analyzes response for SQL error patterns. Supports POST and GET forms.
-        """
         pages_to_crawl = ["/"]
         for item in self.results.get("directories", []):
             pages_to_crawl.append("/" + item["path"].lstrip("/"))
@@ -740,11 +716,6 @@ class WebScanner:
         return vulnerable
 
     def detect_cms(self) -> dict:
-        """
-        Detect popular CMS engines (WordPress, Joomla, Drupal, etc.).
-        Version extracted where possible via meta tags, manifest files, or
-        changelog/readme probes.
-        """
         resp = self._get("/")
         if not resp:
             return {}
@@ -870,11 +841,6 @@ class WebScanner:
         return cms
 
     def sqli_blind_test(self) -> list[dict]:
-        """
-        Boolean-based: inject true/false conditions, compare response length.
-        Time-based: SLEEP()/pg_sleep()/WAITFOR DELAY — measures actual delay.
-        Covers MySQL, PostgreSQL, MSSQL, SQLite, Oracle.
-        """
         BOOL_PAIRS = [
             ("1 AND 1=1--",   "1 AND 1=2--"),
             ("1' AND '1'='1", "1' AND '1'='2"),
@@ -945,10 +911,6 @@ class WebScanner:
         return vulnerable
 
     def sqli_union_test(self) -> list[dict]:
-        """
-        Finds column count via ORDER BY binary search, then injects
-        UNION SELECT NULL,NULL,... with a canary string per position.
-        """
         urls = self._collect_param_urls()
         vulnerable: list[dict] = []
         seen: set = set()
@@ -997,12 +959,6 @@ class WebScanner:
         return vulnerable
 
     def ssti_test(self) -> list[dict]:
-        """
-        Server-Side Template Injection — math canary per engine.
-        Jinja2/Twig: {{7*7}}→49  Freemarker: ${7*7}→49
-        Spring EL: #{7*7}→49    ERB: <%=7*7%>→49
-        Jinja2 confirm: {{7*'7'}}→7777777
-        """
         PROBES = [
             ("{{7*7}}",       "49",      "Jinja2/Twig/Pebble"),
             ("${7*7}",        "49",      "Freemarker/Spring EL"),
@@ -1055,11 +1011,6 @@ class WebScanner:
         return vulnerable
 
     def lfi_test(self) -> list[dict]:
-        """
-        Local File Inclusion — tests file/path params with:
-        plain traversal, URL-encoded, double-encoded, null byte, php://filter.
-        Targets: /etc/passwd, win.ini, php source.
-        """
         INDICATORS = [
             "root:x:0:0",
             "[boot loader]",
@@ -1122,11 +1073,6 @@ class WebScanner:
         return vulnerable
 
     def ssrf_test(self) -> list[dict]:
-        """
-        Server-Side Request Forgery — probes URL/fetch params.
-        Tests cloud metadata endpoints, localhost ports, file://, dict://.
-        Blind detection via timing (fast localhost response).
-        """
         URL_HINTS = {"url","uri","redirect","next","dest","target","link",
                      "src","source","ref","callback","fetch","load","img",
                      "image","path","proxy","webhook","endpoint","service"}
@@ -1193,10 +1139,6 @@ class WebScanner:
         return vulnerable
 
     def xxe_test(self) -> list[dict]:
-        """
-        XML External Entity — finds XML-accepting endpoints (by Content-Type
-        or form file-upload fields), injects classic, Windows, error-based payloads.
-        """
         XXE_PAYLOADS = [
             ("classic",
              '<?xml version="1.0"?><!DOCTYPE f [<!ENTITY x SYSTEM "file:///etc/passwd">]><r>&x;</r>',
@@ -1267,13 +1209,6 @@ class WebScanner:
         return vulnerable
 
     def jwt_advanced_test(self) -> list[dict]:
-        """
-        • alg:none variants (none/None/NONE/nOnE)
-        • Weak HS256 secret brute (30 common secrets)
-        • kid SQL injection + path traversal (sign with empty key)
-        • Expired token acceptance
-        • jku header injection pointing to localhost JWKS
-        """
         import hmac as _hmac, hashlib as _hl
 
         token = self._discover_jwt()
@@ -1352,10 +1287,6 @@ class WebScanner:
         return findings
 
     def graphql_test(self) -> dict:
-        """
-        Discovers GraphQL endpoint → introspection → batch queries →
-        field suggestions leak → XSS in error response → alias-based DoS probe.
-        """
         GQL_PATHS = ["/graphql","/api/graphql","/graph","/gql",
                      "/api/gql","/v1/graphql","/query"]
         endpoint = None
@@ -1423,11 +1354,6 @@ class WebScanner:
         return result
 
     def http_methods_test(self) -> dict:
-        """
-        Tests OPTIONS Allow header + active TRACE (XST) + PUT probe.
-        TRACE canary: inject X-LightScan-Trace header, check echo.
-        PUT: upload probe file, verify 201/200, then DELETE.
-        """
         DANGEROUS = {
             "TRACE":  "Cross-Site Tracing (XST) — cookie theft via JS",
             "PUT":    "Arbitrary file upload / overwrite",
@@ -1482,10 +1408,6 @@ class WebScanner:
         return results
 
     def smuggling_probe(self) -> dict:
-        """
-        Raw socket CL.TE + TE.CL probes.
-        Heuristic: status code differential or >3s timeout on one probe.
-        """
         import socket as _sock
         parsed  = urllib.parse.urlparse(self.base_url)
         host    = parsed.hostname or "localhost"
@@ -1544,11 +1466,6 @@ class WebScanner:
         return result
 
     def host_header_injection_test(self) -> list[dict]:
-        """
-        Injects evil canary via Host / X-Forwarded-Host / X-Host /
-        X-Forwarded-Server on password-reset + home paths.
-        Checks reflection in body, Location header, and all response headers.
-        """
         CANARY = "evil-lightscan.com"
         INJECT_HEADERS = [
             {"Host":               CANARY},
@@ -1588,10 +1505,6 @@ class WebScanner:
         return findings
 
     def rate_limit_test(self) -> dict:
-        """
-        Sends 20 rapid POST requests to the first accessible login endpoint.
-        Detects: HTTP 429, Retry-After header, CAPTCHA, lockout messages.
-        """
         LOGIN_PATHS = ["/login","/api/login","/user/login","/auth/login",
                        "/signin","/api/signin","/api/auth/login"]
         LOCKOUT_WORDS = ["locked","too many","rate limit","try again",
@@ -1636,12 +1549,6 @@ class WebScanner:
         return result
 
     def cache_poison_test(self) -> list[dict]:
-        """
-        Injects unkeyed headers, checks reflection, then sends clean request
-        to see if response is cached with injected value.
-        Headers: X-Forwarded-Host, X-Original-URL, X-Rewrite-URL,
-                 X-Forwarded-Scheme, X-HTTP-Method-Override.
-        """
         CANARY  = "ls-cache-probe"
         UNKEYED = {
             "X-Forwarded-Host":      f"{CANARY}.com",
@@ -1675,10 +1582,6 @@ class WebScanner:
         return findings
 
     def api_discovery_test(self) -> list[dict]:
-        """
-        Discovers REST API endpoints + probes HTTP methods on each.
-        Sources: common paths, JS file analysis, sitemap/robots.
-        """
         API_PATHS = [
             "/api","/api/v1","/api/v2","/api/v3",
             "/v1","/v2","/rest","/api/users","/api/admin",
@@ -1733,11 +1636,6 @@ class WebScanner:
         return found
 
     def cms_plugin_enum(self) -> list[dict]:
-        """
-        WordPress-specific: enumerates plugins and themes via
-        /wp-content/plugins/<name>/readme.txt version extraction.
-        Uses a curated list of 40 high-prevalence plugins.
-        """
         cms = self.results.get("cms", {})
         if cms.get("name","").lower() not in ("wordpress",""):
             pass
@@ -1791,10 +1689,6 @@ class WebScanner:
         return found
 
     def param_pollution_test(self) -> list[dict]:
-        """
-        HTTP Parameter Pollution — sends duplicate params with different values,
-        checks which value the server uses (first/last/both/joined).
-        """
         urls = self._collect_param_urls()
         vulnerable: list[dict] = []
         seen: set = set()
@@ -1826,11 +1720,6 @@ class WebScanner:
         return vulnerable
 
     def subdomain_passive_test(self) -> list[str]:
-        """
-        Extracts subdomains passively from: HTML links, CSP header,
-        CORS Allow-Origin responses, and JS source files.
-        No active DNS or brute force — zero extra requests beyond page crawl.
-        """
         parsed_base = urllib.parse.urlparse(self.base_url)
         base_domain = parsed_base.netloc.lower()
         if ":" in base_domain:
@@ -1870,7 +1759,6 @@ class WebScanner:
         return result
 
     def _collect_form_targets(self) -> list[dict]:
-        """Returns [{url, method, fields}] for forms found on home + dir pages."""
         targets: list[dict] = []
         pages   = ["/"] + ["/"+d["path"] for d in self.results.get("directories",[])]
         seen: set = set()
@@ -1892,16 +1780,6 @@ class WebScanner:
         return targets
 
     def ssl_tls_test(self) -> dict:
-        """
-        Full TLS audit via raw ssl module — no openssl CLI required.
-        Checks:
-          • Certificate: expiry, self-signed, weak key (RSA<2048, EC<256),
-            CN/SANs mismatch, MD5/SHA1 signature
-          • Protocol: SSLv2/v3 (DROWN/POODLE), TLS 1.0/1.1 offered
-          • Ciphers: NULL, EXPORT, RC4, DES/3DES, anonymous DH (ADH/AECDH)
-          • Security extensions: HSTS presence + max-age, HSTS preload, certificate
-            transparency (SCT), OCSP stapling hint
-        """
         import ssl as _ssl, socket as _sock, datetime as _dt
 
         parsed = urllib.parse.urlparse(self.base_url)
@@ -2028,11 +1906,6 @@ class WebScanner:
         return result
 
     def xss_stored_test(self) -> list[dict]:
-        """
-        Submits XSS payload via POST forms, then re-fetches the page
-        (and linked profile/comments/listing pages) to check if stored.
-        Also checks admin/listing paths where output often appears.
-        """
         CANARY   = "LSXSS" + str(int(time.time()))[-5:]
         PAYLOADS = [
             f"<script>/*{CANARY}*/</script>",
@@ -2083,14 +1956,6 @@ class WebScanner:
         return vulnerable
 
     def xss_dom_test(self) -> list[dict]:
-        """
-        Static analysis of inline + linked JS for dangerous source→sink flows.
-        Sources: location.hash, location.search, document.URL, document.referrer,
-                 postMessage, URLSearchParams, window.name
-        Sinks:   document.write, innerHTML, outerHTML, eval, setTimeout(str),
-                 setInterval(str), Function(str), location.href=, src=, href=
-        Reports source+sink co-occurrence within 10 lines (heuristic).
-        """
         SOURCES = [
             "location.hash", "location.search", "document.URL",
             "document.referrer", "postMessage", "URLSearchParams",
@@ -2146,15 +2011,6 @@ class WebScanner:
         return findings
 
     def csrf_test(self) -> list[dict]:
-        """
-        Detects CSRF vulnerabilities:
-          1. Forms without CSRF token fields (no csrfmiddlewaretoken/
-             _token/_csrf_token/authenticity_token/nonce)
-          2. State-changing requests that accept cross-origin (no SameSite
-             cookie + no Origin/Referer check)
-          3. JSON endpoints accepting application/x-www-form-urlencoded
-             (content-type confusion CSRF)
-        """
         TOKEN_NAMES = {"csrf","xsrf","token","nonce","authenticity",
                        "_token","__requestverificationtoken","csrfmiddlewaretoken"}
         findings: list[dict] = []
@@ -2227,14 +2083,6 @@ class WebScanner:
         return findings
 
     def clickjacking_test(self) -> dict:
-        """
-        Checks:
-          1. X-Frame-Options header (DENY / SAMEORIGIN)
-          2. Content-Security-Policy frame-ancestors directive
-          3. Attempts an actual iframe embed simulation (header-based only,
-             no real browser) — reports "frameable" if neither protection set
-        Covers: login, admin, payment paths too.
-        """
         PATHS = ["/", "/login", "/admin", "/pay", "/transfer",
                  "/settings", "/account", "/checkout"]
         result: dict = {"frameable_paths":[], "protected_paths":[], "findings":[]}
@@ -2270,11 +2118,6 @@ class WebScanner:
         return result
 
     def crlf_test(self) -> list[dict]:
-        """
-        Injects CRLF sequences into GET params and checks if they appear
-        in response headers (response splitting / header injection).
-        Also probes path and redirect params.
-        """
         PAYLOADS = [
             "%0d%0aX-LightScan-CRLF: injected",
             "%0aX-LightScan-CRLF: injected",
@@ -2323,15 +2166,6 @@ class WebScanner:
         return found
 
     def idor_test(self) -> list[dict]:
-        """
-        Discovers numeric IDs in API paths and URL params, then increments/
-        decrements them to probe for IDOR.
-        Strategy:
-          1. Crawl discovered API endpoints for numeric segments
-          2. Replace each with ID±1, compare response size/content
-          3. Flag if different user data returned (length change + 200 status)
-        Also tests UUID params (replaces with all-zeros UUID).
-        """
         ID_PATTERN   = re.compile(r'/(\d{1,10})(?:/|$|\?)')
         UUID_PATTERN  = re.compile(
             r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
@@ -2408,15 +2242,6 @@ class WebScanner:
         return findings
 
     def file_upload_test(self) -> list[dict]:
-        """
-        Finds file upload forms and tests:
-          1. PHP webshell upload (.php, .phtml, .php5, .phar)
-          2. MIME type bypass (send image/jpeg but with PHP content)
-          3. Double extension bypass (shell.php.jpg)
-          4. Null byte bypass (shell.php%00.jpg — older servers)
-          5. Magic bytes bypass (JPEG header + PHP code)
-        Checks if uploaded file is accessible and executable.
-        """
         SHELL_CONTENT  = b"<?php echo 'LSUPLOAD_' . md5('lightscan'); ?>"
         SHELL_CANARY   = "LSUPLOAD_"
         findings: list[dict] = []
@@ -2496,14 +2321,6 @@ class WebScanner:
         return findings
 
     def deserialization_test(self) -> list[dict]:
-        """
-        Sends deserialization gadget payloads to endpoints accepting
-        serialized data (Java, PHP, Python pickle).
-        Detection: response time (>3s = possible ysoserial SLEEP gadget),
-                   specific error strings, or canary in response.
-        Targets: endpoints with Content-Type application/x-java-serialized,
-                 PHP serialized object params, Python pickle params.
-        """
         findings: list[dict] = []
         seen: set = set()
 
@@ -2592,12 +2409,6 @@ class WebScanner:
         return findings
 
     def prototype_pollution_test(self) -> list[dict]:
-        """
-        Tests JSON POST endpoints and GET params for prototype pollution.
-        Payloads inject __proto__, constructor.prototype, __defineGetter__
-        into JSON body and query string.
-        Detection: canary key reflected in response or altered behaviour.
-        """
         CANARY     = "lspp_canary"
         PAYLOADS_JSON = [
             {f"__proto__":            {CANARY: "1"}},
@@ -2661,12 +2472,6 @@ class WebScanner:
         return findings
 
     def cookie_security_test(self) -> list[dict]:
-        """
-        Audits Set-Cookie headers on all accessible pages.
-        Checks per-cookie: HttpOnly, Secure, SameSite, Domain scope,
-        Path scope, Max-Age/Expires (session vs persistent),
-        and weak entropy (short / predictable values).
-        """
         findings: list[dict] = []
         seen: set = set()
         PAGES = ["/", "/login", "/api/", "/admin", "/dashboard"]
@@ -2721,16 +2526,6 @@ class WebScanner:
         return findings
 
     def error_disclosure_test(self) -> list[dict]:
-        """
-        Triggers error conditions and checks for verbose info disclosure:
-          • Stack traces (Python/PHP/Java/Ruby/Node)
-          • Database errors in output
-          • Debug pages (/debug, /phpinfo, /__debug__, /actuator/*)
-          • Framework version banners in error pages
-          • Source code paths in errors (absolute paths)
-          • Exception class names
-          • Server software + version
-        """
         STACK_PATTERNS = [
             (r"Traceback \(most recent call last\)",  "Python traceback"),
             (r"at [A-Za-z0-9.$_]+\([A-Za-z0-9.$_]+\.java:\d+\)", "Java stack trace"),
@@ -2802,14 +2597,6 @@ class WebScanner:
         return findings
 
     def websocket_test(self) -> list[dict]:
-        """
-        Discovers WebSocket endpoints from JS source and common paths,
-        then tests:
-          1. Missing Origin validation (sends evil origin, checks accept)
-          2. WS upgrade without auth (no cookies/tokens required)
-          3. Reflected XSS via WS message (if testable without real WS client)
-        Note: full WS handshake probed via raw HTTP Upgrade request.
-        """
         import socket as _sock, hashlib as _hl, struct as _st
 
         WS_PATHS_COMMON = [
@@ -2845,7 +2632,6 @@ class WebScanner:
         use_tls= parsed.scheme == "https"
 
         def _ws_upgrade(path: str, origin: str = "") -> tuple[int, dict]:
-            """Send HTTP Upgrade: websocket, return (status, response_headers)."""
             import base64 as _b64, os as _os
             key = _b64.b64encode(_os.urandom(16)).decode()
             headers_str = (
@@ -2908,16 +2694,6 @@ class WebScanner:
         return findings
 
     def oauth_test(self) -> dict:
-        """
-        Discovers OAuth 2.0 / OIDC endpoints and tests:
-          1. Missing state parameter (CSRF in OAuth flow)
-          2. redirect_uri validation bypass (sub-path, query param, @host tricks)
-          3. Open redirect in authorization endpoint
-          4. Token leakage in Referer header
-          5. Response type confusion (token vs code)
-          6. PKCE downgrade (code_challenge_method missing)
-          7. Well-known endpoint disclosure
-        """
         OAUTH_PATHS = [
             "/.well-known/openid-configuration",
             "/.well-known/oauth-authorization-server",
@@ -3004,7 +2780,6 @@ class WebScanner:
         return result
 
     def open_redirect_test(self) -> list[dict]:
-        """Probe GET params for open redirect — checks Location header."""
         urls = self._collect_param_urls()
         payloads = [
             "https://evil.com",
@@ -3042,11 +2817,6 @@ class WebScanner:
         return vulnerable
 
     def cors_test(self) -> dict:
-        """
-        Test for CORS misconfigurations.
-        Checks for Access-Control-Allow-Origin (ACAO) reflection,
-        null origin trust, and wildcard configuration with credentials allowed.
-        """
         findings: dict = {"vulnerable": False, "details": []}
         origins_to_test = [
             "https://evil.com",
@@ -3077,10 +2847,6 @@ class WebScanner:
         return findings
 
     def default_creds_test(self) -> list[dict]:
-        """
-        Test for default credentials on common admin paths.
-        Automatically detects actual username and password field names from form HTML before submitting POST.
-        """
         admin_paths = [
             "wp-admin", "wp-login.php", "administrator", "admin/login.php",
             "user/login", "login", "admin.php", "admin/login", "cms/login",
@@ -3136,10 +2902,6 @@ class WebScanner:
         return found
 
     def jwt_none_test(self) -> dict:
-        """
-        Test for JWT 'none' algorithm vulnerability on discovered tokens.
-        Probes discovered tokens against privileged endpoints with signature-less headers.
-        """
         token = self._discover_jwt()
         if not token:
             result = {"vulnerable": False, "reason": "No JWT found"}
@@ -3187,7 +2949,6 @@ class WebScanner:
         return result
 
     def _discover_jwt(self) -> str | None:
-        """Discover JWT from auth header, cookies, or common API endpoints."""
         for path in ("/", "/api/", "/api/v1/", "/login"):
             resp = self._get(path)
             if not resp: continue
@@ -3212,7 +2973,6 @@ class WebScanner:
         return None
 
     def sensitive_files_test(self) -> list[dict]:
-        """Probe a curated list of sensitive paths — .git, .env, backups, etc."""
         found: list[dict] = []
         for path in SENSITIVE_FILES:
             resp = self._get(path, allow_redirects=False)
@@ -3225,7 +2985,6 @@ class WebScanner:
         return found
 
     def js_secret_scan(self) -> list[dict]:
-        """Scan inline scripts and linked .js files for hardcoded secrets."""
         resp = self._get("/")
         if not resp: return []
         text    = self._text(resp)
@@ -3261,10 +3020,6 @@ class WebScanner:
         return secrets
 
     def _collect_param_urls(self) -> set[str]:
-        """
-        Crawl home page and discovered directories for URLs with GET params.
-        Used by sqli_test, xss_test, open_redirect_test, cmdi_test, path_traversal_test.
-        """
         urls: set = set()
         for ep in self._discovered_endpoints:
             if "?" in ep and "=" in ep:
@@ -3307,10 +3062,6 @@ class WebScanner:
         return urls
 
     def spider_crawl(self, max_depth: int = 3, max_urls: int = 200) -> dict:
-        """
-        BFS web crawler discovering endpoints, forms, parameters, and scripts.
-        Feeds discovered targets to all injection and audit checks.
-        """
         parsed_base = urllib.parse.urlparse(self.base_url)
         base_netloc = parsed_base.netloc
         base_scheme = parsed_base.scheme or "http"
@@ -3422,11 +3173,6 @@ class WebScanner:
         return res_summary
 
     def cmdi_test(self) -> list[dict]:
-        """
-        Test for OS Command Injection vulnerabilities across GET params and POST forms.
-        Uses non-destructive arithmetic evaluation `echo cmdi_$((7*7))` (Unix)
-        and `echo cmdi_49` (Windows), verifying `cmdi_49` appears in the output.
-        """
         vulnerable: list[dict] = []
         tested_pairs: set[str] = set()
 
@@ -3523,11 +3269,6 @@ class WebScanner:
         return vulnerable
 
     def path_traversal_test(self) -> list[dict]:
-        """
-        Extended Local and Remote Path Traversal testing.
-        Includes Windows system targets, PHP filter wrappers, null-byte truncation,
-        and double-URL encoding bypasses across all discovered endpoints.
-        """
         vulnerable: list[dict] = []
         tested_pairs: set[str] = set()
 
@@ -3589,10 +3330,6 @@ class WebScanner:
         return vulnerable
 
     def waf_detect(self) -> dict:
-        """
-        Active & Passive Web Application Firewall (WAF) fingerprinting.
-        Analyzes response headers, status codes on active probes, and block pages.
-        """
         waf_info = {"detected": False, "vendor": "None detected", "confidence": 0.0, "status": 200}
 
         home_resp = self._get("/")
@@ -3639,10 +3376,6 @@ class WebScanner:
         return waf_info
 
     def waf_bypass_test(self) -> list[dict]:
-        """
-        Evaluate WAF rule bypass techniques (case randomization, SQL comments,
-        double encoding, and parameter pollution).
-        """
         bypasses: list[dict] = []
         base_probe = "/?id=1' UNION SELECT 1,2,3--"
         base_resp = self._get(base_probe)
@@ -3678,10 +3411,6 @@ class WebScanner:
         return bypasses
 
     def subdomain_takeover_test(self) -> list[dict]:
-        """
-        Check for dangling DNS CNAME records and abandoned cloud provider assets
-        (GitHub Pages, Heroku, Netlify, Azure, AWS S3, Shopify, etc.).
-        """
         import socket
         findings: list[dict] = []
         parsed = urllib.parse.urlparse(self.base_url)
@@ -3755,7 +3484,6 @@ class WebScanner:
     # ──────────────────────────────────────────────────────────
 
     def nosql_injection_test(self) -> list[dict]:
-        """Test for NoSQL injection via MongoDB operator injection in GET and POST params."""
         findings: list[dict] = []
 
         NOSQL_PAYLOADS_GET = [
@@ -3883,7 +3611,6 @@ class WebScanner:
         return findings
 
     def ldap_injection_test(self) -> list[dict]:
-        """Test for LDAP injection via special filter characters."""
         findings: list[dict] = []
 
         LDAP_PAYLOADS = [
@@ -3957,7 +3684,6 @@ class WebScanner:
         return findings
 
     def xpath_injection_test(self) -> list[dict]:
-        """Test for XPath injection via boolean and error-based techniques."""
         findings: list[dict] = []
 
         XPATH_PAYLOADS = [
@@ -4042,7 +3768,6 @@ class WebScanner:
         return findings
 
     def second_order_injection_test(self) -> list[dict]:
-        """Test for second-order injection: store payload, then trigger on retrieval."""
         findings: list[dict] = []
 
         MARKER = f"ls2nd{int(time.time()) & 0xFFFF}"
@@ -4107,7 +3832,6 @@ class WebScanner:
         return findings
 
     def blind_cmdi_test(self) -> list[dict]:
-        """Test for blind command injection via time-based detection (sleep/ping)."""
         findings: list[dict] = []
 
         SLEEP_DURATION = 5
@@ -4217,7 +3941,6 @@ class WebScanner:
     # ──────────────────────────────────────────────────────────
 
     def bola_test(self) -> list[dict]:
-        """Test for Broken Object Level Authorization (BOLA/IDOR on API endpoints)."""
         findings: list[dict] = []
 
         API_PATTERNS = [
@@ -4302,7 +4025,6 @@ class WebScanner:
         return findings
 
     def bfla_test(self) -> list[dict]:
-        """Test for Broken Function Level Authorization (access admin endpoints as regular user)."""
         findings: list[dict] = []
 
         ADMIN_PATHS = [
@@ -4390,7 +4112,6 @@ class WebScanner:
         return findings
 
     def mass_assignment_test(self) -> list[dict]:
-        """Test for mass assignment by injecting extra fields in POST/PUT requests."""
         findings: list[dict] = []
 
         DANGEROUS_FIELDS = [
@@ -4492,7 +4213,6 @@ class WebScanner:
         return findings
 
     def excessive_data_test(self) -> list[dict]:
-        """Test for excessive data exposure in API responses."""
         findings: list[dict] = []
 
         SENSITIVE_FIELDS = [
@@ -4582,7 +4302,6 @@ class WebScanner:
         return findings
 
     def api_inventory_test(self) -> list[dict]:
-        """Discover undocumented API versions and shadow endpoints."""
         findings: list[dict] = []
 
         VERSION_PATTERNS = [
@@ -4680,7 +4399,6 @@ class WebScanner:
     # ──────────────────────────────────────────────────────────
 
     def http2_test(self) -> dict:
-        """Check HTTP/2 support and potential rapid reset susceptibility."""
         result = {}
         try:
             import ssl
@@ -4725,7 +4443,6 @@ class WebScanner:
         return result
 
     def cors_preflight_cache_test(self) -> list[dict]:
-        """Test for CORS preflight response caching abuse."""
         findings: list[dict] = []
 
         test_origins = [
@@ -4785,7 +4502,6 @@ class WebScanner:
         return findings
 
     def dns_rebinding_test(self) -> list[dict]:
-        """Test for DNS rebinding susceptibility via Host header validation."""
         findings: list[dict] = []
 
         parsed = urllib.parse.urlparse(self.base_url)
@@ -4836,7 +4552,6 @@ class WebScanner:
         return findings
 
     def web_cache_deception_test(self) -> list[dict]:
-        """Test for web cache deception by appending static file extensions to dynamic endpoints."""
         findings: list[dict] = []
 
         DYNAMIC_PATHS = [
@@ -4909,7 +4624,6 @@ class WebScanner:
         return findings
 
     def business_logic_bypass_test(self) -> list[dict]:
-        """Test for rate-limit and business logic bypass via header manipulation."""
         findings: list[dict] = []
 
         BYPASS_HEADERS = {
@@ -5008,7 +4722,6 @@ class WebScanner:
         return findings
 
     def _put(self, path: str, data: str = "", headers: dict | None = None):
-        """Safe HTTP PUT primitive."""
         try:
             url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
             req_headers = dict(self.default_headers)
@@ -5032,7 +4745,6 @@ class WebScanner:
             return None
 
     def _delete(self, path: str, headers: dict | None = None):
-        """Safe HTTP DELETE primitive."""
         try:
             url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
             req_headers = dict(self.default_headers)
@@ -5056,7 +4768,6 @@ class WebScanner:
             return None
 
     def _patch(self, path: str, data: str = "", headers: dict | None = None):
-        """Safe HTTP PATCH primitive."""
         try:
             url = urllib.parse.urljoin(self.base_url + "/", path.lstrip("/"))
             req_headers = dict(self.default_headers)
@@ -5080,7 +4791,6 @@ class WebScanner:
             return None
 
     def _discover_forms(self) -> list[dict]:
-        """Discover HTML forms on the target site."""
         forms = []
         pages_to_check = ["/"]
         for ep in list(self._discovered_endpoints)[:20]:
@@ -5140,10 +4850,6 @@ class WebScanner:
         return forms
 
     def run_all(self, wordlist_file: str | None = None) -> dict:
-        """
-        Run all configured web application tests.
-        Returns raw results dict.
-        """
         print(f"\033[38;5;196m[WEB]\033[0m {self.base_url}")
         print(f"  [00] Web spider & crawler");        self.spider_crawl()
         print(f"  [01] Directory brute");            self.dir_brute(wordlist_file=wordlist_file)
@@ -5211,7 +4917,6 @@ class WebScanner:
         return self.results
 
     def to_scan_results(self) -> list[ScanResult]:
-        """Convert self.results dict into list[ScanResult] for PhantomEngine."""
         out: list[ScanResult] = []
         parsed = urllib.parse.urlparse(self.base_url)
         host   = parsed.hostname or self.base_url
@@ -5612,15 +5317,6 @@ async def web_scan_async(url: str, wordlist_file: str | None = None,
                          headers: dict[str, str] | None = None,
                          cookies: str | dict[str, str] | None = None,
                          auth_token: str | None = None) -> list[ScanResult]:
-    """
-    Async entry point — runs WebScanner in thread pool so it doesn't block
-    the PhantomEngine event loop.
-
-    checks: subset of ['dir','tech','sqli','xss','redirect','cors',
-                        'creds','jwt','files','secrets', 'spider', 'cmdi',
-                        'traversal', 'waf', 'takeover']
-            None = run all
-    """
     loop = asyncio.get_running_loop()
 
     def _run():

@@ -1,4 +1,7 @@
-"""LightScan v2.0 PHANTOM — Scan Diff | Developer: Light"""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import json
 from lightscan.core.engine import ScanResult, Severity
 

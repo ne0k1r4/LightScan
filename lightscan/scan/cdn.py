@@ -1,3 +1,7 @@
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 
 
 import ipaddress
@@ -30,7 +34,6 @@ for _provider, _cidrs in CDN_RANGES.items():
         _PARSED.append((ipaddress.ip_network(_cidr), _provider))
 
 def is_cdn_ip(ip: str) -> tuple[bool, str]:
-    """(True, provider) if ip falls inside a known cdn/waf range, else (False, "")"""
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:

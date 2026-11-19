@@ -1,4 +1,7 @@
-"""Optional bridge to the LightScan Go TCP connect scanner."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -14,10 +17,9 @@ from lightscan.scan.portscan import CRIT_PORTS, HIGH_PORTS, SERVICE_MAP
 from lightscan.scan.streaming import ScanControls
 
 class GoScannerError(RuntimeError):
-    """Raised when the optional Go scanner cannot complete a requested run."""
+    pass
 
 def find_go_scanner(explicit_path: str | None = None) -> str | None:
-    """Locate an explicitly supplied binary, a PATH entry, or the bundled build."""
     candidates: list[Path] = []
     if explicit_path:
         candidates.append(Path(explicit_path).expanduser())
@@ -45,7 +47,6 @@ async def scan_with_go(
     result_sink: Callable[[ScanResult], None] | None = None,
     retain_results: bool = True,
 ) -> tuple[list[ScanResult], dict]:
-    """Stream NDJSON from Go into LightScan's common result representation."""
     binary = find_go_scanner(binary_path)
     if not binary:
         raise GoScannerError(

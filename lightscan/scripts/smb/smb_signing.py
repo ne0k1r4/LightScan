@@ -1,4 +1,7 @@
-"""Check if SMB signing is required."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, socket, struct
 SCRIPT_NAME  = "smb_signing"
 SCRIPT_PORTS = [445, 139]

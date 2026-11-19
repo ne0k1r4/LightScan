@@ -1,4 +1,7 @@
-"""WHOIS domain lookup via raw socket to IANA referral chain."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -96,7 +99,6 @@ async def whois_lookup_async(
     domain: str,
     timeout: float = 10.0,
 ) -> list[ScanResult]:
-    """Perform WHOIS lookup with IANA referral following."""
     results: list[ScanResult] = []
     try:
         raw, parsed = await asyncio.to_thread(_blocking_whois, domain, timeout)

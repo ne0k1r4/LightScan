@@ -1,3 +1,7 @@
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 
 from __future__ import annotations
 import asyncio, random, socket, struct
@@ -41,7 +45,6 @@ def _build_getnext(community: str, oid: str) -> bytes:
     return _tlv(0x30, _tlv(0x02, b"\x00") + _tlv(0x04, community.encode()) + pdu)
 
 def _parse(data: bytes) -> tuple[str, str]:
-    """crude BER parser — handles octet string, integer, IP address"""
     try:
         if not data or data[0] != 0x30: return "", ""
         i = 2

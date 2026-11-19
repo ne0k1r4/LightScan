@@ -1,36 +1,6 @@
 """
-LightScan v2.0 PHANTOM — True Half-Open SYN Scanner | Developer: Light
-nmap -sS equivalent via AF_PACKET.  All 7 engine upgrades applied.
-
-Half-open mechanics
-  SYN  →  SYN-ACK  →  RST (crafted, correct SEQ — handshake never completes)
-  SYN  →  RST      →  CLOSED
-  SYN  →  (none)   →  FILTERED
-
-Kernel RST suppression [true half-open]
-  iptables OUTPUT DROP on our sport range for the duration of the scan.
-  Without this the kernel races our crafted RST with its own, making this
-  a probe sender rather than a true half-open scanner.
-
-Firewall detection [accurate]
-  ICMP type-3 admin-prohibited codes (9,10,13,14,15) → state 'firewall'
-  Inline RST without ACK (window=0) → flagged in meta as firewall_rst=True
-  Full ICMP3 table (16 codes) via tcpflags.classify_icmp3()
-
-IDS-evasion mode [--stealth-scan]
-  stealth=True forces T1 max, adds 10–25 % random jitter, randomises sport,
-  optionally spoof source port (e.g. 53/80/443 to bypass port-based ACLs).
-
-Interface auto-selection [fixed]
-  _get_default_iface() now validates operstate and falls back through all
-  default-route interfaces before returning 'eth0'.
-
-TCP flag parser [core fix]
-  All flag decisions routed through tcpflags.classify_tcp() — no more raw
-  bitmask comparisons scattered through the parser.
-
-ICMP filtered detection [full table]
-  Every ICMP type-3 code mapped.  TTL-exceeded (type 11) also caught.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -60,7 +30,6 @@ IP_PROTO_ICMP = 1
 RST_PKT_LEN   = 40
 
 def _iface_is_up(iface: str) -> bool:
-    """Return True if the interface operstate is up or unknown."""
     try:
         state = open(f"/sys/class/net/{iface}/operstate").read().strip()
         return state in ("up", "unknown")
@@ -68,16 +37,6 @@ def _iface_is_up(iface: str) -> bool:
         return True
 
 def _get_default_iface() -> str:
-    """
-    Return the best network interface for sending raw packets.
-
-    Fix over original: the old version returned the first default-route entry
-    without checking whether the interface is actually UP.  We now:
-      1. Collect all interfaces with a default route (gateway=0.0.0.0)
-      2. Return the first one whose operstate is 'up' or 'unknown'
-      3. Fall back to any non-loopback UP interface
-      4. Hard fallback: 'eth0'
-    """
     candidates: List[str] = []
     try:
         with open("/proc/net/route") as f:
@@ -104,10 +63,6 @@ def _get_default_iface() -> str:
     return "eth0"
 
 def _iface_for_src_ip(src_ip: str) -> str:
-    """
-    Find the interface that owns src_ip by scanning /proc/net/if_inet6 and
-    /proc/net/fib_trie. Falls back to _get_default_iface().
-    """
     try:
         with open("/proc/net/fib_trie") as f:
             content = f.read()
@@ -156,13 +111,6 @@ def _get_gateway_mac(iface: str, gateway_ip: str) -> bytes:
 
 @contextlib.contextmanager
 def _suppress_kernel_rst(sport_lo: int, sport_hi: int):
-    """
-    Block kernel-generated RSTs for our sport range via iptables.
-
-    Without this the kernel sees an incoming SYN-ACK on an unknown socket and
-    fires its own RST — racing (and potentially overriding) our crafted RST.
-    That makes us a probe sender, not a true half-open scanner.
-    """
     sport_range = f"{sport_lo}:{sport_hi}"
     add = ["iptables", "-I", "OUTPUT", "1",
            "-p", "tcp", "--tcp-flags", "RST", "RST",
@@ -179,16 +127,6 @@ def _suppress_kernel_rst(sport_lo: int, sport_hi: int):
             subprocess.run(rem, capture_output=True)
 
 def _build_rst(src_ip: str, dst_ip: str, sport: int, dport: int, seq: int) -> bytes:
-    """
-    Build RST to abort a half-open connection.
-
-    seq   = ACK field from the SYN-ACK (= our ISN + 1 — what the remote
-            expects as our next sequence number, making this RST valid).
-
-    IP total_length is set to RST_PKT_LEN=40 explicitly.  AF_PACKET sockets
-    do NOT have the kernel fill in the length field (unlike SOCK_RAW +
-    IP_HDRINCL) — leaving it 0 produces a malformed packet that is dropped.
-    """
     ip_s  = socket.inet_aton(src_ip)
     ip_d  = socket.inet_aton(dst_ip)
     ip_id = random.randint(1, 65535)
@@ -207,18 +145,6 @@ def _parse_af_packet(
     src_ip:   str,
     port_map: Dict[int, int],
 ) -> Optional[Tuple[int, str, int, dict]]:
-    """
-    Parse Ethernet frame from AF_PACKET socket.
-
-    Returns (target_port, state, rst_seq, meta) or None.
-      state   : 'open' | 'closed' | 'filtered' | 'firewall'
-      rst_seq : ACK field from SYN-ACK (use as SEQ in RST reply); 0 otherwise
-      meta    : {'flags_str', 'firewall_rst', 'icmp_reason', 'firewall'}
-
-    TCP flag decisions use classify_tcp() — no raw bitmasks.
-    ICMP type-3 codes use the full classify_icmp3() table.
-    ICMP type-11 (TTL exceeded) is caught as filtered.
-    """
     try:
         if len(data) < ETH_HDR_LEN:
             return None
@@ -313,20 +239,6 @@ def _parse_af_packet(
         return None
 
 class PacketScanner:
-    """
-    True half-open SYN scanner via AF_PACKET.
-    Addresses all 7 engine upgrade items.
-
-    Scan flow per port:
-      SYN  →  SYN-ACK  →  RST (crafted, kernel RSTs suppressed)  →  OPEN
-      SYN  →  RST / RST-ACK                                       →  CLOSED
-      SYN  →  ICMP type-3 admin-prohibited                        →  FIREWALL
-      SYN  →  ICMP type-3 other / type-11 / no response           →  FILTERED
-
-    stealth=True:
-      Forces T1 max timing, adds random jitter (10–25 %), uses source port
-      spoofing if spoof_sport != 0.
-    """
 
     SPORT_LO = 32768
     SPORT_HI = 60999
@@ -390,7 +302,6 @@ class PacketScanner:
         sys.stdout.flush()
 
     def _interval(self, base: float) -> float:
-        """Apply jitter to inter-packet interval."""
         if self.jitter > 0:
             return max(0.0, base * (1.0 + self.jitter * random.uniform(-1, 1)))
         return base
@@ -693,7 +604,6 @@ async def async_packet_scan(
     stealth:     bool = False,
     spoof_sport: int  = 0,
 ) -> List[ScanResult]:
-    """Async wrapper for the half-open AF_PACKET scanner."""
     if os.geteuid() != 0:
         from lightscan.scan.rawscan import async_raw_scan
         return await async_raw_scan(

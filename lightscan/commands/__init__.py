@@ -1,1 +1,4 @@
-"""Command-line parsing and presentation helpers."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""

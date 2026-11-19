@@ -1,3 +1,7 @@
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 
 from __future__ import annotations
 import asyncio, ipaddress, socket
@@ -43,7 +47,6 @@ async def check_dual_stack(hostname: str) -> dict:
     return result
 
 def mac_to_eui64(mac: str) -> str:
-    """MAC → EUI-64 interface ID for SLAAC prediction"""
     try:
         parts    = [int(x, 16) for x in mac.replace("-", ":").split(":")]
         parts[0] ^= 0x02
@@ -54,10 +57,6 @@ def mac_to_eui64(mac: str) -> str:
         return ""
 
 def predict_slaac(prefix: str, mac: str) -> str:
-    """predict SLAAC global address from /64 prefix + MAC EUI-64.
-    
-    works when privacy extensions are off (common on servers/routers).
-    """
     try:
         eui64   = mac_to_eui64(mac)
         if not eui64: return ""
@@ -79,9 +78,6 @@ async def scan_ipv6_host(host: str, ports: list[int],
     return sorted(open_ports)
 
 async def icmpv6_neighbor_discovery(iface: str = "", timeout: float = 3.0) -> list[str]:
-    """send ICMPv6 NS to ff02::1 — all IPv6 hosts on link respond.
-    IPv6 equivalent of ARP scan. requires scapy + root.
-    """
     try:
         from scapy.all import IPv6, ICMPv6ND_NS, Ether, sendp, sniff, conf
         conf.verb = 0

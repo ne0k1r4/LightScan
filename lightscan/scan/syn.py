@@ -1,5 +1,6 @@
 """
-LightScan v2.0 PHANTOM — Scapy+Raw SYN Scanner | Developer: Light
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import asyncio
@@ -29,10 +30,6 @@ except (ImportError, KeyError, Exception):
     SCAPY_OK = False
 
 class SYNScanner:
-    """
-    Raw SYN scanner backed by Scapy.
-    Upgraded: correct flag classification + ICMP filtered/firewall detection.
-    """
     def __init__(self, target: str, ports: list, timeout=2.0, threads=100,
                  verbose=False, os_fingerprint=True, jitter=0.0):
         self.target         = target
@@ -352,7 +349,6 @@ def _compile_c_scanner():
     return None
 
 def syn_scan_c(target: str, ports: list, timeout=5) -> list:
-    """Run compiled C SYN scanner — fastest, ~nmap speed"""
     import subprocess
     if os.geteuid() != 0:
         raise PermissionError("C SYN scan requires root")
@@ -385,7 +381,6 @@ def syn_scan_c(target: str, ports: list, timeout=5) -> list:
     return results
 
 def _run_connect_fallback(target: str, ports: list, timeout: float) -> list:
-    """Safe connect-scan fallback — runs in a dedicated thread to avoid event loop conflicts."""
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(asyncio.run, _async_connect_scan(target, ports, timeout))
@@ -398,10 +393,6 @@ async def _async_connect_scan(target, ports, timeout):
 
 def syn_scan_auto(target: str, ports: list, timeout=2.0, threads=100,
                   verbose=False, prefer_c=False, jitter=0.0) -> list:
-    """
-    Auto-pick best SYN method: C > Scapy > connect fallback.
-    jitter: per-packet delay fraction for stealth/IDS-evasion.
-    """
     if os.geteuid() != 0:
         print("\033[38;5;240m[!] Not root — falling back to connect scan\033[0m")
         return _run_connect_fallback(target, ports, timeout)

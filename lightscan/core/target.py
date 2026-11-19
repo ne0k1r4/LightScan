@@ -1,9 +1,6 @@
-"""Target and port parsing utilities for bounded, predictable scan planning.
-
-The parser accepts single addresses, CIDRs, simple IPv4 last-octet ranges,
-hostnames, stdin, and ``file:`` target lists.  It deliberately expands input
-before any network traffic is sent so callers can validate scope and workload
-up front.
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -27,15 +24,9 @@ DEFAULT_MAX_TARGETS = 65_536
 _RANGE_RE = re.compile(r"^(\d+\.\d+\.\d+\.)(\d+)-(\d+)$")
 
 class TargetSpecError(ValueError):
-    """Raised when a target or port specification is invalid or unsafe."""
+    pass
 
 def parse_targets(spec: str, *, max_targets: int = DEFAULT_MAX_TARGETS) -> list[str]:
-    """Expand *spec* into unique targets while enforcing a workload ceiling.
-
-    ``max_targets`` limits the total expanded targets, including entries read
-    from stdin or a file.  Operators can use this deterministic preflight to
-    avoid accidentally turning a broad CIDR into an unbounded scan.
-    """
     if max_targets < 1:
         raise TargetSpecError("max_targets must be at least 1")
 
@@ -122,7 +113,6 @@ def _ensure_limit(count: int, maximum: int, source: str) -> None:
         )
 
 def parse_ports(spec: str) -> list[int]:
-    """Parse a comma-separated port list and reject invalid or empty input."""
     normalized = (spec or "").strip().lower()
     if normalized in {"top100", "top-100"}:
         return TOP_100.copy()
@@ -160,7 +150,6 @@ def _validate_port(port: int) -> None:
         raise TargetSpecError(f"port must be between 1 and 65535, got {port}")
 
 def resolve(host: str) -> str | None:
-    """Resolve a hostname to IPv4 without raising for an unavailable name."""
     try:
         return socket.gethostbyname(host)
     except socket.gaierror:

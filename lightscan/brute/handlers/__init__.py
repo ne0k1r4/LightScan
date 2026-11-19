@@ -1,13 +1,6 @@
 """
-Protocol handlers — one handler per protocol, all with the same interface.
-
-Each handler is an async callable: (username, password) → bool.
-Uses the proper library when available (paramiko for SSH, pymysql for MySQL,
-etc.) and falls back to a raw socket implementation when it's not installed.
-That way the core brute engine works out of the box without any optional deps.
-
-Supported: SSH · FTP · SMTP · HTTP (form + Basic) · MySQL · PostgreSQL
-           MSSQL · Telnet · VNC · SMB · RDP · LDAP
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import asyncio, ftplib, smtplib, socket, struct, time, base64, hashlib, re
@@ -106,12 +99,6 @@ def make_http_handler(host, port=80, url="", user_field="username",
     }
 
     def _fetch_csrf(session_cookie: str = "") -> tuple[dict, str]:
-        """
-        GET the login page, extract any hidden form fields (CSRF tokens),
-        and return (extra_fields_dict, set_cookie_header).
-        Looks for common token field names: user_token, csrf_token,
-        _token, authenticity_token, __RequestVerificationToken, etc.
-        """
         CSRF_NAMES = {
             "user_token", "csrf_token", "_token", "authenticity_token",
             "__RequestVerificationToken", "csrfmiddlewaretoken",
@@ -417,7 +404,6 @@ def make_vnc_handler(host, port=5900, timeout=8.0, **kw):
     return handler
 
 def make_smb_handler(host, port=445, timeout=8.0, domain='', **kw):
-    """Raw NTLMv2 SMB brute — impacket optional fallback"""
     from lightscan.brute.handlers.smb_raw import make_smb_raw_handler
     raw = make_smb_raw_handler(host, port, timeout, domain)
 
@@ -441,7 +427,6 @@ def make_smb_handler(host, port=445, timeout=8.0, domain='', **kw):
     return handler
 
 def make_rdp_handler(host, port=3389, timeout=10.0, domain='', **kw):
-    """Full RDP brute: X.224 negotiate → TLS → CredSSP NTLMv2 (raw)"""
     from lightscan.brute.handlers.rdp_raw import make_rdp_handler as _raw
     return _raw(host, port, timeout, domain)
 

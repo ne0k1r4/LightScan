@@ -1,4 +1,7 @@
-"""LightScan v2.0 PHANTOM — DNS Enumeration | Developer: Light"""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -172,7 +175,6 @@ async def full_dns_enum(domain, ns="8.8.8.8", axfr=True, brute=True, use_crtsh=T
 
     if axfr and ns_ips:
         async def _read_dns_tcp_msg(reader):
-            """Read one length-prefixed DNS message from a TCP stream."""
             length_bytes = await asyncio.wait_for(reader.readexactly(2), timeout=5.0)
             length = struct.unpack("!H", length_bytes)[0]
             if length == 0:
@@ -233,11 +235,6 @@ import json
 import urllib.request
 
 def _crtsh_lookup(domain: str, timeout: float = 10.0) -> list[str]:
-    """certificate transparency log lookup via crt.sh — passive subdomain discovery.
-    
-    way more effective than wordlist brute — CT logs contain every cert ever
-    issued. completely passive: only hits crt.sh API, zero DNS probes.
-    """
     try:
         req = urllib.request.Request(
             f"https://crt.sh/?q=%.{domain}&output=json",
@@ -271,7 +268,6 @@ DKIM_SELECTORS = [
 
 async def check_dkim(domain: str, selectors: list | None = None,
                      timeout: float = 3.0) -> list[str]:
-    """probe common DKIM selectors — present = DKIM configured"""
     sels  = selectors if selectors is not None else DKIM_SELECTORS
     found = []
     loop  = asyncio.get_running_loop()
@@ -290,7 +286,6 @@ async def check_dkim(domain: str, selectors: list | None = None,
 
 async def full_dns_enum_v2(domain: str, axfr: bool = True, ct_logs: bool = True,
                             check_email: bool = True, timeout: float = 5.0) -> list:
-    """full DNS enumeration v2 — base + CT logs + DKIM + SRV"""
     from lightscan.core.engine import ScanResult, Severity
     results = list(await full_dns_enum(domain, axfr=axfr, timeout=timeout))
 

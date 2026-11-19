@@ -1,4 +1,7 @@
-"""Async connection-start rate limiting shared by scanner implementations."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -7,11 +10,6 @@ import time
 
 
 class RateLimiter:
-    """Space operation starts at no more than *rate* starts per second.
-
-    A non-positive rate disables limiting. The limiter is process-local and is
-    intended to be shared by every worker participating in one scan.
-    """
 
     def __init__(self, rate: float = 0.0) -> None:
         if not math.isfinite(rate) or rate < 0:
@@ -21,7 +19,6 @@ class RateLimiter:
         self._next_start = 0.0
 
     async def acquire(self) -> None:
-        """Wait until this operation is allowed to start."""
         if not self._interval:
             return
         async with self._lock:

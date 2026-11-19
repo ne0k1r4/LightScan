@@ -1,14 +1,6 @@
 """
-LightScan v2.6 — CLI Entry Point
+LightScan
 Developer: Light (Neok1ra)
-
-Usage:
-  lightscan --scan -t 192.168.1.0/24 -p top100 --max-rate 250 --sv
-  lightscan --scan --go-engine -t file:approved-targets.txt -p 22,80,443
-  lightscan --dns target.com
-  lightscan --cve -t 10.0.0.1 --scan
-  lightscan --oauth https://login.target.com/oauth/authorize --oauth-client CLIENT_ID
-  lightscan --diff old.json new.json
 """
 from __future__ import annotations
 import asyncio
@@ -33,7 +25,6 @@ from lightscan.commands.help import print_minimal_help
 
 
 def _targets(args) -> list[str]:
-    """Expand the CLI target input once per scan stage with an explicit ceiling."""
     return parse_targets(args.target, max_targets=args.max_targets)
 
 def parse_userlist(spec):
@@ -1047,12 +1038,6 @@ _DEFAULT_CONCURRENCY = 256
 _FD_SAFETY_MARGIN    = 100
 
 def _tune_concurrency(requested: int | None) -> int:
-    """
-    rustscan does this by checking ulimit and sizing its batch to fit under
-    it instead of handing out a fixed number and hoping. same idea here -
-    the ulimit raise above is a best-effort attempt, this checks what we
-    actually ended up with and reacts to it either way.
-    """
     if sys.platform == "win32":
         return requested if requested is not None else _DEFAULT_CONCURRENCY
     try:
@@ -1082,14 +1067,6 @@ def _tune_concurrency(requested: int | None) -> int:
     return _DEFAULT_CONCURRENCY
 
 def _split_cdn_hosts(hosts: list[str]) -> tuple[list[str], list[str]]:
-    """
-    naabu does this before deciding on a full port sweep - resolve each
-    host, check it against known cloudflare/fastly ranges, and split into
-    (normal, cdn) so the caller can scan cdn ones with a restricted port
-    list instead of hammering someone else's edge network for no reason.
-    only called when --exclude-cdn is actually set, so this resolve step
-    doesn't add overhead to the common case.
-    """
     from lightscan.scan.cdn import is_cdn_ip
     normal, cdn = [], []
     for h in hosts:

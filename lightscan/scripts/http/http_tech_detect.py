@@ -1,4 +1,7 @@
-"""Detect web technologies from headers and body."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, ssl, urllib.request, urllib.error, re
 SCRIPT_NAME  = "http_tech_detect"
 SCRIPT_PORTS = [80, 443, 8080, 8443, 3000, 5000, 8000, 8888]

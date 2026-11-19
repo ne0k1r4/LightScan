@@ -1,32 +1,6 @@
 """
-Autonomous Orchestration Engine
-The whole reason this project exists. You give it a domain name.
-It figures out the rest.
-
-Internally it runs a 10-stage pipeline where every stage feeds
-its findings directly into the next one — no waiting, no manual
-handoff. If stage 3 finds Redis open, stage 5 immediately tries
-to write a webshell. If stage 7 cracks an SSH password, stage 8
-uses it to check for DCSync access.
-
-Stages in order:
-  1  DNS / OSINT       Subdomain enum via crt.sh CT logs + DNS brute
-  2  Asset resolution  Resolve subdomains → IPs, filter to scope, flag CDN
-  3  Active scan       ICMP discovery + async port scan on live hosts
-  5  Vuln validation   CVE template checks on every open port
-  6  Exploit chains    Build ordered attack paths from confirmed findings
-  7  Credential attack Auto-brute SSH, FTP, MySQL, RDP, MSSQL
-  8  DC detection      Spot Kerberos+LDAP → print DCSync / Kerberoasting path
-  9  Web deep-scan     Full OWASP scanner on all HTTP/HTTPS targets
-  10 Compromise map    Structured JSON attack graph saved to disk
-
-TargetContext is the shared memory that carries facts across stages.
-It remembers OS family, open ports, cracked creds, and pivot hosts —
-so stages skip irrelevant probes automatically. No point running
-Windows-only checks on a box that answered with Linux TTLs.
-
-Stealth mode (--stealth) drops to T1 timing with 1-3s jitter and
-halves concurrency. Not invisible, but much quieter.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -48,7 +22,6 @@ R   = "\033[0m"
 
 @dataclass
 class TargetContext:
-    """Accumulates everything discovered about the engagement."""
     domain:         str
     scope:          List[str]           = field(default_factory=list)
     subdomains:     List[str]           = field(default_factory=list)
@@ -72,7 +45,6 @@ class TargetContext:
         self.all_results.extend(rs)
 
     def in_scope(self, host: str) -> bool:
-        """Return True if host is within defined scope."""
         if not self.scope:
             return True
         for s in self.scope:
@@ -106,7 +78,6 @@ async def _resolve(host: str) -> Optional[str]:
         return None
 
 async def _crtsh(domain: str) -> List[str]:
-    """Pull subdomains from crt.sh CT logs."""
     import urllib.request as ur
     loop = asyncio.get_running_loop()
     def _fetch():
@@ -133,7 +104,6 @@ _SUBDOMAIN_WORDLIST = [
 ]
 
 async def _dns_brute(domain: str, wordlist: List[str]) -> List[str]:
-    """DNS brute-force subdomain enumeration."""
     found = []
     sem   = asyncio.Semaphore(50)
 
@@ -148,12 +118,10 @@ async def _dns_brute(domain: str, wordlist: List[str]) -> List[str]:
     return found
 
 async def _axfr(domain: str) -> List[str]:
-    """Attempt DNS zone transfer."""
     import dns_stub as _
     pass
 
 def _infer_os(ttl: int, banner: str) -> str:
-    """Heuristic OS family from TTL and banners."""
     if ttl:
         if ttl <= 64:   return "linux"
         if ttl <= 128:  return "windows"
@@ -166,7 +134,6 @@ def _infer_os(ttl: int, banner: str) -> str:
     return ""
 
 async def stage_dns(ctx: TargetContext, timeout: float, stealth: bool):
-    """Stage 1: Subdomain enumeration via crt.sh + DNS brute."""
     _stage(1, f"OSINT / DNS enumeration → {ctx.domain}")
 
     ct_subs = await _crtsh(ctx.domain)
@@ -190,7 +157,6 @@ async def stage_dns(ctx: TargetContext, timeout: float, stealth: bool):
     ])
 
 async def stage_resolve(ctx: TargetContext, timeout: float):
-    """Stage 2: Resolve subdomains → IPs, scope-filter, detect CDN."""
     _stage(2, "Asset resolution + scope enforcement")
     CDN_CNAMES = {"cloudflare","akamai","fastly","cloudfront","incapsula","sucuri","imperva"}
 
@@ -215,7 +181,6 @@ async def stage_resolve(ctx: TargetContext, timeout: float):
 
 async def stage_portscan(ctx: TargetContext, timeout: float,
                           ports: Optional[List[int]], intensity: int, stealth: bool, mode: str = "deep"):
-    """Stage 3-4: Active scan + service profiling on all resolved IPs."""
     _stage(3, f"Active scan + service profiling ({len(ctx.live_hosts)} hosts)")
 
     results = await active_scan(
@@ -255,7 +220,6 @@ async def stage_portscan(ctx: TargetContext, timeout: float,
                     ctx.web_targets.append(url)
 
 async def stage_vuln(ctx: TargetContext, timeout: float, allow_intrusive: bool = False):
-    """Stage 5: Validate vulns not already covered by active_scan."""
     _stage(5, "Extended vulnerability validation")
     if not ctx.open_ports:
         print(f"  {DIM}No open ports to check{R}")
@@ -277,7 +241,6 @@ async def stage_vuln(ctx: TargetContext, timeout: float, allow_intrusive: bool =
         pass
 
 async def stage_exploit_chain(ctx: TargetContext):
-    """Stage 6: Build ordered exploit chains from confirmed findings."""
     _stage(6, "Exploit chain analysis")
     from lightscan.scan.exploit_chain import build_chains, print_chain_report
 
@@ -294,7 +257,6 @@ async def stage_exploit_chain(ctx: TargetContext):
 
 async def stage_cred_attack(ctx: TargetContext, timeout: float,
                               userlist: List[str], passlist: List[str]):
-    """Stage 7: Auto-brute services where creds might work."""
     _stage(7, "Credential attack (auto-brute)")
     from lightscan.brute.engine import BruteEngine
     from lightscan.brute.handlers import get_handler, PROTOCOLS
@@ -330,7 +292,6 @@ async def stage_cred_attack(ctx: TargetContext, timeout: float,
                 print(f"  {DIM}[!] brute {proto} {host}: {e}{R}")
 
 async def stage_dc_hunt(ctx: TargetContext, timeout: float):
-    """Stage 8: Detect Domain Controllers via Kerberos/LDAP/SMB."""
     _stage(8, "Domain Controller / Active Directory detection")
     DC_PORTS = {88, 389, 636, 3268, 3269, 445}
 
@@ -358,7 +319,6 @@ async def stage_dc_hunt(ctx: TargetContext, timeout: float):
                 "DC candidate — GlobalCatalog+SMB", {}))
 
 async def stage_web(ctx: TargetContext, timeout: float, stealth: bool):
-    """Stage 9: Full web scanner on discovered HTTP/HTTPS targets."""
     _stage(9, f"Web application deep scan ({len(ctx.web_targets)} targets)")
     if not ctx.web_targets:
         print(f"  {DIM}No web targets found{R}")
@@ -383,7 +343,6 @@ async def stage_web(ctx: TargetContext, timeout: float, stealth: bool):
             print(f"  {DIM}[!] web scan error {url}: {e}{R}")
 
 def build_compromise_map(ctx: TargetContext) -> dict:
-    """Build structured JSON compromise narrative."""
     crit_vulns = [r for r in ctx.vulns if r.severity == Severity.CRITICAL]
     high_vulns = [r for r in ctx.vulns if r.severity == Severity.HIGH]
 
@@ -471,10 +430,6 @@ async def run_auto(
     mode:       str             = "deep",
     allow_intrusive: bool       = False,
 ) -> Tuple[List[ScanResult], dict]:
-    """
-    Fully autonomous red-team pipeline.
-    Returns (all_results, compromise_map_dict).
-    """
     from lightscan.brute.mutation import COMMON_PASSWORDS
 
     ctx      = TargetContext(domain=domain, scope=scope or [])

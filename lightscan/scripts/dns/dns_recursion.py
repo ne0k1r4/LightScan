@@ -1,4 +1,7 @@
-"""Test if DNS server allows open recursion."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, struct, socket, time
 SCRIPT_NAME  = "dns_recursion"
 SCRIPT_PORTS = [53]

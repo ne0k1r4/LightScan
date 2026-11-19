@@ -1,9 +1,6 @@
-"""A small, explicit AIMD controller for bounded TCP scan concurrency.
-
-The controller is deliberately deterministic: a loss-like result halves the
-window immediately, while only sustained response outcomes earn one additional
-slot. It complements RTT estimation by controlling how many new attempts are
-in flight when the scanner observes congestion or local transient pressure.
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -14,7 +11,6 @@ SUCCESS_STATUSES = frozenset({"open", "closed"})
 
 @dataclass
 class AimdConcurrencyController:
-    """Bound an active concurrency window using additive increase and multiplicative decrease."""
 
     initial: int
     maximum: int
@@ -36,7 +32,6 @@ class AimdConcurrencyController:
         self.decreases = 0
 
     def record(self, status: str) -> int:
-        """Record one classified outcome and return the recommended window size."""
         if status in LOSS_STATUSES:
             next_window = max(self.minimum, self.current // 2)
             if next_window < self.current:
@@ -52,7 +47,6 @@ class AimdConcurrencyController:
         return self.current
 
     def summary(self) -> dict[str, int]:
-        """Return compact controller evidence for scan metrics and reports."""
         return {
             "current": self.current,
             "minimum": self.minimum,

@@ -1,8 +1,6 @@
-"""Streaming TCP scan scheduler for high-scale, authorized inventory runs.
-
-The scheduler intentionally keeps only a bounded number of jobs in memory.
-That makes a 50,000-host, 100-port scan a queueing problem rather than a
-five-million-coroutine allocation problem.
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -23,7 +21,6 @@ from lightscan.scan.portscan import CRIT_PORTS, HIGH_PORTS, PROBES, SERVICE_MAP
 
 @dataclass(frozen=True)
 class ScanControls:
-    """Explicit controls for the streaming connect-scan execution model."""
 
     concurrency: int = 256
     per_host_concurrency: int = 32
@@ -55,7 +52,6 @@ class ScanControls:
 
 @dataclass
 class ScanMetrics:
-    """Counters retained for reports and adaptive-control decisions."""
 
     scheduled: int = 0
     attempts: int = 0
@@ -98,7 +94,6 @@ class _Job:
     port: int
 
 class _RateGate(RateLimiter):
-    """Compatibility name for the shared connection-start limiter."""
 
     def __init__(self, max_rate: float):
         super().__init__(max_rate)
@@ -107,7 +102,6 @@ class _RateGate(RateLimiter):
         await self.acquire()
 
 class _AdaptiveWindow:
-    """A mutable in-flight limit controlled by measured scan feedback."""
 
     def __init__(self, limit: int):
         self._limit = max(1, limit)
@@ -131,7 +125,6 @@ class _AdaptiveWindow:
             self._condition.notify_all()
 
 class StreamingTCPScanner:
-    """Run a fair, bounded TCP connect scan with retry-aware classification."""
 
     def __init__(
         self,
@@ -179,11 +172,6 @@ class StreamingTCPScanner:
         *,
         retain_results: bool = True,
     ) -> list[ScanResult]:
-        """Scan *hosts* × *ports* without materializing the entire job set.
-
-        Set ``retain_results`` to ``False`` with a ``result_sink`` to stream
-        open findings to durable output while retaining only aggregate metrics.
-        """
         if not hosts or not ports:
             return []
 
@@ -218,7 +206,6 @@ class StreamingTCPScanner:
         return findings
 
     def _iter_jobs(self, hosts: Sequence[str], ports: Sequence[int]) -> Iterable[_Job]:
-        """Yield port-major host groups to distribute load across targets fairly."""
         group_size = self.controls.host_group_size
         for port in ports:
             for offset in range(0, len(hosts), group_size):
@@ -299,7 +286,6 @@ class StreamingTCPScanner:
         return None
 
     def _retry_delay(self, attempt: int) -> float:
-        """Return bounded exponential backoff with optional symmetric jitter."""
         base = min(0.05 * (2 ** (attempt - 1)), 0.5)
         jitter = self.controls.retry_jitter
         if not jitter:

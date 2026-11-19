@@ -1,4 +1,7 @@
-"""Shared scan result types used by scanners and report writers."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import time
@@ -23,12 +26,6 @@ class Confidence(str, Enum):
 
 @dataclass
 class ScanResult:
-    """One scanner observation in the existing report compatibility format.
-
-    ``status`` is intentionally a string: port state, protocol observations,
-    and vulnerability checks currently use distinct vocabularies. ``data``
-    carries structured evidence while ``detail`` remains a display summary.
-    """
 
     module: str
     target: str
@@ -55,7 +52,6 @@ class ScanResult:
                 self.remediation = meta.get("remediation", "")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the stable JSON-compatible representation."""
         result = asdict(self)
         result["severity"] = self.severity.value
         result["confidence"] = self.confidence.value if isinstance(self.confidence, Confidence) else str(self.confidence)

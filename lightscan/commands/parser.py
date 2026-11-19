@@ -1,4 +1,7 @@
-"""Argument definitions for the backward-compatible LightScan CLI."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 import argparse
 from lightscan.core.target import DEFAULT_MAX_TARGETS
@@ -13,7 +16,6 @@ _COMMAND_OPTIONS = {
 
 
 def normalize_command_argv(argv: list[str]) -> list[str]:
-    """Translate the focused command forms into the legacy option interface."""
     if not argv or argv[0] not in _COMMAND_OPTIONS:
         return argv
     command, *arguments = argv

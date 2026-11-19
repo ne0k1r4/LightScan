@@ -1,4 +1,7 @@
-"""Detect HTTP authentication mechanisms."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, ssl, urllib.request, urllib.error, base64
 SCRIPT_NAME  = "http_auth_detect"
 SCRIPT_PORTS = [80, 443, 8080, 8443, 8000, 8888]

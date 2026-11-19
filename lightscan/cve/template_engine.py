@@ -1,40 +1,6 @@
 """
-YAML template engine — Nuclei-style detection templates for LightScan.
-
-Templates live in lightscan/templates/ as small YAML files. Each one
-describes a vulnerability: which port to check, what to send, what to
-look for in the response. Adding a new CVE check is just writing a
-20-line YAML file — no Python required.
-
-Template fields: id, name, severity, cve, tags, port, protocol, steps
-(where each step has send/expect/match_regex/on_match logic).
-
-  - type: send
-    data: "*1\r\n$4\r\nINFO\r\n"
-    encoding: raw                  # raw | hex | base64
-
-  - type: match
-    contains: "redis_version"      # substring match
-    # OR:
-    regex:    "redis_version:\\s*[0-9]"
-    # OR:
-    status:   [200, 301]           # HTTP only
-    # OR:
-    not_contains: "NOAUTH"         # negative match
-    part: body                     # body | headers | all (HTTP only)
-
-  - type: extract                  # pull version info
-    regex:   "redis_version:(.*)"
-    group:   1
-    name:    version
-
-  - type: send                     # multi-step: send second packet
-    data: "CONFIG GET dir\r\n"
-    depends_on: match_0            # only if previous match succeeded
-
-reference:   https://nvd.nist.gov/vuln/detail/CVE-2022-0543
-description: Redis accessible without authentication
-remediation: Add requirepass in redis.conf
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import asyncio, base64, json, re, socket, struct, time, urllib.request, urllib.error
@@ -153,11 +119,6 @@ class Template:
             return cls.from_dict(yaml.safe_load(f))
 
 class TemplateRunner:
-    """
-    Executes one Template against one (host, port).
-    Handles TCP raw, HTTP, HTTPS protocols.
-    Returns ScanResult or None.
-    """
     def __init__(self, timeout=8.0):
         self.timeout = timeout
 
@@ -393,12 +354,6 @@ def _pad(a: tuple, b: tuple) -> tuple:
 _OPS = ("<=", ">=", "==", "!=", "<", ">")
 
 def version_ok(detected: str, constraint: str) -> bool:
-    """
-    does `detected` satisfy `constraint`? constraint is comma-separated AND
-    clauses like ">=2.0,<3.5". no operator on a clause means exact match.
-    if we can't parse either side just let it through — a template running
-    when it shouldn't is annoying, one skipped when it should've run is worse.
-    """
     if not constraint or not detected:
         return True
     dv = _ver_tuple(detected)
@@ -422,10 +377,6 @@ def version_ok(detected: str, constraint: str) -> bool:
     return True
 
 class TemplateLibrary:
-    """
-    Loads all YAML templates from one or more directories.
-    Supports filtering by tag, severity, CVE, or port.
-    """
     def __init__(self, paths: list[str | Path] | None = None):
         self._templates: list[Template] = []
         default = Path(__file__).parent.parent / "templates"
@@ -489,14 +440,6 @@ async def run_templates(templates: list[Template], host: str,
                         versions: dict[int, str] | None = None,
                         allow_intrusive: bool = False,
                         timeout=8.0, concurrency=32) -> list[ScanResult]:
-    """
-    Run a list of templates against a host.
-    Skips templates whose port is not in open_ports (if provided), skips
-    ones whose version: constraint doesn't match a known version for that
-    port (if versions provided), and skips intrusive: true templates
-    (ones that actually run a command / read a file / inject sql, not
-    just detect) unless allow_intrusive is set.
-    """
     runner = TemplateRunner(timeout)
     sem    = asyncio.Semaphore(concurrency)
 

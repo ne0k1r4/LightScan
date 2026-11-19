@@ -1,19 +1,6 @@
 """
-LightScan v2.0 PHANTOM — Raw Async Port Scanner | Developer: Light
-epoll-based async TCP SYN scanner using pure stdlib raw sockets.
-No scapy. No threads. Runs at ~nmap speed in Python.
-
-Architecture:
-  - One raw SOCK_RAW send socket (IPPROTO_RAW, IP_HDRINCL)
-  - One raw SOCK_RAW recv socket (IPPROTO_TCP) on epoll
-  - Semaphore-controlled burst sender
-  - Single receiver coroutine draining epoll responses
-  - Timing templates T0-T5 (nmap-compatible)
-  - IPv4 + IPv6 dual-stack
-  - Evasion: decoy IPs, fragmentation, randomised scan order, bad checksum probes
-
-Requires root for raw sockets.
-Falls back to async TCP connect scan when not root.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -63,7 +50,6 @@ def _checksum(data: bytes) -> int:
 def _build_ipv4_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     seq: int = 0, ttl: int = 64, fragment: bool = False,
                     bad_checksum: bool = False) -> bytes:
-    """Build a raw IPv4 TCP SYN packet."""
     ip_saddr = socket.inet_aton(src_ip)
     ip_daddr = socket.inet_aton(dst_ip)
 
@@ -97,7 +83,6 @@ def _build_ipv4_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
 
 def _build_ipv4_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     ack_seq: int, ttl: int = 64) -> bytes:
-    """Build a raw IPv4 TCP RST packet."""
     ip_saddr = socket.inet_aton(src_ip)
     ip_daddr = socket.inet_aton(dst_ip)
 
@@ -129,7 +114,6 @@ def _build_ipv4_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
 
 def _build_ipv6_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     seq: int = 0) -> bytes:
-    """Build a raw IPv6 TCP SYN packet (for use with SOCK_RAW AF_INET6)."""
     src = socket.inet_pton(socket.AF_INET6, src_ip)
     dst = socket.inet_pton(socket.AF_INET6, dst_ip)
 
@@ -149,7 +133,6 @@ def _build_ipv6_syn(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
 
 def _build_ipv6_rst(src_ip: str, dst_ip: str, src_port: int, dst_port: int,
                     ack_seq: int) -> bytes:
-    """Build a raw IPv6 TCP RST packet (for use with SOCK_RAW AF_INET6)."""
     src = socket.inet_pton(socket.AF_INET6, src_ip)
     dst = socket.inet_pton(socket.AF_INET6, dst_ip)
 
@@ -178,10 +161,6 @@ def _get_src_ip(dst: str, ipv6: bool = False) -> str:
 def _parse_tcp_response(data: bytes, expected_dst_ip: str,
                         port_map: Dict[int, int],
                         ipv6: bool = False) -> Optional[Tuple[int, str]]:
-    """
-    Parse a raw IP+TCP packet. Returns (target_port, state) or None.
-    state: 'open' | 'closed' | 'filtered'
-    """
     try:
         if ipv6:
             if len(data) < 20: return None
@@ -220,7 +199,6 @@ def _random_ip() -> str:
 
 def _send_decoys(send_sock, dst_ip: str, dst_port: int, src_port: int,
                  decoys: List[str], ttl: int):
-    """Send SYN packets from decoy IPs to confuse IDS."""
     for decoy in decoys:
         try:
             pkt = _build_ipv4_syn(decoy, dst_ip, src_port, dst_port,
@@ -230,14 +208,6 @@ def _send_decoys(send_sock, dst_ip: str, dst_port: int, src_port: int,
             pass
 
 class RawAsyncScanner:
-    """
-    epoll-based raw TCP SYN scanner.
-    - Pure stdlib, no scapy
-    - Dual-stack IPv4/IPv6
-    - nmap-compatible timing templates T0-T5
-    - Decoy scan, fragmentation, bad-checksum evasion
-    - Banner grabbing on open ports via secondary connect
-    """
 
     def __init__(
         self,
@@ -282,7 +252,6 @@ class RawAsyncScanner:
         sys.stdout.flush()
 
     async def _banner_grab(self, ip: str, port: int) -> str:
-        """Secondary TCP connect to grab banner from confirmed-open port."""
         try:
             probe = PROBES.get(port)
             af = socket.AF_INET6 if self.ipv6 else socket.AF_INET
@@ -302,7 +271,6 @@ class RawAsyncScanner:
 
     def _rst(self, send_sock, dst_ip: str, dst_port: int,
                    src_port: int, ack_seq: int):
-        """Send RST to cleanly close half-open connection."""
         try:
             if self.ipv6:
                 pkt = _build_ipv6_rst(self._src_ip, dst_ip, src_port, dst_port, ack_seq)
@@ -314,7 +282,6 @@ class RawAsyncScanner:
             pass
 
     def scan(self) -> List[ScanResult]:
-        """Run the raw scanner synchronously (call from thread or run directly)."""
         if os.geteuid() != 0:
             raise PermissionError("Raw scan requires root")
 
@@ -371,7 +338,6 @@ class RawAsyncScanner:
             outstanding: Dict[int, float] = {}
 
             def _flush_responses(deadline: float):
-                """Drain epoll responses until deadline."""
                 while time.time() < deadline:
                     events = ep.poll(timeout=0.01)
                     if not events:
@@ -547,7 +513,6 @@ async def async_raw_scan(
     randomize: bool = True, grab_banner: bool = True,
     verbose: bool = False, ipv6: bool = False,
 ) -> List[ScanResult]:
-    """Async wrapper — runs raw scan in executor."""
     if os.geteuid() != 0:
         from lightscan.scan.portscan import tcp_scan
         import concurrent.futures

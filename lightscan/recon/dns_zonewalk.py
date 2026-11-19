@@ -1,4 +1,7 @@
-"""DNS NSEC zone walking for hostname enumeration."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -57,7 +60,6 @@ def _decode_name(data: bytes, offset: int) -> tuple[str, int]:
 
 
 def _parse_nsec_response(data: bytes) -> list[str]:
-    """Extract next-domain names from NSEC records in the response."""
     names: list[str] = []
     if len(data) < 12:
         return names
@@ -87,7 +89,6 @@ def _parse_nsec_response(data: bytes) -> list[str]:
 
 
 def _check_nsec3param(data: bytes) -> bool:
-    """Check if response contains an NSEC3PARAM record."""
     if len(data) < 12:
         return False
     ancount = struct.unpack("!H", data[6:8])[0]
@@ -131,7 +132,6 @@ def _blocking_zonewalk(
     nameserver: str,
     timeout: float,
 ) -> tuple[list[str], bool, bool]:
-    """Walk NSEC chain. Returns (discovered_names, used_nsec3, success)."""
     nsec3param_data = _udp_query(domain, NSEC3PARAM_TYPE, nameserver, timeout)
     has_nsec3 = _check_nsec3param(nsec3param_data) if nsec3param_data else False
 
@@ -175,7 +175,6 @@ async def dns_zonewalk_async(
     nameserver: str = "8.8.8.8",
     timeout: float = 5.0,
 ) -> list[ScanResult]:
-    """Attempt NSEC zone walking to enumerate hostnames."""
     results: list[ScanResult] = []
     try:
         discovered, has_nsec3, success = await asyncio.to_thread(

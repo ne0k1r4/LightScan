@@ -1,4 +1,7 @@
-"""Detect weak SSL/TLS ciphers and protocols."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, ssl, socket
 SCRIPT_NAME  = "ssl_weak_ciphers"
 SCRIPT_PORTS = [443, 8443, 993, 995, 465, 587, 636, 3389]

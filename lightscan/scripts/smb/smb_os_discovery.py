@@ -1,4 +1,7 @@
-"""Enumerate OS and hostname via SMB negotiate."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, struct, socket
 SCRIPT_NAME  = "smb_os_discovery"
 SCRIPT_PORTS = [445, 139]

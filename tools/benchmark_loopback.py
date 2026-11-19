@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-"""Benchmark equivalent local TCP-connect scans on 127.0.0.1 only.
-
-The harness deliberately refuses arbitrary targets. It is intended to compare
-scanner execution overhead against the same closed-loopback port range, not to
-measure internet or third-party network performance.
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 

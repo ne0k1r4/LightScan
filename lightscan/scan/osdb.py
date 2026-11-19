@@ -1,18 +1,6 @@
 """
-LightScan v2.0 PHANTOM — OS Fingerprint Engine v2 | Developer: Light
-Proper nmap-style OS fingerprinting using:
-  - TCP ISN (Initial Sequence Number) analysis
-  - IP TTL analysis
-  - TCP window size fingerprinting
-  - TCP options (MSS, WSCALE, SACK, Timestamps, NOP)
-  - IP DF (Don't Fragment) bit
-  - ICMP echo response analysis
-  - Response rate / quirks
-
-Signature format (inspired by nmap OS detection):
-  TTL / WindowSize / DFbit / TCPoptions / ISNdelta / Quirks → OS match
-
-Database contains 120+ real OS signatures derived from nmap-os-db.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -132,7 +120,6 @@ class LiveFingerprint:
     syn_ack:  bool  = False
 
 def _parse_tcp_options(opts_bytes: bytes) -> Dict[str, int]:
-    """Parse TCP options from raw bytes."""
     opts: Dict[str, int] = {}
     i = 0
     while i < len(opts_bytes):
@@ -160,10 +147,6 @@ def _parse_tcp_options(opts_bytes: bytes) -> Dict[str, int]:
     return opts
 
 def fingerprint_from_synack(packet: bytes, ipv6: bool = False) -> Optional[LiveFingerprint]:
-    """
-    Extract OS fingerprint features from a captured SYN-ACK packet.
-    Works on raw IP+TCP bytes.
-    """
     try:
         fp = LiveFingerprint()
 
@@ -201,7 +184,6 @@ def fingerprint_from_synack(packet: bytes, ipv6: bool = False) -> Optional[LiveF
         return None
 
 def _score_signature(fp: LiveFingerprint, sig: OSSig) -> int:
-    """Score how well a live fingerprint matches a signature. Higher = better."""
     score = 0
 
     if sig.ttl_range[0] <= fp.ttl <= sig.ttl_range[1]:
@@ -250,10 +232,6 @@ def _confidence_label(score: int, max_score: int) -> str:
     return "VERY LOW"
 
 def identify_os(fp: LiveFingerprint, top_n: int = 3) -> List[Dict]:
-    """
-    Match a LiveFingerprint against the OS database.
-    Returns top_n matches sorted by score descending.
-    """
     MAX_SCORE = 93
 
     scored = []
@@ -276,7 +254,6 @@ def identify_os(fp: LiveFingerprint, top_n: int = 3) -> List[Dict]:
     return results
 
 def build_os_result(target: str, port: int, matches: List[Dict]) -> List[ScanResult]:
-    """Build ScanResult list from OS match results."""
     results = []
     for m in matches:
         sev = (Severity.INFO if m["confidence"] in ("LOW", "VERY LOW")
@@ -293,10 +270,6 @@ def build_os_result(target: str, port: int, matches: List[Dict]) -> List[ScanRes
 
 async def probe_os(target: str, port: int = 0,
                    timeout: float = 3.0) -> List[ScanResult]:
-    """
-    Probe a target to gather OS fingerprint data.
-    Uses TCP connect + SYN-ACK capture if root, else TTL-only heuristic.
-    """
     import asyncio
     import os as _os
 
@@ -330,7 +303,6 @@ async def probe_os(target: str, port: int = 0,
 
 async def _probe_root(target: str, dst_ip: str, port: int,
                       timeout: float, ipv6: bool) -> List[ScanResult]:
-    """Root mode: send SYN, capture SYN-ACK, parse full fingerprint."""
     import asyncio
     import concurrent.futures
 
@@ -387,7 +359,6 @@ async def _probe_root(target: str, dst_ip: str, port: int,
 
 async def _probe_noroot(target: str, dst_ip: str, port: int,
                         timeout: float) -> List[ScanResult]:
-    """No-root mode: TTL-only fingerprint via connect + ICMP TTL in IP header."""
     import asyncio
 
     fp = LiveFingerprint()

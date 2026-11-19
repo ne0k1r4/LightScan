@@ -1,4 +1,7 @@
-"""Extract TLS certificate info and check expiry."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, ssl, socket
 from datetime import datetime
 SCRIPT_NAME  = "tls_cert_info"

@@ -1,4 +1,7 @@
-"""LightScan Recon & Intelligence modules."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from lightscan.recon.whois_lookup import whois_lookup_async
 from lightscan.recon.dns_zonewalk import dns_zonewalk_async
 from lightscan.recon.reverse_ip import reverse_ip_async

@@ -1,33 +1,6 @@
 """
-LightScan v2.0 PHANTOM — OS Fingerprinting Engine
+LightScan
 Developer: Light (Neok1ra)
-
-MultiProbeOSDetector implementation using a 53-entry signature database.
-
-Method:
-  Layer 1 — SYN-ACK passive analysis (TTL, window, TCP options, DF bit)
-             Runs automatically when SYN scanner receives a response.
-             Zero extra packets. Pure read of what we already got.
-
-  Layer 2 — T2-T7 active probes (Nmap methodology)
-             6 extra packets to one open + one closed port.
-             Needs root + scapy. Much higher confidence.
-             --os-probe flag triggers this layer.
-
-Scoring (weighted):
-  TTL match          → 25 pts  (strongest single signal)
-  Window match       → 20 pts
-  DF bit match       → 15 pts
-  Options order      → 15 pts  (exact) / 10 pts (subset)
-  SACK match         → 10 pts
-  WScale match       → 10 pts
-  Timestamps match   →  5 pts
-  T2-T7 flag match   →  5 pts each (up to 30 pts extra)
-
-Confidence levels:
-  >= 80  HIGH     (single match, report as-is)
-  50-79  MEDIUM   (report top candidate + alternatives)
-  < 50   LOW      (family-level guess only)
 """
 from __future__ import annotations
 import json, os, random, socket, struct
@@ -40,7 +13,6 @@ _DB_PATH = Path(__file__).parent.parent / "data" / "os_signatures.json"
 
 @dataclass
 class TCPFeatures:
-    """Features extracted from a SYN-ACK or probe response."""
     ttl:           int
     window:        int
     df:            bool
@@ -72,7 +44,6 @@ class SignatureDB:
     def __len__(self): return len(self._sigs)
 
     def match(self, feat: TCPFeatures, probe_flags: dict | None = None) -> list[OSMatch]:
-        """Score all signatures against features. Returns sorted list."""
         results = []
         for sig in self._sigs:
             score = 0; max_score = 85
@@ -115,13 +86,11 @@ class SignatureDB:
         return results
 
 def _normalise_ttl(ttl: int) -> int:
-    """Guess the original TTL by rounding up to nearest standard value."""
     for std in (32, 64, 128, 255):
         if ttl <= std: return std
     return 255
 
 def _option_name(opt) -> str:
-    """Convert Scapy TCP option tuple/str to canonical name."""
     if isinstance(opt, tuple): opt = opt[0]
     mapping = {
         "MSS": "MSS", "NOP": "NOP", "SAckOK": "SACK", "Timestamp": "Timestamp",
@@ -131,7 +100,6 @@ def _option_name(opt) -> str:
     return mapping.get(opt, str(opt))
 
 def extract_features_from_scapy(pkt) -> TCPFeatures | None:
-    """Parse a Scapy IP/TCP SYN-ACK into TCPFeatures."""
     try:
         from scapy.all import IP, TCP
         if not (pkt.haslayer(IP) and pkt.haslayer(TCP)):
@@ -160,17 +128,11 @@ def extract_features_from_scapy(pkt) -> TCPFeatures | None:
         return None
 
 def extract_features_from_banner(banner_data: dict) -> TCPFeatures | None:
-    """
-    Lightweight path — build TCPFeatures from what the connect scanner
-    can observe: just TTL (via IP headers) and banner text.
-    Used when scapy not available / not root.
-    """
     ttl = banner_data.get("ttl", 0)
     if not ttl: return None
     return TCPFeatures(ttl=ttl, window=0, df=False)
 
 def _flags_to_str(flags: int) -> str:
-    """Convert TCP flags integer to its canonical string representation."""
     s = ""
     if flags & 0x01: s += "F"
     if flags & 0x02: s += "S"
@@ -183,14 +145,6 @@ def _flags_to_str(flags: int) -> str:
     return s if s else "0"
 
 class MultiProbeOSDetector:
-    """
-    Active OS detection engine using multi-probe sequence.
-    Capabilities:
-      • Async-compatible (run_in_executor wrapper)
-      • Feeds into SignatureDB.match() for scoring
-      • Returns LightScan ScanResult objects
-      • Closed port auto-discovered if not supplied
-    """
     FLAG_T2 = 0x00
     FLAG_T3 = 0x2B
     FLAG_T4 = 0x10
@@ -203,7 +157,6 @@ class MultiProbeOSDetector:
         self.timeout = timeout
 
     def _probe(self, target: str, port: int, flags: int) -> dict | None:
-        """Send a single TCP probe packet and parse returned features."""
         try:
             from scapy.all import IP, TCP, sr1, ICMP
             sport = random.randint(1024, 65535)
@@ -229,10 +182,6 @@ class MultiProbeOSDetector:
 
     def run_probes(self, target: str, open_port: int,
                    closed_port: int | None = None) -> dict:
-        """
-        Run the full probe sequence (T2-T7) against open and closed ports.
-        Returns raw probe dict: {"T2": {...}, "T3": {...}, ...}
-        """
         if closed_port is None:
             closed_port = random.randint(49152, 65534)
 
@@ -254,7 +203,6 @@ class MultiProbeOSDetector:
         return results
 
     def probe_flags_for_scoring(self, probe_results: dict) -> dict:
-        """Convert probe results to flag strings suited for database scoring."""
         out = {}
         for key, resp in probe_results.items():
             if resp and "flags" in resp:
@@ -266,11 +214,6 @@ class MultiProbeOSDetector:
     def detect(self, target: str, open_port: int,
                synack_feat: TCPFeatures | None = None,
                closed_port: int | None = None) -> list[OSMatch]:
-        """
-        OS detection pipeline:
-          run_probes → extract flags → match signature DB
-        Combines T2-T7 probe flags with SYN-ACK features if available.
-        """
         print(f"\033[38;5;196m[OS-PROBE]\033[0m T2-T7 probes → {target}:{open_port}", flush=True)
         raw = self.run_probes(target, open_port, closed_port)
         probe_flags = self.probe_flags_for_scoring(raw)
@@ -287,15 +230,10 @@ class MultiProbeOSDetector:
         return self.db.match(feat, probe_flags)
 
 class PassiveFingerprintEngine:
-    """
-    Runs automatically during SYN scan — zero extra packets.
-    Reads SYN-ACK packet features the scanner already received.
-    """
     def __init__(self, db: SignatureDB | None = None):
         self.db = db or SignatureDB()
 
     def fingerprint_synack(self, pkt, host: str, port: int) -> ScanResult | None:
-        """Called with each SYN-ACK scapy packet from the SYN scanner."""
         feat = extract_features_from_scapy(pkt)
         if not feat: return None
         matches = self.db.match(feat)
@@ -316,10 +254,6 @@ class PassiveFingerprintEngine:
     def fingerprint_synack_dict(self, host: str, ttl: int, window: int,
                                 df: bool, options: list,
                                 sack=False, ts=False, wscale=None) -> ScanResult | None:
-        """
-        Dict-based path — for when Scapy packet not available
-        (e.g. connect scanner with partial IP header info).
-        """
         feat = TCPFeatures(ttl=ttl, window=window, df=df,
                            sack=sack, timestamps=ts, wscale=wscale,
                            options_order=options)
@@ -356,7 +290,6 @@ def active_engine() -> MultiProbeOSDetector:
 async def os_probe_async(target: str, open_port: int,
                          closed_port: int | None = None,
                          synack_feat: TCPFeatures | None = None) -> list[ScanResult]:
-    """Async wrapper — runs active T2-T7 probes in thread pool."""
     import asyncio
     loop = asyncio.get_running_loop()
     eng  = active_engine()

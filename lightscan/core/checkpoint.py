@@ -1,9 +1,6 @@
 """
-Checkpoint — lets long brute-force runs survive interruptions.
-
-Writes a .lightscan_cp.json file every 100 attempts so you can
-resume from where you left off with --resume. Also tracks locked
-accounts so the engine stops hammering them once lockout is detected.
+LightScan
+Developer: Light (Neok1ra)
 """
 import json
 import os

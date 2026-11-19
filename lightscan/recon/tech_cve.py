@@ -1,4 +1,7 @@
-"""Technology version to CVE correlation from fingerprint data."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -122,7 +125,6 @@ async def tech_cve_correlate_async(
     tech_dict: dict,
     timeout: float = 10.0,
 ) -> list[ScanResult]:
-    """Correlate detected technology versions against known CVEs."""
     if not tech_dict:
         return []
 

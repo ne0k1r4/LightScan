@@ -1,3 +1,7 @@
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 
 
 from __future__ import annotations

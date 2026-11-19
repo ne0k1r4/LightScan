@@ -1,3 +1,7 @@
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 
 
 from __future__ import annotations
@@ -38,7 +42,6 @@ def _decode_probe_string(s: str) -> bytes:
     return bytes(out)
 
 def _split_delimited(s: str, start: int) -> tuple[str, int]:
-    """s[start] is the delimiter char. returns (content, index_after_closing_delim)."""
     delim = s[start]
     i = start + 1
     buf = []
@@ -150,7 +153,6 @@ def _parse_port_list(s: str) -> set:
     return out
 
 def _parse_version_fields(rest: str) -> dict:
-    """rest is whatever follows the closing m//flags - p/.../ v/.../ etc."""
     out = {"product": "", "version": "", "info": "", "hostname": "", "os": "", "devtype": ""}
     field_names = {"p": "product", "v": "version", "i": "info",
                     "h": "hostname", "o": "os", "d": "devtype"}
@@ -246,14 +248,6 @@ class ServiceProbeDB:
         return out
 
     def match(self, data: bytes, port: int, ssl: bool = False) -> "ServiceInfo | None":
-        """
-        scoped to NULL (always tried, no data needed) plus whatever probes
-        actually declare this port in their ports/sslports list - this is
-        the part that keeps a loosely-specific pattern like mongodb's
-        generic 'version' regex from firing on a completely different
-        service's response. hard matches win over soft, first hard hit
-        returned. None if nothing in scope matched.
-        """
         soft_hit = None
         for probe in self._candidate_probes(port, ssl):
             for m in probe.matches:
@@ -267,13 +261,6 @@ class ServiceProbeDB:
         return soft_hit
 
     def match_any(self, data: bytes) -> "ServiceInfo | None":
-        """
-        no port scoping at all - every probe's matches get tried. useful
-        for testing/exploration, NOT what deep_probe() should call: a
-        response with no port context loses the one signal that keeps
-        loosely-specific patterns (plenty of those in the real db) from
-        cross-matching a completely unrelated service.
-        """
         self._ensure_loaded()
         soft_hit = None
         for probe in self._probes.values():

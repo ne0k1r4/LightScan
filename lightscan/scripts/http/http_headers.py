@@ -1,4 +1,7 @@
-"""Grab and analyse HTTP response headers."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, ssl, urllib.request, urllib.error
 SCRIPT_NAME  = "http_headers"
 SCRIPT_PORTS = [80, 443, 8080, 8443, 8000, 3000]

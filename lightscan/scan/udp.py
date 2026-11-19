@@ -1,14 +1,6 @@
-"""LightScan v2.0 PHANTOM — UDP Scanner | Developer: Light
-
-Performs UDP port scanning with proper ICMP-based state classification:
-
-  OPEN          — received a UDP response from the port
-  OPEN|FILTERED — no response (UDP is connectionless; silence = maybe open)
-  FILTERED      — received ICMP Type 3 Code 13 (admin prohibited)
-  CLOSED        — received ICMP Type 3 Code 3 (port unreachable)
-
-Requires root for raw ICMP sniffing (accurate closed/filtered classification).
-Falls back to basic send-and-wait when run without root (open/open|filtered only).
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import asyncio
@@ -57,7 +49,6 @@ ICMP_HOST_UNREACH       = 1
 ICMP_PROTO_UNREACH      = 2
 
 def _icmp_state(icmp_code: int) -> str:
-    """Map ICMP Destination Unreachable code to port state string."""
     if icmp_code == ICMP_PORT_UNREACH:
         return "closed"
     if icmp_code in (ICMP_ADMIN_PROHIBITED, 10, 11, 12):
@@ -65,15 +56,6 @@ def _icmp_state(icmp_code: int) -> str:
     return "filtered"
 
 class UDPScanner:
-    """
-    UDP port scanner with ICMP-based state classification.
-
-    Port states:
-      open          — UDP response received
-      closed        — ICMP Type 3 Code 3 (port unreachable)
-      filtered      — ICMP Type 3 Code 13 (admin prohibited) or other unreach
-      open|filtered — no response within timeout (common for UDP)
-    """
 
     def __init__(self, target: str, ports: List[int], timeout: float = 2.0,
                  threads: int = 50, verbose: bool = False, retries: int = 2):
@@ -102,7 +84,6 @@ class UDPScanner:
             return self.target
 
     def _sniffer(self, target_ip: str):
-        """Raw socket sniffer: captures ICMP Destination Unreachable responses."""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
             sock.settimeout(0.5)
@@ -152,7 +133,6 @@ class UDPScanner:
             sock.close()
 
     def _send_probe(self, sock: socket.socket, target_ip: str, port: int):
-        """Send UDP probe to a single port."""
         probe = UDP_PROBES.get(port, _DEFAULT_PROBE)
         try:
             sock.sendto(probe, (target_ip, port))
@@ -161,7 +141,6 @@ class UDPScanner:
                 print(f"  [!] UDP send port {port}: {e}")
 
     def _recv_response(self, target_ip: str, port: int) -> bool:
-        """Try to receive a UDP response. Returns True if any data received."""
         try:
             recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             recv_sock.settimeout(self.timeout)
@@ -178,7 +157,6 @@ class UDPScanner:
             return False
 
     def _worker(self, send_sock: socket.socket, target_ip: str, q: Queue):
-        """Worker thread: sends UDP probes."""
         while True:
             try:
                 port = q.get(timeout=0.5)
@@ -205,10 +183,6 @@ class UDPScanner:
             q.task_done()
 
     def scan(self) -> dict:
-        """
-        Perform UDP scan. Returns dict with keys:
-          open, closed, filtered, open_filtered
-        """
         root = os.geteuid() == 0
         target_ip = self._get_target_ip()
         t0 = time.time()
@@ -291,15 +265,6 @@ class UDPScanner:
 
 def udp_scan(target: str, ports: List[int], timeout: float = 2.0,
              threads: int = 50, verbose: bool = False, retries: int = 2) -> List[ScanResult]:
-    """
-    Run UDP scan and return LightScan ScanResult list.
-
-    State mapping:
-      open          → status="open",          severity based on port
-      open|filtered → status="open|filtered", severity INFO
-      closed        → not included in results (reduces noise)
-      filtered      → status="filtered",      severity INFO
-    """
     scanner = UDPScanner(target, ports, timeout, threads, verbose, retries)
     data = scanner.scan()
     results: List[ScanResult] = []
@@ -335,6 +300,5 @@ def udp_scan(target: str, ports: List[int], timeout: float = 2.0,
 
 async def async_udp_scan(target: str, ports: List[int], timeout: float = 2.0,
                          threads: int = 50, verbose: bool = False) -> List[ScanResult]:
-    """Async wrapper — runs UDP scan in executor so it doesn't block the event loop."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, udp_scan, target, ports, timeout, threads, verbose)

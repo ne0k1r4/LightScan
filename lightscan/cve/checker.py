@@ -1,11 +1,6 @@
 """
-CVE checker — handwritten PoC probes for the vulns that actually matter.
-
-Each check sends the real protocol payload a real attacker would send
-and inspects the response to confirm vulnerability, not just open port.
-Covers: EternalBlue (MS17-010), Log4Shell, Spring4Shell, Heartbleed,
-ShellShock, BlueKeep, Redis unauth, MongoDB unauth, Elasticsearch unauth,
-Jupyter no-auth.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import asyncio, struct, socket, urllib.request, urllib.error
@@ -118,7 +113,6 @@ _CLIENT_HELLO = (
 _HEARTBEAT = b"\x18\x03\x02\x00\x03\x01\xfa\x00"
 
 async def check_heartbleed(host, port=443, timeout=8.0):
-    """Fixed: avoid nested wait_for CancelledError propagation (Python 3.11+ bug)."""
     async def _inner():
         r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
         try:

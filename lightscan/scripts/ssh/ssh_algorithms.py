@@ -1,4 +1,7 @@
-"""Extract SSH supported algorithms and flag weak ones."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, socket
 SCRIPT_NAME  = "ssh_algorithms"
 SCRIPT_PORTS = [22, 2222]

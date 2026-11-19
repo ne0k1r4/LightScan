@@ -1,25 +1,6 @@
 """
-NSE-style script engine — run targeted checks against specific services.
-
-Scripts are Python modules dropped into lightscan/scripts/<category>/<name>.py.
-Each exports SCRIPT_NAME, SCRIPT_PORTS, SCRIPT_TAGS, and an async run() function.
-The engine discovers them automatically — no registration needed.
-
-Built-in scripts cover HTTP (headers, methods, title, auth detection),
-SMB (OS discovery, signing), TLS (versions, ciphers, cert info),
-DNS (zone transfer, recursion), and SSH (algorithms, host key).
-
-  http/http_title         — extract page title
-  http/http_auth          — detect auth type (Basic, Digest, NTLM)
-  smb/smb_os_discovery    — SMB OS/hostname enumeration
-  smb/smb_security_mode   — SMB signing, auth level
-  tls/tls_versions        — enumerate TLS/SSL versions
-  tls/tls_ciphers         — list accepted cipher suites
-  tls/tls_cert_info       — certificate details + expiry
-  dns/dns_zone_transfer   — AXFR zone transfer attempt
-  dns/dns_recursion       — test for open DNS recursion
-  ssh/ssh_algorithms      — list supported SSH algorithms
-  ssh/ssh_hostkey         — extract SSH host key fingerprint
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -38,7 +19,6 @@ from typing import Dict, List, Optional
 from lightscan.core.engine import ScanResult, Severity
 
 class ScriptRegistry:
-    """Discovers and loads scripts from the scripts directory."""
 
     def __init__(self, script_dirs: Optional[List[str]] = None):
         self._scripts: Dict[str, object] = {}
@@ -118,7 +98,6 @@ class ScriptRegistry:
 
 async def run_script(script, host: str, port: int,
                      timeout: float = 8.0) -> List[ScanResult]:
-    """Run a single script against a host:port."""
     try:
         fn = getattr(script, "run", None)
         if not fn: return []
@@ -139,7 +118,6 @@ async def run_scripts(
     concurrency:int   = 16,
     verbose:    bool  = False,
 ) -> List[ScanResult]:
-    """Run all matching scripts against all open ports."""
     registry = ScriptRegistry(script_dirs)
     results  = []
     sem      = asyncio.Semaphore(concurrency)
@@ -790,7 +768,6 @@ async def run(host, port, timeout=8.0):
 '''
 
 def install_builtin_scripts(script_dir: Optional[str] = None) -> str:
-    """Write built-in scripts to disk so ScriptRegistry can load them."""
     if script_dir:
         base = Path(script_dir)
     else:

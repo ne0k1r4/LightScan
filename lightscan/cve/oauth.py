@@ -1,9 +1,6 @@
 """
-OAuth 2.0 security scanner — checks for the most common OAuth implementation mistakes.
-
-Tests open redirect in redirect_uri, missing/predictable state (CSRF), PKCE
-downgrade from S256 to plain, scope escalation, implicit flow exposure,
-device code polling abuse, and token leakage via Referer headers.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import asyncio, base64, hashlib, json, random, string, time

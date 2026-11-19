@@ -1,9 +1,6 @@
 """
-CVE bridge — single entry point that runs both checker types and deduplicates.
-
-Runs the hardcoded PoC checks (better protocol accuracy) and the YAML
-template engine (easier to extend) and merges the results, dropping
-duplicates where both checked the same thing.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import asyncio
@@ -14,10 +11,6 @@ from lightscan.cve.template_engine import TemplateLibrary, run_templates
 from lightscan.core.engine import ScanResult
 
 def versions_from_results(results: list[ScanResult]) -> dict[int, str]:
-    """pulls {port: version} out of active.py's Phase 3 'active:service'
-    findings, so the cve stage can skip templates that don't apply to
-    whatever's actually running. no entry for a port just means we don't
-    know the version — templates for that port still run as normal."""
     out = {}
     for r in results:
         if r.module == "active:service":
@@ -36,27 +29,6 @@ async def run_all_checks(host: str, open_ports: list[int],
                          allow_intrusive: bool = False,
                          timeout: float = 8.0,
                          concurrency: int = 32) -> list[ScanResult]:
-    """
-    Unified check runner — legacy CVEChecker + template engine.
-
-    Args:
-        host:               target IP / hostname
-        open_ports:         list of confirmed open ports
-        template_dirs:      extra template directories (besides built-in)
-        template_tags:      filter templates by tag  (e.g. ['redis','unauth'])
-        template_ids:       run specific template IDs only
-        use_legacy:         also run hardcoded CVE checks
-        log4shell_callback: OAST callback URL for Log4Shell OOB detection
-        versions:           {port: version} from deep_probe, filters out
-                            templates whose version: constraint doesn't match
-        allow_intrusive:    also run intrusive: true templates (ones that
-                            actually run a command / read a file / inject
-                            sql on a hit, not just detect) - off by default
-        timeout / concurrency: passed to runner
-
-    Returns:
-        Deduplicated list of ScanResult
-    """
     results: list[ScanResult] = []
     seen: set[str] = set()
 
@@ -94,7 +66,6 @@ async def run_templates_only(host: str, open_ports: list[int],
                              versions: dict[int, str] | None = None,
                              allow_intrusive: bool = False,
                              timeout=8.0) -> list[ScanResult]:
-    """Thin wrapper — template engine only, no legacy checks."""
     return await run_all_checks(
         host, open_ports,
         template_dirs=extra_dirs,

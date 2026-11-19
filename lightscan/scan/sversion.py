@@ -1,4 +1,7 @@
-"""Protocol-aware service version detection for confirmed TCP services."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -173,7 +176,6 @@ PROBE_MAP: dict[int, list] = {
 GENERIC_PROBES = [probe_ftp, probe_smtp, probe_ssh, probe_http]
 
 async def detect_version(host: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> dict:
-    """Identify one confirmed open service using the smallest relevant probe set."""
     for probe in PROBE_MAP.get(port, GENERIC_PROBES):
         result = await probe(host, port, timeout)
         if result:
@@ -186,7 +188,6 @@ async def detect_versions_bulk(
     concurrency: int = 20,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> dict[int, dict]:
-    """Probe confirmed open ports concurrently while retaining their port mapping."""
     semaphore = asyncio.Semaphore(max(1, concurrency))
     results: dict[int, dict] = {}
 
@@ -207,7 +208,6 @@ async def detect_services(
     concurrency: int = 20,
     verbose: bool = False,
 ) -> list[ScanResult]:
-    """Return probe-derived service results in LightScan's common result model."""
     del verbose
     findings: list[ScanResult] = []
     detected = await detect_versions_bulk(host, ports, concurrency=concurrency, timeout=timeout)

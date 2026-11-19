@@ -1,4 +1,7 @@
-"""Test which HTTP methods are allowed on the server."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, ssl
 SCRIPT_NAME  = "http_methods"
 SCRIPT_PORTS = [80, 443, 8080, 8443]

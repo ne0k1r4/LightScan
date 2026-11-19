@@ -1,23 +1,6 @@
 """
-LightScan v2.0 PHANTOM — Timing & Evasion Engine | Developer: Light
-nmap-compatible timing templates + IDS evasion techniques:
-
-Timing (T0-T5):
-  T0  Paranoid   — 1 packet/15s,  max 1 parallel    (IDS evasion)
-  T1  Sneaky     — 1 packet/1.5s, max 5 parallel    (IDS evasion)
-  T2  Polite     — 1 packet/0.4s, max 10 parallel   (low bandwidth)
-  T3  Normal     — default nmap timing               (balanced)
-  T4  Aggressive — fast, assumes reliable network    (CTF/lab)
-  T5  Insane     — fastest, may miss ports           (LAN only)
-
-Evasion techniques:
-  --decoy N         Send N random decoy IPs alongside real probes
-  --fragment        Fragment IP packets (evades some IDS/packet filters)
-  --ttl N           Set custom TTL (evade TTL-based IDS rules)
-  --data-length N   Append random padding to packets
-  --randomize-hosts Randomise host scan order
-  --bad-checksum    Send probes with bad TCP checksum (firewall test)
-  --source-port N   Spoof source port (e.g. 53 to bypass some firewalls)
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -29,7 +12,6 @@ from typing import Callable, List, Optional
 
 @dataclass
 class EvasionConfig:
-    """Full evasion configuration passed to scanners."""
     timing:         int   = 4
     min_rate:       float = 0.0
     max_rate:       float = 0.0
@@ -48,23 +30,17 @@ class EvasionConfig:
     jitter_pct:     float = 0.0
 
     def effective_interval(self, base_interval: float) -> float:
-        """Return inter-packet delay with optional jitter applied."""
         if self.jitter_pct > 0:
             jitter = base_interval * self.jitter_pct * random.uniform(-1, 1)
             return max(0.0, base_interval + jitter)
         return base_interval
 
     def effective_ttl(self) -> int:
-        """Return TTL, optionally randomised slightly for evasion."""
         if self.ttl == 0:
             return random.choice([64, 128, 255])
         return self.ttl
 
 class RateLimiter:
-    """
-    Token-bucket rate limiter for packet sending.
-    Enforces min/max rate from timing template.
-    """
     def __init__(self, rate: float):
         self._rate      = rate
         self._tokens    = rate
@@ -78,7 +54,6 @@ class RateLimiter:
         self._last = now
 
     async def acquire(self):
-        """Wait until we have a token to send a packet."""
         while True:
             self._refill()
             if self._tokens >= 1.0:
@@ -88,7 +63,6 @@ class RateLimiter:
             await asyncio.sleep(sleep_time)
 
     def acquire_sync(self):
-        """Blocking version for threaded code."""
         while True:
             self._refill()
             if self._tokens >= 1.0:
@@ -98,10 +72,6 @@ class RateLimiter:
             time.sleep(sleep_time)
 
 class ScanScheduler:
-    """
-    Controls scan pacing, host ordering, and per-host parallelism.
-    Used by all scanner modules for consistent timing behaviour.
-    """
     def __init__(self, evasion: EvasionConfig):
         from lightscan.scan.rawscan import TIMING
         self.evasion = evasion
@@ -120,7 +90,6 @@ class ScanScheduler:
         return self.tmpl.retries
 
     async def slot(self):
-        """Acquire both a rate-limit token and a parallelism slot."""
         await self.limiter.acquire()
         await self._sem.acquire()
 
@@ -128,21 +97,18 @@ class ScanScheduler:
         self._sem.release()
 
     def order_ports(self, ports: List[int]) -> List[int]:
-        """Return ports in scan order (randomised if configured)."""
         result = list(ports)
         if self.evasion.randomize:
             random.shuffle(result)
         return result
 
     def order_hosts(self, hosts: List[str]) -> List[str]:
-        """Return hosts in scan order."""
         result = list(hosts)
         if self.evasion.randomize_hosts:
             random.shuffle(result)
         return result
 
 def parse_timing(spec: str) -> int:
-    """Parse timing spec: 'T4', '4', 'aggressive' → int 0-5."""
     spec = spec.strip().upper()
     mapping = {
         "T0": 0, "PARANOID": 0,
@@ -175,7 +141,6 @@ def build_evasion(
     min_rate:        float = 0.0,
     max_rate:        float = 0.0,
 ) -> EvasionConfig:
-    """Convenience constructor for EvasionConfig."""
     return EvasionConfig(
         timing=timing, ttl=ttl, fragment=fragment,
         bad_checksum=bad_checksum, decoys=decoys,

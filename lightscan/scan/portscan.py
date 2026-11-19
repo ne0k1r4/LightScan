@@ -1,4 +1,7 @@
-"""LightScan v2.0 PHANTOM — Async Port Scanner | Developer: Light"""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio

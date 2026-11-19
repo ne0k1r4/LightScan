@@ -1,1 +1,4 @@
-"""LightScan v2.6 — authorized network inventory and assessment scanner."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""

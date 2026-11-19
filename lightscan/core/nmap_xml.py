@@ -1,8 +1,6 @@
-"""Read-only import of OS and service observations from Nmap XML output.
-
-This module deliberately consumes a user-provided scan artifact. It neither executes
-Nmap nor vendors Nmap fingerprint databases, so LightScan can correlate approved
-inventory evidence without inheriting Nmap's probe behavior or data licensing.
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -15,10 +13,9 @@ from lightscan.core.engine import ScanResult, Severity
 MAX_NMAP_XML_BYTES = 64 * 1024 * 1024
 
 class NmapXMLImportError(ValueError):
-    """Raised when an Nmap XML artifact is unsafe or does not match the schema."""
+    pass
 
 def _tag_name(element: ET.Element) -> str:
-    """Return an XML element name without an optional namespace prefix."""
     return element.tag.rsplit("}", 1)[-1]
 
 def _children(element: ET.Element, name: str) -> list[ET.Element]:
@@ -29,7 +26,6 @@ def _first_child(element: ET.Element, name: str) -> ET.Element | None:
     return children[0] if children else None
 
 def _bounded_text(value: str | None, limit: int = 512) -> str:
-    """Normalize untrusted XML text before it reaches reports or terminal output."""
     return (value or "").strip().replace("\x00", "")[:limit]
 
 def _parse_accuracy(raw: str | None) -> int | None:
@@ -160,12 +156,6 @@ def _import_open_services(host: ET.Element, target: str) -> list[ScanResult]:
     return results
 
 def import_nmap_xml(path: str | Path) -> tuple[list[ScanResult], dict[str, int | str]]:
-    """Import OS matches and open-service records from one Nmap XML artifact.
-
-    The importer is intentionally offline. XML declarations with DTD or entity
-    definitions are rejected before parsing, and only open or open|filtered
-    services become LightScan results to keep inventory reports focused.
-    """
     source = Path(path).expanduser()
     try:
         size = source.stat().st_size

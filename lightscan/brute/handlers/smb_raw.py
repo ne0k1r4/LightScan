@@ -1,18 +1,6 @@
 """
-LightScan v2.0 PHANTOM — Raw SMB Handler (NTLMv2)
+LightScan
 Developer: Light (Neok1ra)
-
-Raw SMB protocol handler — full SMB1 + NTLMv2 auth
-without impacket dependency.
-
-Protocol flow:
-  1. TCP connect to :445
-  2. NetBIOS session service framing
-  3. SMB_COM_NEGOTIATE — send dialect list, get server challenge
-  4. Parse NTLMSSP_CHALLENGE from security blob
-  5. Calculate NTLMv2 response (HMAC-MD5 chain)
-  6. SMB_COM_SESSION_SETUP_ANDX with NTLMSSP_AUTH blob
-  7. Check NT STATUS in response header
 """
 from __future__ import annotations
 import hashlib, hmac, os, socket, struct, time
@@ -31,10 +19,6 @@ LOCKOUT_STATUSES = {STATUS_ACCOUNT_LOCKED_OUT}
 AUTH_FAIL_STATUSES = {STATUS_LOGON_FAILURE, STATUS_ACCESS_DENIED}
 
 class RawSMBHandler:
-    """
-    Full SMB1 + NTLMSSP NTLMv2 authentication handler.
-    Zero external dependencies (no impacket).
-    """
     SMB_COM_NEGOTIATE      = 0x72
     SMB_COM_SESSION_SETUP  = 0x73
     NTLMSSP_NEGOTIATE_MSG  = 0x01
@@ -74,11 +58,9 @@ class RawSMBHandler:
         self.sock = None
 
     def _nb_send(self, smb_bytes: bytes):
-        """Wrap SMB in NetBIOS session service (4-byte big-endian length)"""
         self.sock.sendall(struct.pack(">I", len(smb_bytes)) + smb_bytes)
 
     def _nb_recv(self) -> bytes | None:
-        """Read one NetBIOS-framed SMB packet"""
         try:
             hdr = self._recv_exact(4)
             if not hdr: return None
@@ -112,7 +94,6 @@ class RawSMBHandler:
         )
 
     def _get_status(self, raw: bytes) -> int:
-        """Extract NT STATUS from SMB response (offset 9 in SMB header = offset 9 after NetBIOS)"""
         if len(raw) < 13: return -1
         return struct.unpack("<I", raw[9:13])[0]
 
@@ -142,7 +123,6 @@ class RawSMBHandler:
         return False
 
     def _parse_ntlm_challenge(self, blob: bytes) -> bool:
-        """Extract server challenge from NTLMSSP_CHALLENGE blob"""
         if len(blob) < 32: return False
         msg_type = struct.unpack("<I", blob[8:12])[0]
         if msg_type != self.NTLMSSP_CHALLENGE_MSG: return False
@@ -152,7 +132,6 @@ class RawSMBHandler:
 
     @staticmethod
     def _ntlm_hash(password: str) -> bytes:
-        """NT hash = MD4(UTF-16LE(password)) — uses pycryptodome if OpenSSL MD4 disabled"""
         data = password.encode("utf-16le")
         try:
             return hashlib.new("md4", data).digest()
@@ -162,7 +141,6 @@ class RawSMBHandler:
 
     @staticmethod
     def _ntlmv2_hash(nt_hash: bytes, username: str, domain: str) -> bytes:
-        """NTLMv2 hash = HMAC-MD5(NT_hash, upper(username+domain) in UTF-16LE)"""
         return hmac.new(
             nt_hash,
             (username.upper() + domain).encode("utf-16le"),
@@ -170,11 +148,6 @@ class RawSMBHandler:
         ).digest()
 
     def _ntlmv2_response(self, username: str, password: str, domain: str) -> bytes:
-        """
-        Build full NTLMv2 response blob.
-        Response = HMAC-MD5(NTLMv2_hash, server_challenge + blob) + blob
-        where blob is the 'NTLMv2 Client Challenge' structure.
-        """
         nt_hash   = self._ntlm_hash(password)
         v2_hash   = self._ntlmv2_hash(nt_hash, username, domain)
 
@@ -200,10 +173,6 @@ class RawSMBHandler:
         return nt_proof + blob
 
     def session_setup(self, username: str, password: str, domain: str = "") -> tuple[bool, str]:
-        """
-        Build NTLMSSP_AUTH blob and SMB_COM_SESSION_SETUP_ANDX.
-        Returns (success, status_string)
-        """
         ntlm_resp    = self._ntlmv2_response(username, password, domain)
         domain_b     = domain.encode("utf-16le")
         username_b   = username.encode("utf-16le")
@@ -216,7 +185,6 @@ class RawSMBHandler:
         ws_off     = user_off   + len(username_b)
 
         def _field(data: bytes, offset: int) -> bytes:
-            """Security buffer descriptor: length (2), max length (2), offset (4)"""
             return struct.pack("<HHI", len(data), len(data), offset)
 
         auth_blob = (
@@ -265,7 +233,6 @@ class RawSMBHandler:
         return False, f"status:0x{status:08X}"
 
     def authenticate(self, username: str, password: str, domain: str = "") -> tuple[bool, str]:
-        """Full auth flow: connect → negotiate → session setup. Returns (bool, msg)"""
         if not self.connect():
             return False, "connection_failed"
         try:
@@ -281,11 +248,6 @@ class RawSMBHandler:
 
 def make_smb_raw_handler(host: str, port: int = 445, timeout: float = 8.0,
                          domain: str = "", **kw):
-    """
-    Returns an async (user, passwd) → (bool, str) handler
-    using the raw NTLMv2 SMB implementation.
-    Falls back to impacket if available and raw fails.
-    """
     import asyncio
 
     async def handler(user: str, passwd: str) -> tuple[bool, str]:

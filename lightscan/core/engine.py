@@ -1,7 +1,6 @@
-"""Shared result record and legacy asynchronous task runner.
-
-New bounded TCP scans use :mod:`lightscan.scan.streaming`; ``ScanResult``
-remains the common serialization contract used by all scanner families.
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 

@@ -1,4 +1,7 @@
-"""CWE, OWASP Top 10 (2021), and remediation taxonomy for LightScan findings."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 TAXONOMY_MAP: dict[str, dict[str, str]] = {
@@ -301,7 +304,6 @@ DEFAULT_TAXONOMY = {
 
 
 def get_taxonomy(module_name: str) -> dict[str, str]:
-    """Retrieve CWE, OWASP Top 10, and remediation metadata for a finding module."""
     if not module_name:
         return DEFAULT_TAXONOMY.copy()
 

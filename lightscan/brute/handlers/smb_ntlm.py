@@ -1,17 +1,6 @@
 """
-LightScan v2.0 PHANTOM — Raw SMB/NTLMv2 Handler
-Developer: Light
-
-Direct integration of full SMB1 NTLM authentication:
-  1. TCP connect to port 445
-  2. SMB Negotiate (multi-dialect, extended security)
-  3. Parse server's NTLMSSP challenge (8-byte nonce)
-  4. Calculate NTLMv2 response (HMAC-MD5)
-  5. SMB Session Setup with auth blob
-  6. Parse response → success/failure/locked
-
-Requires pycryptodome for HMAC-MD4 (pip install pycryptodome).
-Falls back to Python stdlib hmac+hashlib if MD4 is available.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -172,9 +161,6 @@ class RawSMBAuth:
         return ntv2_response
 
     def session_setup(self, username: str, password: str, domain: str = '') -> str:
-        """
-        Returns: 'success' | 'failure' | 'locked' | 'error:<msg>'
-        """
         if not self.server_challenge:
             return 'error:no_challenge'
 
@@ -246,7 +232,6 @@ class RawSMBAuth:
         return f'error:ntstatus=0x{ntstatus:08x}'
 
     def authenticate(self, username: str, password: str, domain: str = '') -> tuple[bool, str]:
-        """Returns (success, message)"""
         if not self.connect():
             return False, 'connection_failed'
         try:
@@ -299,10 +284,6 @@ class RawSMBAuth:
 
 def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
                           domain: str = '', **kw):
-    """
-    Returns an async (user, passwd) → (bool, str) handler for BruteEngine.
-    Tries impacket first (most reliable), then falls back to RawSMBAuth.
-    """
     try:
         from impacket.smbconnection import SMBConnection
 
@@ -337,10 +318,6 @@ def make_smb_ntlm_handler(host: str, port: int = 445, timeout: float = 8.0,
 
 async def check_null_session(host: str, port: int = 445,
                               timeout: float = 5.0) -> dict:
-    """try SMB null session and anonymous login before brute forcing.
-    
-    returns: {null_session, anonymous, shares, os, error}
-    """
     result = {"null_session": False, "anonymous": False,
                "shares": [], "os": "", "error": ""}
     try:
@@ -371,7 +348,6 @@ async def check_null_session(host: str, port: int = 445,
     return result
 
 async def smb_precheck(host: str, port: int = 445, timeout: float = 5.0) -> list[str]:
-    """run null/anonymous checks — call BEFORE brute force"""
     r = await check_null_session(host, port, timeout)
     out = []
     if r.get("error"): return []

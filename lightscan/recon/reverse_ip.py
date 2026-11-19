@@ -1,4 +1,7 @@
-"""Reverse IP / virtual host discovery via PTR, Host header probing, and TLS SAN extraction."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -162,7 +165,6 @@ async def reverse_ip_async(
     target: str,
     timeout: float = 10.0,
 ) -> list[ScanResult]:
-    """Discover virtual hosts and domains sharing the same IP address."""
     results: list[ScanResult] = []
     try:
         findings = await asyncio.to_thread(_blocking_reverse_ip, target, timeout)

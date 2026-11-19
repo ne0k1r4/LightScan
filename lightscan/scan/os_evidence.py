@@ -1,9 +1,6 @@
-"""Conservative OS-family inference from already collected service evidence.
-
-The rules in this module are independently authored from vendor/product strings
-already observed by LightScan service probes or imported inventory artifacts.
-They do not reproduce probe fingerprints or signature data from third parties,
-and they never initiate a network connection.
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -44,7 +41,6 @@ _RULES: tuple[_EvidenceRule, ...] = (
 )
 
 def _candidate_text(result: ScanResult) -> str:
-    """Join only existing textual evidence fields from one result."""
     values = [result.detail]
     for key in ("service", "name", "product", "version", "raw", "extrainfo"):
         value = result.data.get(key)
@@ -67,12 +63,6 @@ def _confidence(score: int, source_count: int) -> str:
     return "LOW"
 
 def infer_os_from_results(results: Iterable[ScanResult]) -> list[ScanResult]:
-    """Infer one conservative OS-family result per target from existing evidence.
-
-    Only `service-version` and `nmap-service-import` records contribute. A result
-    requires a distinctive vendor or product match, and its score is capped rather
-    than treating duplicated service banners as independent proof.
-    """
     findings: list[ScanResult] = []
     per_target: dict[str, list[ScanResult]] = defaultdict(list)
     for result in results:

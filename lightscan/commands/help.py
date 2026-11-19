@@ -1,8 +1,10 @@
-"""Compact terminal help presentation."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 def print_minimal_help() -> None:
-    """Print an animated, ultra-short terminal help guide."""
     import time
     import sys
     

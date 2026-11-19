@@ -1,4 +1,7 @@
-"""Re-export a LightScan JSON report in another supported format."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import argparse

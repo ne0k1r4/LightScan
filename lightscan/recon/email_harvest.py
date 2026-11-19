@@ -1,4 +1,7 @@
-"""Email harvesting from web pages via crawling and regex extraction."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -153,7 +156,6 @@ async def email_harvest_async(
     max_pages: int = 50,
     timeout: float = 8.0,
 ) -> list[ScanResult]:
-    """Crawl target website and extract email addresses."""
     results: list[ScanResult] = []
     try:
         findings = await asyncio.to_thread(_blocking_harvest, url, max_pages, timeout)

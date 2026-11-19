@@ -1,4 +1,7 @@
-"""LightScan v2.0 PHANTOM — Traceroute | Developer: Light"""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +12,6 @@ import time
 from lightscan.core.engine import ScanResult, Severity
 
 def _get_local_ip(dest_ip: str) -> str:
-    """Determine the local IP address used to route to dest_ip."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect((dest_ip, 80))

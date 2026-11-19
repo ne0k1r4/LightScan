@@ -1,4 +1,7 @@
-"""Check for CORS misconfiguration."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 import asyncio, ssl, urllib.request, urllib.error
 SCRIPT_NAME  = "http_cors_check"
 SCRIPT_PORTS = [80, 443, 8080, 8443, 3000, 5000, 8000]

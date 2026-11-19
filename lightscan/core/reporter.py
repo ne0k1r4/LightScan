@@ -1,4 +1,7 @@
-"""Multi-format report output for LightScan scan results."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import csv
@@ -15,7 +18,6 @@ from xml.dom import minidom
 from lightscan.core.engine import ScanResult, Severity
 
 class Reporter:
-    """Write scan findings to JSON, Nmap-style XML, HTML, CSV, or text."""
 
     stdout_override = None
 
@@ -93,20 +95,12 @@ class Reporter:
 
     @staticmethod
     def _json_result(result: ScanResult) -> dict:
-        """Preserve legacy keys while retaining the complete result payload."""
         payload = result.to_dict()
         payload["host"] = result.target
         payload["service"] = result.data.get("service", result.module)
         return payload
 
     def _write_nmap_xml(self, path: str, results: list[ScanResult], meta: dict) -> None:
-        """Write a conservative Nmap-compatible XML representation.
-
-        Port state is taken from port-scanner results; service metadata prefers
-        active protocol probes over a port-number lookup.  Non-port findings
-        remain attached as ``script`` elements instead of being misrepresented
-        as open ports.
-        """
         start = int(meta.get("timestamp", meta.get("start", time.time())))
         root = ET.Element(
             "nmaprun",

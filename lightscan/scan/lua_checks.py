@@ -1,9 +1,6 @@
-"""Constrained NSE-inspired Lua checks for authorized, non-destructive service review.
-
-Lua scripts receive an immutable observation context collected by LightScan. They
-cannot open sockets, read files, spawn processes, or load additional code. A
-script may only decide whether it applies and emit declarative findings through
-the small ``lightscan`` API defined by the Lua runner.
+"""
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -27,11 +24,10 @@ _FORBIDDEN_TOKENS = re.compile(
 _HTTP_PORTS = {80, 443, 8000, 8080, 8081, 8443, 8888}
 
 class LuaCheckError(RuntimeError):
-    """Raised when a constrained Lua check cannot be safely executed."""
+    pass
 
 @dataclass(frozen=True)
 class LuaCheckMetadata:
-    """NSE-inspired metadata produced by a validated Lua check."""
 
     name: str
     description: str
@@ -40,13 +36,11 @@ class LuaCheckMetadata:
 
 @dataclass(frozen=True)
 class LuaCheck:
-    """A validated Lua source file and its exposed metadata."""
 
     path: Path
     metadata: LuaCheckMetadata
 
 class LuaCheckRegistry:
-    """Discover, validate, and select Lua checks from explicitly supplied roots."""
 
     def __init__(self, roots: Sequence[str] | None = None, lua_binary: str | None = None):
         self.roots = [Path(root).expanduser().resolve() for root in (roots or [])]
@@ -149,7 +143,6 @@ async def run_lua_checks(
     timeout: float = 3.0,
     concurrency: int = 10,
 ) -> list[ScanResult]:
-    """Run selected Lua checks against confirmed open ports only."""
     if timeout <= 0 or concurrency < 1:
         raise ValueError("timeout and concurrency must be positive")
     checks = registry.select(names=names, categories=categories)
@@ -183,7 +176,6 @@ async def _run_one(
         return _normalize_findings(check.metadata, host, port, output)
 
 async def _collect_context(host: str, port: int, timeout: float) -> dict | None:
-    """Collect a read-only observation; Lua code never receives a socket."""
     writer = None
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
@@ -282,7 +274,6 @@ def _run_lua(binary: str, runner_path: Path, timeout: float) -> str:
     return completed.stdout
 
 def _lua_runner(script_path: Path, mode: str, context_path: Path) -> str:
-    """Build a minimal Lua process that exposes no ambient capabilities."""
     encoded_path = json.dumps(str(script_path))
     encoded_mode = json.dumps(mode)
     encoded_context_path = json.dumps(str(context_path))

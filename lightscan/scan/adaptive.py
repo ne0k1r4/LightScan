@@ -1,12 +1,6 @@
 """
-LightScan v2.0 PHANTOM — Adaptive Timing Engine | Developer: Light
-Adaptive timing: adjusts concurrency + rate based on:
-  - RTT to target (latency-aware)
-  - Packet loss rate (retry-aware)
-  - Host responsiveness score
-  - Network congestion signals
-
-Equivalent to nmap's adaptive timing engine.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -18,7 +12,6 @@ from typing import Dict, List, Optional
 
 @dataclass
 class HostStats:
-    """Per-host scan statistics for adaptive timing."""
     target:        str
     rtts:          List[float] = field(default_factory=list)
     sent:          int = 0
@@ -34,7 +27,6 @@ class HostStats:
 
     @property
     def responsiveness(self) -> float:
-        """0.0 (unresponsive) to 1.0 (fully responsive)."""
         if self.sent == 0: return 0.5
         return min(1.0, self.responded / max(1, self.sent))
 
@@ -58,17 +50,6 @@ class HostStats:
         self.timeouts += 1
 
 class AdaptiveTimingEngine:
-    """
-    Dynamically adjusts scan rate and concurrency based on network feedback.
-
-    Algorithm:
-      1. Start at configured timing template rate
-      2. After each response, record RTT
-      3. If loss_rate > 20%: halve the rate (network congestion)
-      4. If loss_rate < 5% + RTT stable: increase rate by 10%
-      5. Concurrency scales with responsiveness score
-      6. Per-host retries based on observed packet loss
-    """
 
     def __init__(self, base_timing: int = 4, max_concurrency: int = 512):
         from lightscan.scan.rawscan import TIMING
@@ -103,7 +84,6 @@ class AdaptiveTimingEngine:
         self._global_sent += 1
 
     async def _maybe_adjust(self):
-        """Adjust rate and concurrency every 100 packets."""
         now = time.monotonic()
         if now - self._last_adjust < 0.5:
             return
@@ -134,7 +114,6 @@ class AdaptiveTimingEngine:
         return self._concurrency
 
     def recommended_timeout(self, host: str) -> float:
-        """Calculate per-host timeout based on observed RTT."""
         stats = self.get_stats(host)
         if not stats.rtts:
             return self.tmpl.timeout
@@ -142,7 +121,6 @@ class AdaptiveTimingEngine:
         return max(0.5, min(self.tmpl.timeout, timeout))
 
     def recommended_retries(self, host: str) -> int:
-        """Calculate retries based on packet loss."""
         stats = self.get_stats(host)
         if stats.loss_rate > 0.20:
             return min(3, self.tmpl.retries + 1)
@@ -162,13 +140,6 @@ import collections as _col
 import time as _t
 
 class DropRateDetector:
-    """sliding window packet drop rate detector.
-    
-    tracks sent vs received over a window. when drop rate exceeds
-    threshold, signals caller to slow down or halt.
-    
-    warn at 30% drop, halt at 70% drop, resume after 10s backoff.
-    """
     def __init__(self, window_secs: float = 5.0,
                  warn_at: float = 0.30, halt_at: float = 0.70):
         self._window     = window_secs
@@ -201,7 +172,6 @@ class DropRateDetector:
         return _t.monotonic() < self._backoff_until
 
     def check(self) -> tuple[str, float]:
-        """returns (status, delay_secs) — 'ok' | 'slow' | 'halt' | 'backoff'"""
         if self.is_backing_off:
             return "backoff", self._backoff_until - _t.monotonic()
         r = self.drop_rate
@@ -213,7 +183,6 @@ class DropRateDetector:
         return "ok", 0.0
 
     def summary(self) -> str:
-        """short status line for engine output"""
         self._prune()
         return (f"sent={len(self._sent)} recv={len(self._recv)} "
                 f"drop={self.drop_rate:.1%} "

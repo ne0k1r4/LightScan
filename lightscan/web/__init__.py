@@ -1,1 +1,4 @@
-"""LightScan Web Scanner module"""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""

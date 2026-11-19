@@ -1,10 +1,6 @@
 """
-banner.py — startup banner + runtime context line
-Light (Neok1ra)
-
-quotes rotate randomly every run so it doesn't feel like the same thing
-every time. root status + python version print because i've debugged
-"why isn't my raw scan working" too many times before realising i wasn't root.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 import os
@@ -54,10 +50,6 @@ def _is_root() -> bool:
             return False
 
 def print_banner(no_quote: bool = False) -> None:
-    """Print the startup banner with runtime context.
-
-    no_quote=True skips the rotating quote — for JSON/minimal output modes.
-    """
     width = _term_width()
     sep   = "\033[38;5;196m" + "\u2500" * width + "\033[0m"
 

@@ -1,4 +1,7 @@
-"""Incremental NDJSON output for high-scale scan findings."""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import json
@@ -9,7 +12,6 @@ from lightscan.core.engine import ScanResult
 from lightscan.core.reporter import Reporter
 
 class NDJSONResultWriter:
-    """Write results as newline-delimited events without retaining a result list."""
 
     def __init__(self, path: str, meta: dict):
         if path == "-":

@@ -1,24 +1,6 @@
 """
-Active Red-Team Engine
-This is the hands-on part of the scanner — it doesn't just observe,
-it actually pokes things and figures out if they're exploitable.
-
-Four phases run in sequence, each feeding the next:
-
-  Phase 1  Who's home?        ICMP ping, ARP table check for LAN hosts,
-                               TCP-connect fallback when raw sockets aren't available.
-
-  Phase 2  What's running?    Protocol-specific payloads per open port — not just
-                               "port is open" but "this is Redis 7.2 and here's the
-                               INFO dump to prove it."
-
-  Phase 3  Is it vulnerable?  Real PoC probes: FTP anonymous login, Redis CONFIG SET,
-                               MongoDB isMaster with no auth, SMBv1 negotiate,
-                               LDAP anonymous bind, HTTP secret file exposure.
-
-  Phase 4  Where do we go?    Pivot and RCE chain suggestions built from confirmed
-                               vulns — Redis unauth becomes a webshell walkthrough,
-                               EternalBlue gets the Metasploit stager, and so on.
+LightScan
+Developer: Light (Neok1ra)
 """
 from __future__ import annotations
 
@@ -45,7 +27,6 @@ def _icmp_checksum(data: bytes) -> int:
     return ~s & 0xFFFF
 
 async def _icmp_ping(host: str, timeout: float = 1.5) -> Optional[tuple]:
-    """Returns (method, rtt_ms, ttl, hostname) or None."""
     sock = None
     try:
         dst = socket.gethostbyname(host)
@@ -103,7 +84,6 @@ async def _tcp_ping(host: str, port: int = 80, timeout: float = 1.5) -> Optional
         return None
 
 async def _arp_check(host: str) -> Optional[tuple]:
-    """Read /proc/net/arp for LAN hosts — zero packets sent."""
     try:
         if not ipaddress.ip_address(host).is_private:
             return None
@@ -124,7 +104,6 @@ async def _arp_check(host: str) -> Optional[tuple]:
 
 async def discover_hosts(targets: List[str], timeout: float = 1.5,
                          concurrency: int = 256) -> List[tuple]:
-    """Returns list of (ip, method, rtt_ms, ttl, hostname) for live hosts."""
     sem  = asyncio.Semaphore(concurrency)
     live = []
 
@@ -170,7 +149,6 @@ _PROTO_PROBES: Dict[int, bytes] = {
 }
 
 async def deep_probe(host: str, port: int, timeout: float = 3.0) -> dict:
-    """Returns {service, banner, version, product, os, devtype, info} via protocol-specific probing."""
     import re
     service = SERVICE_MAP.get(port, f"port/{port}")
     banner  = ""
@@ -476,10 +454,6 @@ async def active_scan(
     skip_discovery: bool = False,
     mode:        str   = "deep",
 ) -> List[ScanResult]:
-    """
-    Full 4-phase active red-team pipeline.
-    Returns all ScanResult objects (discovery + open ports + vulns + pivots).
-    """
     results: List[ScanResult] = []
     C = "\033[38;5;196m"; R = "\033[0m"; G = "\033[38;5;82m"; DIM = "\033[38;5;240m"
 

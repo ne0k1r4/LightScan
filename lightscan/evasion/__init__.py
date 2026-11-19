@@ -1,4 +1,7 @@
-"""LightScan v2.0 PHANTOM — Evasion Layer | Developer: Light"""
+"""
+LightScan
+Developer: Light (Neok1ra)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -147,10 +150,6 @@ SAFARI_CIPHERS = (
 EDGE_CIPHERS = CHROME_CIPHERS
 
 def get_spoofed_ssl_context(browser: str = "chrome") -> ssl.SSLContext:
-    """
-    Creates an SSLContext configured with browser-specific TLS ciphers
-    and options to spoof JA3/JA4 fingerprints and bypass WAF detection.
-    """
     import ssl
     context = ssl.create_default_context()
     context.check_hostname = False
@@ -186,6 +185,5 @@ UA_PROFILES = [
 ]
 
 def get_evasion_client_profile() -> tuple[str, ssl.SSLContext]:
-    """Returns a random User-Agent and a matching spoofed SSLContext."""
     ua, browser = random.choice(UA_PROFILES)
     return ua, get_spoofed_ssl_context(browser)
